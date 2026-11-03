@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+  <img alt="kosmo" src=".github/assets/logo.svg" height="64">
+</picture>
+
 # kosmo
 
 kosmo is the user interface and shell of casξ, a portable workstation for
@@ -41,9 +46,9 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo is newly initialized. The repository holds documentation and a commit
-hook. It has no code, so there is nothing to build or run yet, and none of the
-features above work today.
+kosmo is newly initialized. The repository holds documentation, the kosmo logo
+and a commit hook. It has no code, so there is nothing to build or run yet, and
+none of the features above work today.
 
 kosmo will be an ordinary Rust program that uses the standard library. It will
 run first as a preview on a host computer and then on krepi, the casξ operating
