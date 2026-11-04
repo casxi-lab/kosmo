@@ -71,15 +71,6 @@ is recorded separately in the coordination records. Creating a tag or
 publishing is a
 separate authorized action.
 
-## Private repositories
-
-This repository is public. Documents, code comments and commit messages do not
-name or link the project's private repositories. Refer to their content in
-neutral terms (the coordination records, the CAS project) and give only commit
-hashes and paths where a reference must be traceable. The documentation check
-rejects lines that match the case-insensitive pattern
-`casxi-(system|cas|build)|krepi-h[i]l|erthoaers[/]`.
-
 ## License
 
 kosmo is released under the [MIT License](LICENSE). The copyright holders are
