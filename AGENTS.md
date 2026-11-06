@@ -40,7 +40,9 @@
 - Use English Conventional Commit subjects of at most 72 characters and the
   local `.githooks/commit-msg` hook. Preserve history. Do not create remotes,
   tags or releases without authorization.
-- The repository has no Cargo package yet, so no build or test command exists.
-  Before committing, run `git diff --check` and `git diff --cached --check` and
-  review the staged diff. The change that adds the Cargo package also adds its
-  check command to `CONTRIBUTING.md` and to these instructions.
+- kosmo itself has no Cargo package yet; the only one is the repository-task
+  workspace in `xtask/`. Before committing, run `cargo xtask check`,
+  `git diff --check` and `git diff --cached --check` and review the staged
+  diff. CI runs `cargo xtask check` on every pull request to `main` and every
+  push to `main`. The change that adds the kosmo Cargo package also adds it to
+  the check and updates `CONTRIBUTING.md` and these instructions.

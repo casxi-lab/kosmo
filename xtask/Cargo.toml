@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+description = "Repository tasks for kosmo, run as `cargo xtask`"
+edition = "2024"
+license = "MIT"
+publish = false
+rust-version = "1.99"
+
+# xtask is a workspace of its own, apart from the kosmo program.
+[workspace]
+
+[dependencies]
+# The workflows step uses the event parser on text that is already UTF-8,
+# so the input-decoding support of the default feature is left out.
+yaml-rust2 = { version = "=0.13.0", default-features = false }
