@@ -85,3 +85,5 @@ is checked separately. The product screen and keyboard have not been chosen.
 
 kosmo is released under the [MIT License](LICENSE). Copyright (c) 2026 The
 casξ Authors; see [AUTHORS](AUTHORS).
+
+[Probe](docs/probe-missing.md)
