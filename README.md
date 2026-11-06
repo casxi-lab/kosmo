@@ -46,9 +46,10 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo is newly initialized. The repository holds documentation, the kosmo logo
-and a commit hook. It has no code, so there is nothing to build or run yet, and
-none of the features above work today.
+kosmo is newly initialized. The repository holds documentation, the kosmo
+logo, a commit hook and the repository checks, which CI runs on every pull
+request to `main` and every push to `main`. kosmo itself has no code yet, so
+there is nothing to build or run, and none of the features above work today.
 
 kosmo will be an ordinary Rust program that uses the standard library. It will
 run first as a preview on a host computer and then on krepi, the casξ operating
