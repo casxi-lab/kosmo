@@ -70,10 +70,9 @@ is checked separately. The product screen and keyboard have not been chosen.
 
 - **krepi** (`casxi-lab/krepi`): the casξ operating system. It will provide the
   microkernel, the document, job, display and input services, the GUI bridge
-  and the SDK that kosmo is built on. It is newly initialized as well.
+  and the SDK that kosmo is built on.
 - **kalyx** (`casxi-lab/kalyx`): the casξ computer algebra library. kosmo will
   turn what you type into expressions for it and show the results it computes.
-  kalyx is newly initialized; the library's code is still to be moved in.
 
 ## Documentation
 
