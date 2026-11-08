@@ -28,10 +28,11 @@ Other parts of casξ will provide what kosmo shows:
   problems, versioned values and their dependencies), the job service, the
   display and input services, usage restrictions, language runtimes such as
   Python as separate worker programs, the GUI bridge and the SDK.
-- Plots, geometry constructions and proof checking will be computed by their
-  own components: the plotting component kamp, the dynamic-geometry component
-  kyklo and the formal workbench krino. These are planned components without a
-  repository yet. kosmo will show their results in document regions.
+- The mathematics of plots and geometric constructions will come from kalyx.
+  The plotting application kamp and the dynamic geometry application kyklo
+  will draw them and, together with kosmo's views, handle the interaction with
+  them; the formal workbench krino will check proofs. kosmo will show their
+  results in document regions.
 
 ## Target scope by capability
 
