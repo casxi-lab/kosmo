@@ -8,8 +8,8 @@
 kosmo is the user interface and shell of casξ, a portable workstation for
 mathematics, science and programming built on the Raspberry Pi 5. It is the
 part of casξ you see and touch: the formula and code editors, typeset results,
-graphs, tables, the terminal view, documents with their pages, and the shell
-that moves you between them. The name comes from the Greek κόσμος.
+graphs, tables, the terminal view, documents with their pages, and the
+shell that moves you between them. The name comes from the Greek κόσμος.
 
 ## What it will let you do
 
