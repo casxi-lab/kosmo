@@ -7,10 +7,12 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
 use crate::repo::{Entry, Tree};
-use crate::{commits, docs, receipt, workflows};
+use crate::{commits, docs, layout, receipt, workflows};
 
 /// The Cargo workspaces that the format, Clippy and test steps cover, as
-/// repository-relative directories.
+/// repository-relative directories. The layout step checks that they are
+/// exactly the tool workspaces and the product workspaces with crates in the
+/// layout table.
 pub const WORKSPACES: [&str; 2] = ["xtask", "desktop"];
 
 /// A command run in the repository root.
@@ -90,6 +92,10 @@ fn per_workspace(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
 pub fn steps() -> Vec<Step> {
     vec![
         Step {
+            name: "layout",
+            action: Action::Internal(Box::new(layout::run)),
+        },
+        Step {
             name: "fmt",
             action: Action::Commands(per_workspace(&["fmt", "--all", "--check"], &[])),
         },
@@ -125,7 +131,7 @@ fn check_workflows(root: &Path, facts: &mut Facts) -> Result<(), String> {
     let tracked = || {
         tree.entries().map(|(path, entry)| match entry {
             Entry::File(bytes) => (path, Some(bytes.as_slice())),
-            Entry::Symlink | Entry::Submodule => (path, None),
+            Entry::Symlink(_) | Entry::Submodule => (path, None),
         })
     };
     let files: Vec<&str> = tracked()
@@ -261,7 +267,15 @@ mod tests {
 
     use super::*;
 
-    const ORDER: [&str; 6] = ["fmt", "clippy", "test", "docs", "commits", "workflows"];
+    const ORDER: [&str; 7] = [
+        "layout",
+        "fmt",
+        "clippy",
+        "test",
+        "docs",
+        "commits",
+        "workflows",
+    ];
 
     #[test]
     fn steps_run_in_the_documented_order() {
@@ -360,6 +374,11 @@ mod tests {
     }
 
     #[test]
+    fn a_layout_failure_stops_the_check() {
+        assert_fails_at("layout");
+    }
+
+    #[test]
     fn a_format_failure_stops_the_check() {
         assert_fails_at("fmt");
     }
@@ -394,11 +413,11 @@ mod tests {
         let ran = Rc::new(RefCell::new(Vec::new()));
         let outcomes = run_steps(Path::new("."), &with_failure("docs", &ran));
         assert_eq!(
-            outcomes[3].facts,
+            outcomes[4].facts,
             [("seen".to_string(), "before failing".to_string())]
         );
         assert_eq!(
-            outcomes[3].status,
+            outcomes[4].status,
             Status::Failed("forced failure".to_string())
         );
     }

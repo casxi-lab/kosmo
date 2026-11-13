@@ -11,6 +11,25 @@ rust-version = "1.99"
 [workspace]
 
 [dependencies]
+# The token type under `syn`: the layout step scans the tokens of Rust
+# source files and reports the line of each literal path and name it finds,
+# which the span locations give. The step runs outside a procedural macro,
+# so the procedural-macro support of the default feature is left out.
+proc-macro2 = { version = "=1.0.107", default-features = false, features = ["span-locations"] }
+# The layout step reads `layout.toml` into types that derive `Deserialize`;
+# only the derive macros and the allocation support for strings, vectors
+# and maps are needed.
+serde = { version = "=1.0.229", default-features = false, features = ["alloc", "derive"] }
+# The layout step reads the inner attributes of the library root of each
+# pure-core crate with the parser of the full syntax. Printing, the `Clone`
+# implementations and the procedural-macro support of the default features
+# are not used.
+syn = { version = "=3.0.9", default-features = false, features = ["full", "parsing"] }
+# The layout step parses `layout.toml` into its types and the Cargo
+# manifests and the Cargo configuration into tables; nothing is written, so
+# the writer and the standard-library support of the default features are
+# left out.
+toml = { version = "=1.2.0", default-features = false, features = ["parse", "serde"] }
 # The workflows step uses the event parser on text that is already UTF-8,
 # so the input-decoding support of the default feature is left out.
 yaml-rust2 = { version = "=0.13.0", default-features = false }

@@ -1,0 +1,93 @@
+# The layout table of kosmo: the Cargo workspaces of the repository, the
+# layers of each product workspace and every crate that exists, with the
+# marks that the layout step of `cargo xtask check` reads. The rules are in
+# the Source layout section of docs/architecture.md; CONTRIBUTING.md
+# describes each check of the layout step and its limits. A change that
+# adds a crate registers it here in the same commit.
+#
+# A product workspace has its own root manifest and Cargo.lock. It exists
+# once this table lists a crate in one of its layers; its root manifest is
+# added with that crate. Layers are listed from the lowest, and layer
+# identifiers are unique across the workspaces. A crate depends only on
+# crates of lower layers of its own workspace, on crates of its own layer
+# that it lists in `same-layer`, and on export crates of the workspaces in
+# `uses`; a crate of a layer marked `facade-only` depends on other
+# workspaces only through facade crates. The internal dependency graph,
+# dev-dependencies included, has no cycle. A layer marked `publish = false`
+# has no publishable crate. The layers of each workspace and their order,
+# `uses`, `publish = false` on layers D4 and F4 (conformance and integration
+# tests), `facade-only` on layer S1 (first-party applications) and the crate
+# kosmo in layer S2 (the program) state rules of the source layout, and the
+# layout step requires them as they are written here: changing them
+# changes those rules. Every path is relative to the repository root and
+# written without `.`, `..` or a trailing `/`.
+#
+# `targets` are the target platforms, at least one and each once, for which
+# dependencies and licenses will be evaluated. The allowed direct external
+# dependencies of a crate will be listed in its entry in this file, and
+# `lock-allowlist` names the file that will list the allowed packages of
+# the workspace's Cargo.lock; both are planned, with the dependency check,
+# and the layout step only checks that `lock-allowlist` lies inside its
+# workspace.
+
+[workspaces.display]
+path = "display"
+uses = []
+targets = ["aarch64-unknown-linux-gnu", "aarch64-apple-darwin"]
+lock-allowlist = "display/allowlist.toml"
+layers = [
+    { id = "D0", name = "exports: protocol and shared types" },
+    { id = "D1", name = "pure core: trusted-core state machines" },
+    { id = "D2", name = "server libraries: compositing, input pipeline, window policy" },
+    { id = "D3", name = "server programs and backends" },
+    { id = "D4", name = "conformance tests", publish = false },
+]
+
+[workspaces.framework]
+path = "framework"
+uses = ["display"]
+targets = ["aarch64-unknown-linux-gnu", "aarch64-apple-darwin"]
+lock-allowlist = "framework/allowlist.toml"
+layers = [
+    { id = "F0", name = "foundations and models, and the exported client library" },
+    { id = "F1", name = "core, adapters and backends" },
+    { id = "F2", name = "controls" },
+    { id = "F3", name = "composition and the exported SDK facade" },
+    { id = "F4", name = "integration tests", publish = false },
+]
+
+[workspaces.desktop]
+path = "desktop"
+uses = ["framework"]
+targets = ["aarch64-unknown-linux-gnu", "aarch64-apple-darwin"]
+lock-allowlist = "desktop/allowlist.toml"
+layers = [
+    { id = "S0", name = "shell and system interface" },
+    { id = "S1", name = "first-party applications", facade-only = true },
+    { id = "S2", name = "the program kosmo" },
+]
+
+# The repository tasks: a workspace of their own, outside the product
+# workspaces, with no path dependency.
+[tools.xtask]
+path = "xtask"
+targets = ["aarch64-unknown-linux-gnu", "aarch64-apple-darwin"]
+lock-allowlist = "xtask/allowlist.toml"
+
+# Every crate that exists, with its directory and layer. `export`: crates of
+# other workspaces may depend on it; an export crate has no external
+# dependency. `facade`: an export crate that only re-exports. `pure-core`:
+# no_std, no unsafe code, no build script, no external dependency and no
+# interior mutability, depending only on pure-core crates. `provisional`:
+# the condition under which the crate stops being provisional; pure-core
+# crates never depend on a provisional crate. `publish`: whether a release
+# may publish the crate; it must agree with the manifest. `build-script`
+# and `proc-macro` allow a build script or a procedural-macro library.
+# `same-layer` lists the crates of the same layer that the crate depends
+# on.
+[crates.kosmo]
+path = "desktop/kosmo"
+layer = "S2"
+export = false
+pure-core = false
+publish = false

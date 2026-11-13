@@ -4,6 +4,7 @@
 mod check;
 mod commits;
 mod docs;
+mod layout;
 mod receipt;
 mod repo;
 mod workflows;
@@ -21,7 +22,7 @@ struct Command {
 const COMMANDS: &[Command] = &[
     Command {
         name: "check",
-        about: "Run the format, Clippy, test, documentation, commit message and workflow checks; with --receipt <path>, also write a JSON receipt of the run",
+        about: "Run the layout, format, Clippy, test, documentation, commit message and workflow checks; with --receipt <path>, also write a JSON receipt of the run",
     },
     Command {
         name: "help",
