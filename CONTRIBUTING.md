@@ -224,6 +224,26 @@ it in the root's `[workspace.dependencies]` when other crates depend on it.
 The first crate of a workspace also adds the workspace's root manifest and
 `Cargo.lock` and adds the workspace to `WORKSPACES`.
 
+## Dependencies
+
+Crates of this repository depend on each other only through `path`
+dependencies, in the directions that the
+[source layout](docs/architecture.md#source-layout) allows, with the common
+version written as `version = "=<the version of kosmo>"`. External
+dependencies come only from crates.io, each with an exact version,
+`version = "=x.y.z"`, and the workspace's `Cargo.lock` records its checksum.
+In a product workspace, each is declared once in the
+`[workspace.dependencies]` of its root, and members inherit it with
+`workspace = true`; the tool workspace `xtask` declares them in its own
+manifest. Git dependencies, other registries, `path` dependencies outside the
+repository, `[patch]` and `[replace]` sections and krepi's crates are never
+used. kalyx will also come from crates.io, and only the kalyx adapter crate
+will depend on it.
+
+The layout step checks how the manifests declare dependencies. The planned
+dependency step will check what Cargo resolves from them: the sources, the
+allowed packages of each crate and workspace, and their licenses.
+
 ## Commit messages
 
 Commit messages use English Conventional Commits with a header of at most 72
@@ -241,11 +261,21 @@ or builds on kosmo. A document states what a feature does, how to use it, its
 limits, and commands that actually run. Nothing is described as working before
 it does.
 
+Mathematics in Markdown is written in LaTeX. Inline formulas are written as
+`$...$` on one line, without a backslash followed by ASCII punctuation and
+without any of `* | < > & ~`; display formulas go in a fenced block with the
+info string `math`, never inside a list item, and `$$` is not used. Commands,
+program input and output, identifiers, file paths and option values keep code
+formatting. Rust doc comments use plain text, because rustdoc does not render
+LaTeX.
+
 [Scope](docs/scope.md) describes the complete target scope of kosmo, one row
-per capability, with its status. When a capability is implemented, it gets one
-feature document at `docs/features/<area>/<feature>.md` that describes its
-interface, examples, limitations and tests, and the same change links that
-document from its row in the scope and updates the row's status.
+per capability, with its status. A change that delivers a feature document,
+at `docs/features/<area>/<feature>.md` with its interface, examples,
+limitations and tests, sets the status of the matching row in the scope to
+`partial` and links the document from that row. A row can link several
+feature documents; it becomes `implemented` only when the whole capability
+works and is tested as its feature documents describe.
 
 Plans and their records belong to the project's coordination records, kept
 outside this repository:
@@ -262,15 +292,24 @@ technical content:
 ## Tests
 
 Unit tests live in `#[cfg(test)]` modules next to the code they test.
-Integration tests live under `tests/`, and fixtures stay in the repository.
-Raw output belongs under the ignored `artifacts/` or `target/`.
+Integration tests of a crate live in that crate's `tests/` directory. The
+integration tests of the framework as a whole will live in the unpublished
+integration-test crates of `framework/` (layer F4), and the conformance tests
+of the display protocol and the display server in the unpublished conformance
+crates of `display/` (layer D4). Fixtures stay in the repository. Raw output
+belongs under the ignored `artifacts/` or `target/`.
 
 Test editing, layout, commands and focus, the filtering of stale results, and
-interface regressions. Test errors, cancellation and resource limits beside the
-successful paths. A host preview run does not replace tests on the device:
-system-call isolation, device drivers, memory limits and power loss are tested
-on krepi, and the joint tests that connect the real CAS and kosmo belong to
-krepi.
+interface regressions. Test the display protocol and the platform interface
+against their conformance suites, rendering against golden images, and
+interaction with the shell. Test errors, cancellation and resource limits
+beside the successful paths.
+
+A host run does not replace tests on the device: system-call isolation,
+device drivers, memory limits and power loss are tested on krepi. Integration
+tests that run on a host with the kalyx release pinned from crates.io belong
+to kosmo; joint tests that connect kosmo to krepi's services or to the device
+belong to krepi, and the results on the device come from krepi's tests.
 
 Tests produce observations; they do not admit a release. The release decision
 is recorded separately in the coordination records. Creating a tag or
