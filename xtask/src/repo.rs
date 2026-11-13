@@ -9,6 +9,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The root of the repository: the parent of the xtask crate.
+#[allow(
+    clippy::expect_used,
+    reason = "Cargo sets CARGO_MANIFEST_DIR to the absolute directory of the xtask crate, which always has a parent"
+)]
 pub fn root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest_dir

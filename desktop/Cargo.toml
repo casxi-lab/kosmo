@@ -1,0 +1,29 @@
+# The desktop workspace: the shell, the system interface, the first-party
+# applications and the program `kosmo`. It depends on the framework only
+# through its export crates.
+[workspace]
+resolver = "3"
+members = ["kosmo"]
+
+[workspace.package]
+version = "0.1.0-dev.1"
+edition = "2024"
+license = "MIT"
+rust-version = "1.99"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# Code outside tests never unwraps, panics or leaves a placeholder, and an
+# `#[allow]` states its reason. The root `clippy.toml` lets tests unwrap,
+# expect and panic.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+allow_attributes_without_reason = "deny"
+
+[profile.release]
+overflow-checks = true

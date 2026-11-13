@@ -14,3 +14,17 @@ rust-version = "1.99"
 # The workflows step uses the event parser on text that is already UTF-8,
 # so the input-decoding support of the default feature is left out.
 yaml-rust2 = { version = "=0.13.0", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# The same rules as the product workspaces: code outside tests never
+# unwraps, panics or leaves a placeholder, and an `#[allow]` states its
+# reason.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+allow_attributes_without_reason = "deny"
