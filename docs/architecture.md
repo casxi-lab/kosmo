@@ -1,22 +1,24 @@
 # Architecture
 
 This page states the design rules of kosmo's first release for the editing
-structure of formulas, versions, the host job layer, the keyboard event record
-and the platform boundary. It also names the two frontends of the first
-release and lists every component with its verification level.
+structure of formulas, versions, the host job layer, the keyboard event record,
+the source layout and the platform boundary. It also names the two frontends
+of the first release and lists every component with its verification level.
 
-The rules are fixed before the code that follows them. kosmo has no product
-code yet: every component here is planned, and nothing described here works
-today. Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the
-names of types, traits and constants (`NodeId`, `JobRunner`, `MAX_LIVE_JOBS`
-and the others) are provisional. Changing a rule is a design change, not an
-implementation choice.
+The rules are fixed before the code that follows them. So far the only product
+code is the `kosmo` program, which only reports its version: every component
+here is planned, and nothing described here works today. Crate names
+(`kosmo-jobs`, `kosmo-math-model` and the others) and the names of types,
+traits and constants (`NodeId`, `JobRunner`, `MAX_LIVE_JOBS` and the others)
+are provisional. Changing a rule is a design change, not an implementation
+choice.
 
 kalyx here means kalyx 0.1.0 from crates.io, which the first release builds
 on. The job-layer thread is the thread that holds the job layer and calls
-its API. The layout table is the planned table of the workspace's crates with
-their layers, dependencies and platform boundary. [Scope](scope.md) describes
-what kosmo will provide.
+its API. The layout table is `layout.toml` at the repository root, which lists
+the workspaces, their layers and every crate that exists (see
+[Source layout](#source-layout)); its platform boundary column is planned.
+[Scope](scope.md) describes what kosmo will provide.
 
 ## Editing structure
 
@@ -646,6 +648,75 @@ these two types, and no component defines its own.
   server's key meaning or modifiers differ from the script. Non-key lines and
   the text format are defined with the framework and the platform interface.
 
+## Source layout
+
+The source is divided into Cargo workspaces, each with its own root manifest
+and `Cargo.lock`; there is no `Cargo.toml` at the repository root, and no
+workspace root contains another. The product code has three workspaces, each
+with layers listed from the lowest:
+
+- `display/`, the display protocol and the display server: layer D0, exports
+  (the protocol and shared types); layer D1, the pure core (the state
+  machines of the trusted core); layer D2, server libraries (compositing, the
+  input pipeline and the window policy modules); layer D3, server programs
+  and backends (the server and its headless and nested backends); layer D4,
+  conformance tests, never published.
+- `framework/`, the GUI framework: layer F0, foundations and models
+  (rendering, text, the platform interface, the job layer, the math model,
+  test support and the exported client library); layer F1, core, adapters
+  and backends (the framework core, the kalyx adapter, math typesetting and
+  the headless and display server backends); layer F2, controls, general and
+  mathematical; layer F3, composition (the Scratchpad) and the exported SDK
+  facade `kosmo-sdk`; layer F4, integration tests, never published.
+- `desktop/`, the desktop environment: layer S0, the shell and system
+  interface; layer S1, first-party applications; layer S2, the program
+  `kosmo`.
+
+The repository tasks are the separate `xtask/` workspace, outside the product
+workspaces and without path dependencies. Layer identifiers, directory names
+and crate names are provisional.
+
+Crates of the repository depend on each other through `path` dependencies,
+only in these directions:
+
+- `display/` depends on no other product workspace.
+- `framework/` depends on `display/` only through its export crates.
+- `desktop/` depends on `framework/` only through its export crates, the
+  facade `kosmo-sdk` and the client library, and on no crate of `display/`.
+  First-party applications depend on other workspaces only through the
+  facade, as third-party applications do.
+- Within a workspace, a crate depends only on crates of lower layers and on
+  crates of its own layer that the layout table lists for it. The internal
+  dependency graph, dev-dependencies included, has no cycle.
+- A pure-core crate depends only on pure-core crates and never on a crate
+  marked provisional.
+- Export crates and pure-core crates have no external dependency. The other
+  server crates and the host backends will use only the few packages that the
+  layout table allows for each of them, and a host window library only in the
+  nested backend crate.
+
+The layout table, `layout.toml`, states these rules for each workspace: its
+layers, the workspaces it uses, and its target platforms, for which
+dependencies and licenses are evaluated (`aarch64-unknown-linux-gnu` and
+`aarch64-apple-darwin` for the product workspaces, later also krepi's
+user-space target). It lists every crate that exists with its directory,
+layer and marks: export, facade (an export crate that only re-exports),
+pure core (`no_std` with `alloc`, no unsafe code, no build script, no
+external dependency and no interior mutability), provisional (with the
+condition that ends it), publishable, and whether it may have a build script
+or be a procedural-macro library. The allowed direct external dependencies of
+each crate will be listed in its entry, and the allowed packages of each
+workspace's `Cargo.lock` in the file that the workspace's `lock-allowlist`
+names; both are planned, with the dependency check.
+
+Crates and workspaces appear with their first code. So far only `desktop/`
+exists, with the program `kosmo`; the table states the rules of `display/` and
+`framework/` and lists no crate for them. A change that adds a crate registers
+it in the table, and the first crate of a workspace adds the workspace root.
+The layout step of `cargo xtask check` enforces this layout on the tracked
+files; [Contributing](../CONTRIBUTING.md#the-layout-step) describes its checks
+and their limits.
+
 ## Platform boundary
 
 - Every library crate is a core library unless the layout table's "platform
@@ -682,7 +753,7 @@ these two types, and no component defines its own.
   crates are registered by the change that creates them; `kosmo-server-host`,
   `kosmo-testkit` and the crates of the host transport and process entry are
   expected to be boundary crates.
-- A planned layout step of `cargo xtask check` will run a static check that
+- The layout step of `cargo xtask check` will gain a static check that
   parses core libraries' `src/`, expands `use` trees and reports every
   forbidden path, macro and type with file and line, and checks that
   registered crates use only their category's types. Any hit fails the check;

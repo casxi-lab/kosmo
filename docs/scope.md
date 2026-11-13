@@ -2,7 +2,7 @@
 
 This page describes the complete target scope of kosmo: what it will provide,
 which other parts of casξ it builds on, and the status of each capability.
-kosmo has no code yet, so every capability has the status `planned`.
+No capability is usable yet, so every capability has the status `planned`.
 
 | Status | Meaning |
 | --- | --- |
