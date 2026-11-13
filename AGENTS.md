@@ -40,9 +40,12 @@
 - Use English Conventional Commit subjects of at most 72 characters and the
   local `.githooks/commit-msg` hook. Preserve history. Do not create remotes,
   tags or releases without authorization.
-- kosmo itself has no Cargo package yet; the only one is the repository-task
-  workspace in `xtask/`. Before committing, run `cargo xtask check`,
-  `git diff --check` and `git diff --cached --check` and review the staged
-  diff. CI runs `cargo xtask check` on every pull request to `main` and every
-  push to `main`. The change that adds the kosmo Cargo package also adds it to
-  the check and updates `CONTRIBUTING.md` and these instructions.
+- The source is divided into Cargo workspaces, each with its own
+  `Cargo.lock`, as the source layout in `docs/architecture.md` describes: so
+  far the product workspace `desktop/` with the program `kosmo`, and the
+  repository tasks in `xtask/`. There is no `Cargo.toml` at the repository
+  root. `layout.toml` lists every crate, and a change that adds a crate
+  registers it there in the same commit. Before committing, run
+  `cargo xtask check`, `git diff --check` and `git diff --cached --check` and
+  review the staged diff. CI runs `cargo xtask check` on every pull request to
+  `main` and every push to `main`.

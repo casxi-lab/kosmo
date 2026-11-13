@@ -46,10 +46,20 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo is newly initialized. The repository holds documentation, the kosmo
-logo, a commit hook and the repository checks, which CI runs on every pull
-request to `main` and every push to `main`. kosmo itself has no code yet, so
-there is nothing to build or run, and none of the features above work today.
+kosmo has no usable capability yet: none of the features above work today.
+The repository holds documentation, the kosmo logo, a commit hook, the
+repository checks and the `desktop/` workspace with the `kosmo` program, which
+so far only reports its version. CI runs the repository checks on every pull
+request to `main` and every push to `main`. These commands run from the
+repository root:
+
+```sh
+cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version
+cargo xtask check
+```
+
+The first prints `kosmo` and its version; the second runs the repository
+checks.
 
 kosmo will be an ordinary Rust program that uses the standard library. It will
 run first as a preview on a host computer and then on krepi, the casξ operating
@@ -78,7 +88,8 @@ is checked separately. The product screen and keyboard have not been chosen.
 
 - [Scope](docs/scope.md): the complete target scope of kosmo and the status of
   each capability.
-- [Architecture](docs/architecture.md): the design rules and the components.
+- [Architecture](docs/architecture.md): the design rules, the source layout and
+  the components.
 - [Contributing](CONTRIBUTING.md) and [repository instructions](AGENTS.md).
 
 ## License

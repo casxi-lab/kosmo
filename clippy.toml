@@ -1,0 +1,6 @@
+# Clippy configuration for every workspace of the repository: Clippy reads
+# the nearest clippy.toml at or above a crate's directory. Tests may unwrap,
+# expect and panic; the workspaces deny these in all other code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

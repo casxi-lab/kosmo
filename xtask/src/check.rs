@@ -7,17 +7,22 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
 use crate::repo::{Entry, Tree};
-use crate::{commits, docs, receipt, workflows};
+use crate::{commits, docs, layout, receipt, workflows};
 
 /// The Cargo workspaces that the format, Clippy and test steps cover, as
-/// repository-relative directories.
-pub const WORKSPACES: [&str; 1] = ["xtask"];
+/// repository-relative directories. The layout step checks that they are
+/// exactly the tool workspaces and the product workspaces with crates in the
+/// layout table.
+pub const WORKSPACES: [&str; 2] = ["xtask", "desktop"];
 
 /// A command run in the repository root.
 #[derive(Debug, Clone)]
 pub struct Cmd {
     pub program: OsString,
     pub args: Vec<String>,
+    /// The fact under which the receipt records how long the command ran,
+    /// in milliseconds.
+    pub timing: String,
 }
 
 /// Named values that a step observed, in the order it observed them, for the
@@ -77,6 +82,7 @@ fn per_workspace(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
             Cmd {
                 program: cargo(),
                 args: all,
+                timing: format!("{workspace}_ms"),
             }
         })
         .collect()
@@ -85,6 +91,10 @@ fn per_workspace(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
 /// The steps of `cargo xtask check`, in the order they run.
 pub fn steps() -> Vec<Step> {
     vec![
+        Step {
+            name: "layout",
+            action: Action::Internal(Box::new(layout::run)),
+        },
         Step {
             name: "fmt",
             action: Action::Commands(per_workspace(&["fmt", "--all", "--check"], &[])),
@@ -121,7 +131,7 @@ fn check_workflows(root: &Path, facts: &mut Facts) -> Result<(), String> {
     let tracked = || {
         tree.entries().map(|(path, entry)| match entry {
             Entry::File(bytes) => (path, Some(bytes.as_slice())),
-            Entry::Symlink | Entry::Submodule => (path, None),
+            Entry::Symlink(_) | Entry::Submodule => (path, None),
         })
     };
     let files: Vec<&str> = tracked()
@@ -161,9 +171,15 @@ pub fn run_steps(root: &Path, steps: &[Step]) -> Vec<Outcome> {
         println!("==> {}", step.name);
         let started = Instant::now();
         let result = match &step.action {
-            Action::Commands(commands) => {
-                commands.iter().try_for_each(|cmd| run_command(root, cmd))
-            }
+            Action::Commands(commands) => commands.iter().try_for_each(|cmd| {
+                let started = Instant::now();
+                let result = run_command(root, cmd);
+                facts.push((
+                    cmd.timing.clone(),
+                    started.elapsed().as_millis().to_string(),
+                ));
+                result
+            }),
             Action::Internal(check) => check(root, &mut facts),
         };
         let status = match result {
@@ -251,7 +267,15 @@ mod tests {
 
     use super::*;
 
-    const ORDER: [&str; 6] = ["fmt", "clippy", "test", "docs", "commits", "workflows"];
+    const ORDER: [&str; 7] = [
+        "layout",
+        "fmt",
+        "clippy",
+        "test",
+        "docs",
+        "commits",
+        "workflows",
+    ];
 
     #[test]
     fn steps_run_in_the_documented_order() {
@@ -270,7 +294,7 @@ mod tests {
                         cmd.args[at.expect("each command names a manifest") + 1].as_str()
                     })
                     .collect();
-                assert_eq!(targets, ["xtask/Cargo.toml"]);
+                assert_eq!(targets, ["xtask/Cargo.toml", "desktop/Cargo.toml"]);
             }
         }
     }
@@ -289,6 +313,7 @@ mod tests {
                         Action::Commands(_) => Action::Commands(vec![Cmd {
                             program: "sh".into(),
                             args: vec!["-c".into(), "exit 3".into()],
+                            timing: "sh_ms".to_string(),
                         }]),
                         Action::Internal(_) => Action::Internal(Box::new(|_, facts| {
                             facts.push(("seen".to_string(), "before failing".to_string()));
@@ -349,6 +374,11 @@ mod tests {
     }
 
     #[test]
+    fn a_layout_failure_stops_the_check() {
+        assert_fails_at("layout");
+    }
+
+    #[test]
     fn a_format_failure_stops_the_check() {
         assert_fails_at("fmt");
     }
@@ -383,12 +413,41 @@ mod tests {
         let ran = Rc::new(RefCell::new(Vec::new()));
         let outcomes = run_steps(Path::new("."), &with_failure("docs", &ran));
         assert_eq!(
-            outcomes[3].facts,
+            outcomes[4].facts,
             [("seen".to_string(), "before failing".to_string())]
         );
         assert_eq!(
-            outcomes[3].status,
+            outcomes[4].status,
             Status::Failed("forced failure".to_string())
         );
+    }
+
+    #[test]
+    fn records_how_long_each_command_ran_even_when_it_fails() {
+        let step = |script: &str| Step {
+            name: "fmt",
+            action: Action::Commands(
+                [("first", "exit 0"), ("second", script)]
+                    .map(|(name, script)| Cmd {
+                        program: "sh".into(),
+                        args: vec!["-c".into(), script.into()],
+                        timing: format!("{name}_ms"),
+                    })
+                    .to_vec(),
+            ),
+        };
+        for (script, passed) in [("exit 0", true), ("exit 3", false)] {
+            let outcomes = run_steps(Path::new("."), &[step(script)]);
+            assert_eq!(outcomes[0].status == Status::Passed, passed);
+            let keys: Vec<&str> = outcomes[0]
+                .facts
+                .iter()
+                .map(|(key, value)| {
+                    assert!(value.parse::<u128>().is_ok(), "{value}");
+                    key.as_str()
+                })
+                .collect();
+            assert_eq!(keys, ["first_ms", "second_ms"]);
+        }
     }
 }
