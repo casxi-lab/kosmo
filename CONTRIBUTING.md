@@ -78,6 +78,18 @@ commit before the push, installs the toolchain of `rust-toolchain.toml` with
 rustup, and uploads the receipt as the artifact
 `check-receipt-<commit>-<attempt>`.
 
+`cargo xtask check` has a time budget in CI: its target is 10 minutes and its
+upper limit is 20 minutes. The budget is not a timeout, and the job sets no
+timeout of its own. A run in which the check takes longer than 16 minutes,
+80% of the upper limit, is reported to the maintainers; the receipt shows
+which step and workspace took the time. When the check comes close to the
+limit, the number of cases of fuzz tests and bounded exhaustive tests is
+lowered first and caching is added. Steps are added to the check without
+renaming the job or changing the branch rules of `main`. Splitting the job or
+making another CI job required for merging needs the maintainers' approval,
+and the branch rules of `main` are changed together with the pull request
+that does it.
+
 ### The layout step
 
 `layout.toml` at the repository root is the layout table: the product
@@ -244,6 +256,15 @@ The layout step checks how the manifests declare dependencies. The planned
 dependency step will check what Cargo resolves from them: the sources, the
 allowed packages of each crate and workspace, and their licenses.
 
+Security advisories are checked by hand before each version is tagged,
+pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
+crates.io packages in every `Cargo.lock` of the repository against the RustSec
+advisory database and records, with the release decision, the commit of the
+advisory database that was used. A weekly advisory job will be added once
+the dependencies grow beyond about 20 packages, which is expected with the
+framework's text stack. It will not be required for merging and will change
+neither the `cargo xtask check` job nor the branch rules of `main`.
+
 ## Commit messages
 
 Commit messages use English Conventional Commits with a header of at most 72
@@ -304,6 +325,10 @@ interface regressions. Test the display protocol and the platform interface
 against their conformance suites, rendering against golden images, and
 interaction with the shell. Test errors, cancellation and resource limits
 beside the successful paths.
+
+Fuzz tests and bounded exhaustive tests take their number of cases from named
+constants, so that a count can be lowered in one place when the check comes
+close to its time budget.
 
 A host run does not replace tests on the device: system-call isolation,
 device drivers, memory limits and power loss are tested on krepi. Integration
