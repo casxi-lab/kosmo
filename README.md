@@ -78,6 +78,7 @@ is checked separately. The product screen and keyboard have not been chosen.
 
 - [Scope](docs/scope.md): the complete target scope of kosmo and the status of
   each capability.
+- [Architecture](docs/architecture.md): the design rules and the components.
 - [Contributing](CONTRIBUTING.md) and [repository instructions](AGENTS.md).
 
 ## License
