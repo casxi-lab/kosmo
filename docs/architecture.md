@@ -139,7 +139,7 @@ A template holds only the slots it draws.
 | --- | --- | --- |
 | Fraction | 2 | One operand of its block |
 | Superscript | 1, the exponent | The base is the preceding operand in the same block, found by parsing; without one it is a missing operand |
-| Matrix | r × c cells, row-major | Row and column counts are part of the kind. Adding and removing rows and columns are the only edits that change the slot count; other cells keep their identities |
+| Matrix | $r \times c$ cells, row-major | Row and column counts are part of the kind. Adding and removing rows and columns are the only edits that change the slot count; other cells keep their identities |
 
 - The template-kind enum is `#[non_exhaustive]`, and each variant with fields
   is marked `#[non_exhaustive]` when it is added. In the first release the
@@ -320,7 +320,7 @@ job at a time in the order it receives them.
 - **Channels.** Jobs reach the worker through a dispatch channel,
   `sync_channel(MAX_LIVE_JOBS)`. Every job in it is live, and live jobs never
   exceed `MAX_LIVE_JOBS`, so dispatch never blocks. Reports return through
-  `sync_channel(2 × MAX_LIVE_JOBS)`. A live job sends at most two reports and
+  `sync_channel(2 * MAX_LIVE_JOBS)`. A live job sends at most two reports and
   keeps its slot until `Finished`, so no report blocks either.
 - **Reports.** The backend reports `Started` for every job that starts and
   exactly one `Finished` for every job it receives, carrying each request's
@@ -437,8 +437,9 @@ job at a time in the order it receives them.
 - Job and session identities are `u64` counters, never reused and never
   wrapping; exhaustion is rejected.
 - kalyx charges every line's bytes and the job layer does not truncate again.
-  Pending line bytes are at most 8 × 4 × max(each request's
-  `max_output_bytes`, 65,536), 2 MiB under the default limits.
+  Pending line bytes are at most $8 \times 4 \times m$, where $m$ is the
+  largest of 65,536 and every request's `max_output_bytes`; under the default
+  limits this is 2 MiB.
 - The values 8 and 4 are part of this design.
 - Fallback line: when the error line of an `Err` outcome fails under the
   request's context, kalyx's contract has the host write it again under
@@ -562,7 +563,7 @@ Outside the table:
 The protocol stub, the host implementation of `JobBackend` made of the
 single-worker host stub in `kosmo-jobs` and the kalyx runner, will be
 replaced by krepi backends: on the host by krepi's host operating-system
-backend from its interactive-device stage, on the device by the backend for
+backend once krepi runs interactively, on the device by the backend for
 krepi's job service that krepi's integration provides. The pure core, the API
 on the job-layer thread, the session-cancel port and the rules for terminal
 states and version echoes stay; the host stub is known rework. This holds
@@ -668,9 +669,9 @@ with layers listed from the lowest:
   the headless and display server backends); layer F2, controls, general and
   mathematical; layer F3, composition (the Scratchpad) and the exported SDK
   facade `kosmo-sdk`; layer F4, integration tests, never published.
-- `desktop/`, the desktop environment: layer S0, the shell and system
-  interface; layer S1, first-party applications; layer S2, the program
-  `kosmo`.
+- `desktop/`, the shell, the system interface and the first-party
+  applications: layer S0, the shell and system interface; layer S1,
+  first-party applications; layer S2, the program `kosmo`.
 
 The repository tasks are the separate `xtask/` workspace, outside the product
 workspaces and without path dependencies. Layer identifiers, directory names
