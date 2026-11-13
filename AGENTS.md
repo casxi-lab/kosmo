@@ -1,12 +1,22 @@
 # Repository instructions
 
-- Build kosmo as an ordinary Rust program that uses `std`. It runs as a host
-  preview and on krepi through the GUI bridge. Keep the platform adaptation
-  apart from the document, command, focus, job-protocol and layout code, so
-  that the preview and the device share that code.
-- Drawing reads only view models. Rendering never runs a computation and never
-  drives a display device; computations are versioned jobs, and kosmo draws into
-  surfaces that the display service owns.
+- kosmo's programs use `std`; crates that the layout table marks pure core
+  are `no_std` with `alloc`. The framework reaches the screen and input only
+  through its platform interface and its two backends, the headless backend
+  and the display server backend; a host window appears only through the
+  nested display server. The display server reaches devices only through
+  its device ports, which krepi will implement on the device on top of its
+  display and input device services. Keep the code above the platform
+  interface and the device ports the same on a host and on the device, and
+  keep platform types out of core libraries, as the platform boundary in
+  `docs/architecture.md` states.
+- Drawing reads only view models. Rendering never runs a computation;
+  computations are versioned jobs. Applications draw only into their own
+  surfaces and submit them to kosmo's display server. Only the display server
+  composes surfaces and presents them to outputs. On the device it does so
+  through krepi's display device service: krepi's display driver allocates
+  the scan-out buffers and carries out mode setting and scan-out, and the
+  display server decides the mode policy.
 - Keep the editing structure of a formula apart from the semantic expressions of
   the CAS. Incomplete input such as `1/□` stays representable, and
   simplification never changes the structure or the cursor being edited.
@@ -34,18 +44,26 @@
   the rule, the condition that lifts a limit, or the module that will
   hold a planned item.
 - Keep implementation, tests and fixtures here. Unit tests live in
-  `#[cfg(test)]` modules next to the code they test; integration tests live
-  under `tests/`. Generated output belongs under the ignored `artifacts/` or
-  `target/`.
+  `#[cfg(test)]` modules next to the code they test; integration tests live in
+  the `tests/` directory of the crate they test. Generated output belongs under
+  the ignored `artifacts/` or `target/`.
 - Use English Conventional Commit subjects of at most 72 characters and the
   local `.githooks/commit-msg` hook. Preserve history. Do not create remotes,
   tags or releases without authorization.
-- The source is divided into Cargo workspaces, each with its own
-  `Cargo.lock`, as the source layout in `docs/architecture.md` describes: so
-  far the product workspace `desktop/` with the program `kosmo`, and the
-  repository tasks in `xtask/`. There is no `Cargo.toml` at the repository
-  root. `layout.toml` lists every crate, and a change that adds a crate
-  registers it there in the same commit. Before committing, run
-  `cargo xtask check`, `git diff --check` and `git diff --cached --check` and
-  review the staged diff. CI runs `cargo xtask check` on every pull request to
-  `main` and every push to `main`.
+- kosmo's product code is divided into three Cargo workspaces, `display/`,
+  `framework/` and `desktop/`, each with its own `Cargo.lock`, and the
+  repository tasks are the separate `xtask/` workspace, as the source layout in
+  `docs/architecture.md` describes. So far only `desktop/`, with the program
+  `kosmo`, and `xtask/` exist; a workspace root is added with the workspace's
+  first crate. There is no `Cargo.toml` at the repository root. `layout.toml`
+  lists every crate, and a change that adds a crate registers it there in the
+  same commit.
+- Crates of this repository depend on each other only through `path`
+  dependencies, only in the directions that the layout table allows, and with
+  `version = "=<the version of kosmo>"`. External dependencies come only from
+  crates.io, pinned with `=x.y.z`; no git dependencies, no paths outside the
+  repository and no krepi crates.
+- Before committing, run `cargo xtask check`, `git diff --check` and
+  `git diff --cached --check` and review the staged diff. CI runs
+  `cargo xtask check` on every pull request to `main` and every push to
+  `main`.
