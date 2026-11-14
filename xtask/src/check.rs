@@ -263,6 +263,7 @@ pub fn run(root: PathBuf, receipt: Option<PathBuf>) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::collections::BTreeSet;
     use std::rc::Rc;
 
     use super::*;
@@ -448,6 +449,49 @@ mod tests {
                 })
                 .collect();
             assert_eq!(keys, ["first_ms", "second_ms"]);
+        }
+    }
+
+    #[test]
+    fn every_step_records_each_fact_once() {
+        // The receipt writes the facts of a step as the members of one JSON
+        // object, which keeps one member per key, so a key recorded twice
+        // would lose a value. The commits step finds its base in one of two
+        // ways, chosen by the environment; its own tests check the keys of
+        // both in a scratch repository.
+        let root = crate::repo::root();
+        for step in steps() {
+            let action = match step.action {
+                // A command that exits at once stands in for each Cargo
+                // command and records its time under the same key.
+                Action::Commands(commands) => Action::Commands(
+                    commands
+                        .into_iter()
+                        .map(|cmd| Cmd {
+                            program: "sh".into(),
+                            args: vec!["-c".into(), "exit 0".into()],
+                            timing: cmd.timing,
+                        })
+                        .collect(),
+                ),
+                // The checks of this crate run on this working copy and keep
+                // their facts whether they pass or fail.
+                Action::Internal(check) => Action::Internal(check),
+            };
+            let outcomes = run_steps(
+                &root,
+                &[Step {
+                    name: step.name,
+                    action,
+                }],
+            );
+            let keys: Vec<&str> = outcomes[0]
+                .facts
+                .iter()
+                .map(|(key, _)| key.as_str())
+                .collect();
+            let distinct: BTreeSet<&str> = keys.iter().copied().collect();
+            assert_eq!(distinct.len(), keys.len(), "{}: {keys:?}", step.name);
         }
     }
 }

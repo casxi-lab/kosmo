@@ -236,6 +236,7 @@ fn follows_the_type(rest: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -429,9 +430,13 @@ mod tests {
         }
     }
 
+    /// Checks the commits after the base that `given` selects, and requires
+    /// the facts to record each key once on every path to the base.
     fn checked(scratch: &Scratch, given: Option<&str>) -> (Result<(), String>, Facts) {
         let mut facts = Facts::new();
         let result = check_range(&scratch.dir, given, &mut facts);
+        let keys: BTreeSet<&str> = facts.iter().map(|(key, _)| key.as_str()).collect();
+        assert_eq!(keys.len(), facts.len(), "{facts:?}");
         (result, facts)
     }
 
