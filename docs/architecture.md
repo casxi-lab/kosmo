@@ -717,7 +717,7 @@ each crate are listed in its entry, and the allowed packages of each
 workspace's `Cargo.lock`, with the license exceptions of the workspace, in the
 allowlist that the workspace's `lock-allowlist` names; the deps step of
 `cargo xtask check` compares both with what Cargo resolves and checks the
-licenses of the packages.
+licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far only `desktop/`
 exists, with the program `kosmo`; the table states the rules of `display/` and

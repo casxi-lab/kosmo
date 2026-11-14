@@ -5,5 +5,6 @@
 # of the workspace. The workspace has no crates.io package yet. The deps
 # step of `cargo xtask check` compares the entries with what Cargo resolves
 # and, when they differ, prints the entries to add, replace or remove; it
-# also checks the license of each package against the rules and the
-# exceptions. CONTRIBUTING.md describes the fields and the rules.
+# also checks the license and the build script of each package against the
+# rules and the exceptions. CONTRIBUTING.md describes the fields and the
+# rules.

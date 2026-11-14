@@ -111,12 +111,12 @@ fn this_repository_passes() {
     }
 }
 
-// The seven cases below and the platform case after them are the main
+// The eight cases below and the platform case after them are the main
 // failures and the main non-failure that the deps step exists for: a Git
 // source, a path outside the repository, a requirement that is not exact,
 // an allowlist that no longer matches Cargo.lock, a package in two
-// versions, a krepi package, a license outside the allowed set, and a
-// package that only other platforms use.
+// versions, a krepi package, a license outside the allowed set, a build
+// script that compiles C, and a package that only other platforms use.
 
 #[test]
 fn rejects_a_git_source() {
@@ -277,6 +277,50 @@ pub const QUX_UNDER_THE_GPL: &str = "framework/Cargo.lock: qux 1.0.0: the licens
 #[test]
 fn rejects_a_license_outside_the_allowed_set() {
     assert_eq!(problems_with(add_qux_under_the_gpl), [QUX_UNDER_THE_GPL]);
+}
+
+/// `entry`, an allowlist entry, for a package with a build script.
+pub fn with_build_script(entry: &str) -> String {
+    entry.replace("build-script = false", "build-script = true")
+}
+
+/// The valid model in which `foo` also depends on `zlib-sys 1.0.0`, which
+/// has a build script and the license `MIT`, and whose build dependencies
+/// are the packages `build`, each at version `1.2.0`. The allowlist lists
+/// them all, without exceptions.
+pub fn zlib_sys_with(build: &[&str]) -> Model {
+    let mut model = fixture::valid();
+    let mut zlib_sys = Pkg::crates_io("zlib-sys", "1.0.0").build_script();
+    for name in build {
+        zlib_sys = zlib_sys.dep(Dep::new(&format!("{name}@1.2.0"), "^1.2").kind("build"));
+        model.add("framework", Pkg::crates_io(name, "1.2.0"));
+        model.append(
+            "framework/allowlist.toml",
+            &entry(name, "1.2.0", "MIT", &[], &["kosmo-render"]),
+        );
+    }
+    model.add("framework", zlib_sys);
+    model
+        .pkg("framework", "foo@1.0.0")
+        .deps
+        .push(Dep::new("zlib-sys@1.0.0", "^1"));
+    model.append("framework/allowlist.toml", &zlib_sys_entry());
+    model
+}
+
+/// The allowlist entry of `zlib-sys` in [`zlib_sys_with`].
+pub fn zlib_sys_entry() -> String {
+    with_build_script(&entry("zlib-sys", "1.0.0", "MIT", &[], &["kosmo-render"]))
+}
+
+#[test]
+fn rejects_a_build_script_that_compiles_c() {
+    assert_eq!(
+        zlib_sys_with(&["cc"]).problems(),
+        [
+            "framework/Cargo.lock: zlib-sys 1.0.0: its build script compiles C or C++ (build dependency cc)"
+        ]
+    );
 }
 
 /// The valid model in which `kosmo-render` depends on `win-only 1.0.0` only

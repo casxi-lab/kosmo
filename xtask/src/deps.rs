@@ -27,7 +27,11 @@
 //!   package with several versions has a `duplicate` reason on each;
 //! - licenses: every member has the license of a kosmo crate, and the
 //!   license expression of every crates.io package is in the allowed set or
-//!   has a license exception in the allowlist.
+//!   has a license exception in the allowlist;
+//! - build scripts: a crates.io package with a build script declares no
+//!   `links`, and the build script has no build dependency that compiles
+//!   native code, looks for or binds to system libraries or can download,
+//!   unless its allowlist entry states the exception.
 //!
 //! It also reports, without failing, the versions of a package that differ
 //! between workspaces and four numbers of each workspace: its members, its
@@ -37,6 +41,7 @@
 //! bring the allow entries and the allowlists up to date.
 
 mod allowlist;
+mod build_scripts;
 mod direct;
 #[cfg(test)]
 pub mod fixture;
@@ -516,6 +521,7 @@ impl<'s> Scope<'s> {
             notes,
         );
         license::check_packages(self, &allowlist, problems);
+        build_scripts::check(self, &allowlist, problems);
     }
 
     /// The allowlist of the workspace, or why it cannot be read.
@@ -677,6 +683,9 @@ impl<'s> Scope<'s> {
                     features: seen.features.iter().cloned().collect(),
                     crates,
                     duplicate: None,
+                    links_exception: None,
+                    native_code_exception: None,
+                    download_exception: None,
                 };
                 ((package.name.clone(), package.version.clone()), entry)
             })

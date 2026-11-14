@@ -311,7 +311,12 @@ although `Cargo.lock` records it. On the union of each workspace it checks:
   is tracked in its directory outside the directories of other packages. The
   license expression of every crates.io package is in the allowed set, or the
   workspace's allowlist has a license exception for it, as
-  [licenses of dependencies](#licenses-of-dependencies) describes.
+  [licenses of dependencies](#licenses-of-dependencies) describes;
+- build scripts: the build script of a crates.io package declares no `links`
+  and has no build dependency that compiles native code, looks for or binds to
+  system libraries or can download, unless the package's allowlist entry
+  states the exception, as
+  [build scripts of dependencies](#build-scripts-of-dependencies) describes.
 
 The step reports every problem it finds, one per line as
 `<path>[:<line>]: <message>`, sorted by path and then by line number; the line
@@ -325,8 +330,8 @@ of the entries they replace; the other entries and the license exceptions stay
 as they are. A workspace for which `cargo metadata` fails is reported with
 Cargo's message, indented on the lines that follow, and not checked further. An
 allowlist that is missing or cannot be read is reported, and neither its
-entries nor the licenses of the workspace's crates.io packages, whose
-exceptions it holds, are checked.
+entries nor the licenses and build scripts of the workspace's crates.io
+packages, whose exceptions it holds, are checked.
 
 It also reports, without failing, these facts of the receipt: `drift`, the
 crates.io packages whose versions differ between the workspaces, `xtask`
@@ -381,7 +386,9 @@ together; `crates`, the crates of this repository whose crates.io dependencies
 bring the package in: each member, or crate of `layout.toml` reached through a
 `path` dependency, from which a chain of crates.io packages alone leads to it;
 and `duplicate`, why the workspace resolves several versions of the package.
-Both lists are sorted. A workspace without crates.io packages has an allowlist
+Both lists are sorted. Three more fields state the exceptions of a build script
+with their reasons: `links-exception`, `native-code-exception` and
+`download-exception`. A workspace without crates.io packages has an allowlist
 without entries. The license exceptions of the workspace follow the entries.
 
 #### Licenses of dependencies
@@ -436,6 +443,31 @@ rules, when its package is not resolved for the workspace's targets, and when
 the package's expression is in the set. An exception holds for one version of
 one package in one workspace.
 
+#### Build scripts of dependencies
+
+For each crates.io package with a build script, the step reads two things from
+`cargo metadata`: its `links`, and the packages that its build dependencies
+bring in, through every kind of dependency of those packages, for the
+workspace's targets. It fails when:
+
+- the package declares `links`, which usually names the native library that its
+  build script links; a package that declares it for another reason needs the
+  exception too;
+- they include `cc`, `cmake`, `cxx-build` or `autotools`, which compile C or
+  C++, `nasm-rs`, which assembles native code, `bindgen`, which generates
+  bindings to C headers, or `pkg-config`, `vcpkg` or `system-deps`, which look
+  for system libraries;
+- they include `reqwest`, `ureq`, `curl`, `attohttpc`, `minreq`, `http_req`,
+  `hyper`, `isahc` or `git2`, with which a build script can download at build
+  time.
+
+Each failure names the build dependency, and the chain of packages that leads
+to it. The package's allowlist entry may state an exception to each of the
+three, with its reason, in `links-exception`, `native-code-exception` or
+`download-exception`. An exception without a reason fails, and so does an
+exception that the package does not need. The step judges no other build
+script; review reads them.
+
 #### Limits of the fetch and deps steps
 
 The fetch and deps steps have limits:
@@ -450,11 +482,20 @@ The fetch and deps steps have limits:
   they can be more than a normal build turns on.
 - `cargo xtask` builds xtask before any step runs, so the build scripts and
   procedural macros of xtask's own dependencies run before the check reads
-  `xtask/allowlist.toml` and checks their licenses.
+  `xtask/allowlist.toml` and checks their licenses and build scripts.
 - The license rules read only the `license` of each package, not its license
-  files.
-- The allowlists record whether each package has a build script, but the
-  deps step does not judge build scripts yet.
+  files. The build-script rules read only `links` and the names of the build
+  dependencies: a build script that runs a compiler or a download tool itself,
+  opens a network connection, prints `cargo:rustc-link-lib` without `links`,
+  or reads environment variables to use data from outside the repository is
+  not found, nor is a package that does such work under a name the lists do
+  not have. Procedural macros also run at build time; the allowlists mark
+  them with `proc-macro = true`, but the step does not judge them. Review
+  covers these.
+- The build-script rules cover crates.io packages. Which members may have a
+  build script is set per crate in `layout.toml`, as the layout step checks,
+  and their build dependencies are allow entries there; review reads what
+  their build scripts do.
 - The checks find dependencies that were added by mistake. They cannot stop a
   build script, a procedural macro or configuration outside the repository
   that hides a change on purpose.
@@ -476,12 +517,13 @@ used. kalyx will also come from crates.io, and only the kalyx adapter crate
 will depend on it.
 
 The layout step checks how the manifests declare dependencies, and the deps
-step checks what Cargo resolves from them: the sources, the exact requirements
-and the allowed packages of each crate and workspace, as
-[the fetch and deps steps](#the-fetch-and-deps-steps) describes. A change that
-adds, removes or updates an external dependency updates the allow entries of
-the crate in `layout.toml` and the allowlist of the workspace in the same
-commit; the deps step prints the entries to add, replace or remove.
+step checks what Cargo resolves from them: the sources, the exact requirements,
+the allowed packages of each crate and workspace, and their licenses and build
+scripts, as [the fetch and deps steps](#the-fetch-and-deps-steps) describes. A
+change that adds, removes or updates an external dependency updates the allow
+entries of the crate in `layout.toml` and the allowlist of the workspace,
+with the license and build-script exceptions that the new packages need, in
+the same commit; the deps step prints the entries to add, replace or remove.
 
 Security advisories are checked by hand before each version is tagged,
 pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the

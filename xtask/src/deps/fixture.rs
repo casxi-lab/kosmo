@@ -314,6 +314,18 @@ impl Pkg {
         self
     }
 
+    /// With a build script.
+    pub fn build_script(mut self) -> Pkg {
+        self.build_script = true;
+        self
+    }
+
+    /// With `links = "<library>"` and a build script.
+    pub fn links(mut self, library: &str) -> Pkg {
+        self.links = Some(library.to_string());
+        self.build_script()
+    }
+
     pub fn resolved(mut self, features: &[&str]) -> Pkg {
         self.features = features.iter().map(|feature| feature.to_string()).collect();
         self

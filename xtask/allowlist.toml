@@ -4,9 +4,9 @@
 # package that only other platforms use, followed by the license exceptions
 # of the workspace. The deps step of `cargo xtask check` compares the
 # entries with what Cargo resolves and, when they differ, prints the entries
-# to add, replace or remove; it also checks the license of each package
-# against the rules and the exceptions. CONTRIBUTING.md describes the
-# fields and the rules.
+# to add, replace or remove; it also checks the license and the build script
+# of each package against the rules and the exceptions. CONTRIBUTING.md
+# describes the fields and the rules.
 
 [[package]]
 name = "arraydeque"

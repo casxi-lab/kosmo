@@ -75,6 +75,28 @@ pub struct Entry {
     /// Why the workspace may resolve several versions of the package.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duplicate: Option<String>,
+    /// Why its build script may link the native library of `links`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub links_exception: Option<String>,
+    /// Why its build script may compile native code, or look for or bind to
+    /// system libraries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_code_exception: Option<String>,
+    /// Why its build script may download at build time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_exception: Option<String>,
+}
+
+impl Entry {
+    /// Takes the reasons of `have`, the entry of the allowlist, which the
+    /// resolution cannot give.
+    fn keep_reasons(&mut self, have: &Entry) {
+        self.duplicate.clone_from(&have.duplicate);
+        self.links_exception.clone_from(&have.links_exception);
+        self.native_code_exception
+            .clone_from(&have.native_code_exception);
+        self.download_exception.clone_from(&have.download_exception);
+    }
 }
 
 /// Entries as an allowlist writes them.
@@ -169,7 +191,7 @@ pub fn check(
     check_versions(path, lock, &expected, &entries, problems);
     for ((name, version), want) in &mut expected {
         if let Some(have) = entries.get(&(name.as_str(), version.as_str())) {
-            want.duplicate.clone_from(&have.duplicate);
+            want.keep_reasons(have);
         }
     }
     let mut missing = Vec::new();
