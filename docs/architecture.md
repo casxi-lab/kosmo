@@ -374,8 +374,11 @@ job at a time in the order it receives them.
   shutdown. The public API has no thread or channel types.
 - **Progress.** The worker takes its next job by itself, without waiting for
   the job-layer thread. Results are still delivered only when the job-layer
-  thread calls `poll` or `wait`, so the framework's event loop calls the job
-  layer's `poll` when reports arrive.
+  thread calls `poll` or `wait`. The framework's event loop calls `poll` once
+  in every round, and while a job that it submitted has not delivered its
+  terminal state, each wait ends at most `JOB_POLL_INTERVAL`, 16 ms, after the
+  round's clock reading. A report is thus taken in the round after it arrives,
+  as [job reports](#job-reports) describes.
 - **Memory.** Line bytes move with the reports as `Vec<u8>`; nothing is
   shared. kalyx terms, `Outcome` and `Context` stay on the worker thread and
   are freed when a request ends; delivered lines belong to the submitter. On
@@ -636,7 +639,8 @@ these two types, and no component defines its own.
   backend, and the written time in scripts. Server-produced events take their
   planned time. `time` never decreases on one input path. The shared types
   crate's logical time is this type; the framework clock's semantics (who
-  advances it, timers, timeouts) belong to the framework.
+  advances it, timers, timeouts) belong to the framework's [event loop and
+  clock](#event-loop-and-clock).
 - Decoding from bytes is bounded and returns errors, never panics. The wire
   format belongs to the display protocol, device service messages to krepi's
   input device interface. `RecordBody` and `KeyAction` are
@@ -646,10 +650,11 @@ these two types, and no component defines its own.
   scripts use delivered events, server tests may use device records. The
   projection from delivered events to device records takes usage, press or
   release, and time; lines with one time form a packet ending with
-  `PacketEnd`. Scripts run through both the headless framework and the
-  headless server contain only presses and releases, and a test fails when the
-  server's key meaning or modifiers differ from the script. Non-key lines and
-  the text format are defined with the framework and the platform interface.
+  `PacketEnd`. The key lines of scripts run through both the headless
+  framework and the headless server are only presses and releases, and a test
+  fails when the server's key meaning or modifiers differ from the script.
+  [Headless backend and scripts](#headless-backend-and-scripts) defines the
+  other lines of a script and where its text format is fixed.
 
 ## Source layout
 
@@ -739,10 +744,10 @@ and their limits.
 
 - External window, terminal, async-runtime, `libc` and system font discovery
   packages never enter a core library. `HashMap` and `HashSet` with the
-  default hasher are not listed; determinism belongs to the rendering and
-  determinism rules. The list forbids; it is not an allow-list of `std`
-  interfaces. Adding frontends adds no external dependencies to core
-  libraries.
+  default hasher are not listed; determinism belongs to the [rendering and
+  determinism rules](#rendering-text-and-determinism). The list forbids; it is
+  not an allow-list of `std` interfaces. Adding frontends adds no external
+  dependencies to core libraries.
 - Capabilities are injected. Time comes from an injected clock (job deadlines
   in the job layer, the framework clock in the framework); real clocks are
   built only in boundary crates. Computation goes through the job layer. Fonts
@@ -1676,9 +1681,10 @@ the layout table will list for their crates:
 ## Frontends of the first release
 
 The first release has exactly two frontends: the line-mode terminal of
-`kosmo` without arguments, and the framework's headless backend. A host window
-appears only through the nested display server. Frontends hold only input and
-output buffers; session state is in the core libraries.
+`kosmo` without arguments, and the framework's headless frontend, the script
+runner with the headless backend. A host window appears only through the nested
+display server. Frontends hold only input and output buffers; session state is
+in the core libraries.
 
 - The terminal is a library function that reads a `BufRead` and writes a
   `Write`; `main` binds only the standard streams, arguments and exit code.
@@ -1698,9 +1704,12 @@ output buffers; session state is in the core libraries.
   attributes.
 - A raw-mode terminal, if added later, is a separate adapter crate that
   produces delivered key events; these rules do not define it.
-- The headless backend reads scripts of delivered key events, and its tests
-  never sleep or read the wall clock. Its clock, threads and runner are
-  defined with the framework.
+- The script runner of `kosmo-testkit` reads scripts of delivered key events
+  and drives the headless backend, which receives only the events injected
+  into it. Tests through it never sleep or read the wall clock; the backend
+  has no threads, and only its driver, here the runner, advances its virtual
+  clock, as [headless backend and scripts](#headless-backend-and-scripts)
+  describes.
 
 ## Components
 
