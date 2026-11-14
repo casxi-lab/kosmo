@@ -51,6 +51,7 @@ mod metadata;
 mod tests;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
@@ -162,8 +163,13 @@ fn real_root(root: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("the path {} is not UTF-8", canonical.display()))
 }
 
-/// The deps step.
+/// The deps step, which prints its notes on the standard output.
 pub fn run(root: &Path, facts: &mut Facts) -> Result<(), String> {
+    run_to(root, facts, &mut std::io::stdout().lock())
+}
+
+/// The deps step, which prints its notes to `out`.
+fn run_to(root: &Path, facts: &mut Facts, out: &mut impl Write) -> Result<(), String> {
     let tree = Tree::load(root)?;
     let table = layout::table(&tree)?;
     let index = Index::new(&table);
@@ -180,13 +186,27 @@ pub fn run(root: &Path, facts: &mut Facts) -> Result<(), String> {
             .map_err(|_| format!("`{}` printed text that is not UTF-8", cmd.shown()))
     };
     let report = inspect(&tree, &index, &base, facts, &mut source);
-    for note in &report.notes {
-        println!("{note}");
+    report.finish(out)
+}
+
+impl Report {
+    /// How the step ends: it prints every note to `out`, one per line, and
+    /// then passes or fails as [`Report::verdict`] says.
+    pub fn finish(&self, out: &mut impl Write) -> Result<(), String> {
+        for note in &self.notes {
+            writeln!(out, "{note}").map_err(|error| format!("cannot print a note: {error}"))?;
+        }
+        self.verdict()
     }
-    if report.problems.is_empty() {
-        Ok(())
-    } else {
-        Err(report.problems.join("\n"))
+
+    /// Whether the step passes: it does without problems and fails with
+    /// every problem, one per line.
+    pub fn verdict(&self) -> Result<(), String> {
+        if self.problems.is_empty() {
+            Ok(())
+        } else {
+            Err(self.problems.join("\n"))
+        }
     }
 }
 

@@ -455,6 +455,12 @@ mod tests {
                 }
                 std::cmp::Ordering::Equal => {
                     assert!(matches!(outcome.status, Status::Failed(_)), "{outcome:?}");
+                    // The failing step keeps what it recorded before it
+                    // failed: the time of its command, or the fact of its
+                    // check.
+                    let keys: Vec<&str> =
+                        outcome.facts.iter().map(|(key, _)| key.as_str()).collect();
+                    assert!(keys == ["sh_ms"] || keys == ["seen"], "{outcome:?}");
                 }
                 std::cmp::Ordering::Greater => {
                     assert_eq!(outcome.status, Status::NotRun);

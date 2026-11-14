@@ -10,6 +10,7 @@ use std::fs;
 use super::fixture::{self, DARWIN, Dep, LINUX, Model, Pkg, ROOT, STALE_LOCK, in_scratch, scratch};
 use super::*;
 use crate::check::OFFLINE;
+use crate::receipt;
 
 /// Asserts that `found` has one problem for each of `expected`, each
 /// containing its fragment.
@@ -84,8 +85,17 @@ fn the_valid_model_with_only_the_desktop_passes() {
 fn this_repository_passes() {
     let root = crate::repo::root();
     let mut facts = Facts::new();
-    let result = run(&root, &mut facts);
+    let mut printed = Vec::new();
+    let result = run_to(&root, &mut facts, &mut printed);
     assert_eq!(result, Ok(()), "{facts:?}");
+    let printed = String::from_utf8(printed).unwrap();
+    assert!(
+        printed.contains("deps: xtask: 1 members, 0 export crates, ")
+            && printed.contains(
+                "deps: desktop: 1 members, 0 export crates, 0 crates.io packages, 0 internal edges\n"
+            ),
+        "{printed}"
+    );
     let fact = |key: &str| {
         facts
             .iter()
@@ -1390,6 +1400,35 @@ fn reports_versions_that_differ_between_the_workspaces() {
         facts.contains(&("drift".to_string(), "none".to_string())),
         "{facts:?}"
     );
+    // The packages of xtask are compared too.
+    let mut model = fixture::valid();
+    model.add("desktop", Pkg::crates_io("yaml-rust2", "0.12.0"));
+    model
+        .pkg("desktop", "kosmo@0.1.0-dev.1")
+        .deps
+        .push(Dep::new("yaml-rust2@0.12.0", "=0.12.0"));
+    model.append(
+        "layout.toml",
+        &allow(
+            "kosmo",
+            "yaml-rust2",
+            "=0.12.0",
+            "default-features = true\nfeatures = []\nresolved-features = []\n",
+        ),
+    );
+    model.append(
+        "desktop/allowlist.toml",
+        &entry("yaml-rust2", "0.12.0", "MIT", &[], &["kosmo"]),
+    );
+    let (report, facts) = model.inspect();
+    assert_eq!(report.problems, Vec::<String>::new());
+    assert!(
+        facts.contains(&(
+            "drift".to_string(),
+            "yaml-rust2: xtask 0.13.0, desktop 0.12.0".to_string()
+        )),
+        "{facts:?}"
+    );
 }
 
 #[test]
@@ -1469,6 +1508,68 @@ fn a_failing_step_keeps_its_observations() {
     let keys: Vec<&str> = facts.iter().map(|(key, _)| key.as_str()).collect();
     assert!(keys.contains(&"framework_crates_io"), "{keys:?}");
     assert!(keys.contains(&"drift"), "{keys:?}");
+}
+
+#[test]
+fn the_receipt_of_a_failing_deps_step_has_every_problem_and_the_observations() {
+    let mut model = fixture::valid();
+    add_qux_under_the_gpl(&mut model);
+    model.pkg("framework", "bar@2.1.0").checksum = false;
+    let step = check::Step {
+        name: "deps",
+        action: check::Action::Internal(Box::new(move |_, facts| {
+            let (report, observed) = model.inspect();
+            facts.extend(observed);
+            report.verdict()
+        })),
+    };
+    let outcomes = check::run_steps(Path::new("."), &[step]);
+    let state = receipt::GitState {
+        commit: None,
+        clean: None,
+    };
+    let text = receipt::render(
+        &state,
+        &state,
+        &outcomes,
+        &receipt::Tools { rustc: None },
+        &receipt::Environment::from_sources(|_| None, None),
+    );
+    let read: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let deps = &read["steps"][0];
+    assert_eq!(deps["name"], "deps");
+    assert_eq!(deps["status"], "failed");
+    assert_eq!(
+        deps["detail"],
+        format!("framework/Cargo.lock: bar 2.1.0 has no checksum\n{QUX_UNDER_THE_GPL}")
+    );
+    assert_eq!(deps["facts"]["framework_members"], "4");
+    assert_eq!(deps["facts"]["framework_crates_io"], "4");
+    assert_eq!(deps["facts"]["drift"], "none");
+}
+
+#[test]
+fn the_step_prints_its_notes_and_then_fails_with_every_problem() {
+    let mut printed = Vec::new();
+    let (report, _) = fixture::valid().inspect();
+    assert_eq!(report.finish(&mut printed), Ok(()));
+    let mut model = fixture::valid();
+    model.edit("layout.toml", FOO_ALLOWED, "");
+    let (report, _) = model.inspect();
+    assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
+    let mut printed = Vec::new();
+    assert_eq!(report.finish(&mut printed), Err(report.problems.join("\n")));
+    let printed = String::from_utf8(printed).unwrap();
+    let notes: String = report
+        .notes
+        .iter()
+        .map(|note| format!("{note}\n"))
+        .collect();
+    assert_eq!(printed, notes);
+    assert!(
+        printed.contains("\n[[crates.kosmo-render.external]]\n"),
+        "{printed}"
+    );
 }
 
 #[test]
@@ -1589,6 +1690,44 @@ fn metadata_runs_offline_for_one_target() {
     );
     assert_eq!(cmd.env, [(OFFLINE.0.to_string(), OFFLINE.1.to_string())]);
     assert_eq!(cmd.timing, format!("desktop_{LINUX}_ms"));
+}
+
+#[test]
+fn reads_the_metadata_of_each_workspace_for_each_of_its_targets() {
+    for (model, dirs) in [
+        (
+            fixture::valid(),
+            &["xtask", "display", "framework", "desktop"][..],
+        ),
+        (fixture::desktop_only(), &["xtask", "desktop"][..]),
+    ] {
+        let tree = model.tree();
+        let table = layout::table(&tree).unwrap();
+        let index = Index::new(&table);
+        let mut asked = Vec::new();
+        let mut facts = Facts::new();
+        let report = inspect(
+            &tree,
+            &index,
+            ROOT,
+            &mut facts,
+            &mut |workspace, target, _| {
+                asked.push(format!("{} {target}", workspace.dir));
+                Ok(model
+                    .workspaces
+                    .iter()
+                    .find(|ws| ws.dir == workspace.dir)
+                    .unwrap()
+                    .metadata(target))
+            },
+        );
+        assert_eq!(report.problems, Vec::<String>::new());
+        let expected: Vec<String> = dirs
+            .iter()
+            .flat_map(|dir| [LINUX, DARWIN].map(|target| format!("{dir} {target}")))
+            .collect();
+        assert_eq!(asked, expected);
+    }
 }
 
 #[test]

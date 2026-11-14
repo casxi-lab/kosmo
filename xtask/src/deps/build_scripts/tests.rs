@@ -74,7 +74,20 @@ fn rejects_a_package_that_declares_links() {
 
 #[test]
 fn rejects_build_dependencies_that_compile_or_bind_native_code() {
-    for (name, what) in NATIVE_CODE {
+    // The list that CONTRIBUTING.md gives, with what each package does.
+    let listed = [
+        ("cc", "compiles C or C++"),
+        ("cmake", "compiles C or C++"),
+        ("cxx-build", "compiles C++"),
+        ("autotools", "compiles C or C++"),
+        ("nasm-rs", "assembles native code"),
+        ("bindgen", "generates bindings to C headers"),
+        ("pkg-config", "looks for system libraries"),
+        ("vcpkg", "looks for system libraries"),
+        ("system-deps", "looks for system libraries"),
+    ];
+    assert_eq!(NATIVE_CODE.len(), listed.len());
+    for (name, what) in listed {
         assert_eq!(
             zlib_sys_with(&[name]).problems(),
             [format!(
@@ -82,23 +95,24 @@ fn rejects_build_dependencies_that_compile_or_bind_native_code() {
             )]
         );
     }
-    assert_eq!(
-        zlib_sys_with(&["cmake"]).problems(),
-        [
-            "framework/Cargo.lock: zlib-sys 1.0.0: its build script compiles C or C++ (build dependency cmake)"
-        ]
-    );
-    assert_eq!(
-        zlib_sys_with(&["pkg-config"]).problems(),
-        [
-            "framework/Cargo.lock: zlib-sys 1.0.0: its build script looks for system libraries (build dependency pkg-config)"
-        ]
-    );
 }
 
 #[test]
 fn rejects_build_dependencies_that_can_download() {
-    for name in DOWNLOAD {
+    // The list that CONTRIBUTING.md gives.
+    let listed = [
+        "reqwest",
+        "ureq",
+        "curl",
+        "attohttpc",
+        "minreq",
+        "http_req",
+        "hyper",
+        "isahc",
+        "git2",
+    ];
+    assert_eq!(DOWNLOAD.len(), listed.len());
+    for name in listed {
         assert_eq!(
             zlib_sys_with(&[name]).problems(),
             [format!(
