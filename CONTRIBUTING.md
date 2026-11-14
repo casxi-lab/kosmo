@@ -341,8 +341,8 @@ of its members, `<workspace>_exports`, of its export crates in the table,
 `<workspace>_internal_edges`, of the distinct edges between crates of the
 repository, counted once per kind.
 
-An allow entry is a `[[crates.<name>.external]]` table in `layout.toml`, for
-example:
+An allow entry is a `[[crates.<name>.external]]` table in `layout.toml`. For
+example, the planned crate `kosmo-render` will have this entry for `libm`:
 
 ```toml
 [[crates.kosmo-render.external]]
@@ -382,14 +382,16 @@ whether it has a build script; `proc-macro = true` for a procedural-macro
 library, left out otherwise; `links`, the value of `links` in its manifest,
 which usually names the native library that its build script links, left out
 when it declares none; `features`, its resolved features for all targets
-together; `crates`, the crates of this repository whose crates.io dependencies
-bring the package in: each member, or crate of `layout.toml` reached through a
-`path` dependency, from which a chain of crates.io packages alone leads to it;
-and `duplicate`, why the workspace resolves several versions of the package.
-Both lists are sorted. Three more fields state the exceptions of a build script
-with their reasons: `links-exception`, `native-code-exception` and
-`download-exception`. A workspace without crates.io packages has an allowlist
-without entries. The license exceptions of the workspace follow the entries.
+together, which an allow entry calls `resolved-features` (its `features` are
+those that the declaration turns on); `crates`, the crates of this repository
+whose crates.io dependencies bring the package in: each member, or crate of
+`layout.toml` reached through a `path` dependency, from which a chain of
+crates.io packages alone leads to it; and `duplicate`, why the workspace
+resolves several versions of the package. Both lists are sorted. Three more
+fields state the exceptions of a build script with their reasons:
+`links-exception`, `native-code-exception` and `download-exception`. A
+workspace without crates.io packages has an allowlist without entries. The
+license exceptions of the workspace follow the entries.
 
 #### Licenses of dependencies
 
@@ -474,15 +476,26 @@ The fetch and deps steps have limits:
 
 - They see what Cargo resolves for the targets in `layout.toml`. A package
   that only other platforms use is neither listed nor checked. Build
-  dependencies and procedural macros run on the host; they are resolved for
-  the listed targets, which include the host of CI, `aarch64-unknown-linux-gnu`,
-  and `aarch64-apple-darwin`.
-- Resolved features are those that Cargo's resolver gives a package for all
-  its dependents in the resolution together, dev-dependencies included, so
-  they can be more than a normal build turns on.
-- `cargo xtask` builds xtask before any step runs, so the build scripts and
-  procedural macros of xtask's own dependencies run before the check reads
-  `xtask/allowlist.toml` and checks their licenses and build scripts.
+  dependencies and procedural macros run on the host, but they are resolved
+  for the listed targets, `aarch64-unknown-linux-gnu`, the host of CI, and
+  `aarch64-apple-darwin`; build dependencies that only another host, such as
+  an x86-64 one, uses are not seen.
+- The fetch step downloads the packages for the listed targets only, and the
+  later Cargo commands run offline. On a host that is not one of them, such as
+  an x86-64 or a Windows one, `clippy` and `test` fail when they need a package
+  that only that host uses, such as one under `cfg(windows)`; run
+  `cargo fetch --locked --manifest-path <workspace>/Cargo.toml` once, without
+  `--target`, before the check.
+- `cargo metadata` runs with `--all-features`, so every feature of every
+  member is on: the resolution has every optional dependency of a member, and
+  the resolved features include those that only features off by default turn
+  on. Resolved features are those that Cargo's resolver gives a package for
+  all its dependents in the resolution together, dev-dependencies included,
+  so they can be more than a normal build turns on.
+- `cargo xtask` downloads and builds xtask before any step runs, outside the
+  fetch step, so the build scripts and procedural macros of xtask's own
+  dependencies run before the check reads `xtask/allowlist.toml` and checks
+  their licenses and build scripts.
 - The license rules read only the `license` of each package, not its license
   files. The build-script rules read only `links` and the names of the build
   dependencies: a build script that runs a compiler or a download tool itself,
@@ -529,10 +542,12 @@ Security advisories are checked by hand before each version is tagged,
 pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
 crates.io packages in every `Cargo.lock` of the repository against the RustSec
 advisory database and records, with the release decision, the commit of the
-advisory database that was used. A weekly advisory job will be added once
-the dependencies grow beyond about 20 packages, which is expected with the
-framework's text stack. It will not be required for merging and will change
-neither the `cargo xtask check` job nor the branch rules of `main`.
+advisory database that was used. A weekly advisory job will be added once the
+allowlists of the product workspaces together list more than about 20 distinct
+packages, each name and version counted once however many allowlists list it,
+which is expected with the framework's text stack. The packages of the tool
+workspace `xtask` do not count. The job will not be required for merging and
+will change neither the `cargo xtask check` job nor the branch rules of `main`.
 
 ## Commit messages
 

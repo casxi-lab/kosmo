@@ -93,8 +93,12 @@ lock-allowlist = "xtask/allowlist.toml"
 # "build" or "dev", left out for a normal dependency; `target`, the
 # condition of a `[target.<condition>.*]` table, left out otherwise;
 # `optional = true` for an optional dependency; `default-features`; the
-# `features` that the declaration turns on and the `resolved-features` of
-# the package, each sorted. A crate without such dependencies leaves it out.
+# `features` that the declaration turns on, after inheritance from the
+# workspace root; and the `resolved-features` of the package, for all
+# targets of the workspace together. Both lists are sorted. A crate without
+# such dependencies leaves it out. When the entries differ from what Cargo
+# resolves, the deps step prints all the entries that the crate should have,
+# or, when it should have none, says that they all go.
 [crates.kosmo]
 path = "desktop/kosmo"
 layer = "S2"
