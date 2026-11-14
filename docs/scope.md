@@ -196,13 +196,12 @@ graph view.
   provisional. They will be reviewed when krepi settles its side of the
   display path: the development display path, the form of the drivers and the
   hardware side of rendering.
-- **Rendering and text libraries.** The rasterizer, the text stack, the
-  determinism rules and the two interface fonts are not chosen yet. They will
-  be chosen within these rules: Rust crates behind kosmo's own interfaces and
-  only unmodified OFL-1.1 fonts. A build script that compiles C or C++ or
-  downloads files at build time is accepted only after its own review. The
-  math font will be chosen with two-dimensional typesetting, and image formats
-  with the features that need them.
+- **Math font and image formats.** The math font will be chosen with
+  two-dimensional typesetting, and image formats with the features that need
+  them. The rasterizer, the text stack, the determinism rules and the two
+  interface fonts are chosen; the
+  [architecture](architecture.md#rendering-text-and-determinism) describes
+  them.
 - **Widget script language.** Not chosen. Lua is a reference.
 - **Response times.** No numeric targets for start-up, cancellation or response
   time have been set. Each target is set before the measurement that checks
