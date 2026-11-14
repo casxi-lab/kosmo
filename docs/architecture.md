@@ -2,8 +2,9 @@
 
 This page states the design rules of kosmo's first release for the editing
 structure of formulas, versions, the host job layer, the keyboard event record,
-the source layout and the platform boundary. It also names the two frontends
-of the first release and lists every component with its verification level.
+the source layout, the platform boundary, the framework, and rendering, text
+and determinism. It also names the two frontends of the first release and
+lists every component with its verification level.
 
 The rules are fixed before the code that follows them. So far the only product
 code is the `kosmo` program, which only reports its version: every component
@@ -171,9 +172,10 @@ A template holds only the slots it draws.
 - Layout queries: exactly one caret rectangle per cursor position; a hit test
   defined for every point; selection rectangles; geometry for moving up and
   down; and origin to boxes and back.
-- The numeric representation of coordinates and the accessibility hook are
-  not fixed here; the planned rendering and determinism rules fix the first,
-  and the planned framework architecture the second.
+- Coordinates use the fixed-point type that the
+  [numeric representation](#numeric-representation) defines, and the
+  accessibility hook is the AccessKit tree that
+  [accessibility](#accessibility) describes.
 - The mapping of functions to two-dimensional presentation follows the
   function catalog that kosmo keeps for the locked kalyx version.
 
@@ -763,6 +765,913 @@ and their limits.
   [Contributing](../CONTRIBUTING.md). The check and the column arrive with the
   framework runtime; earlier crates rely on review. The column does not change
   the workspace's layering rules.
+
+## Framework
+
+kosmo's framework is its own: a tree of controls with fixed passes, a
+single-threaded event loop with an injected clock, versioned result slots and a
+platform interface with two backends. Its core is `kosmo-ui` in layer F1. The
+platform interface `kosmo-platform`, test support `kosmo-testkit`, rendering
+`kosmo-render` and text `kosmo-text` are in layer F0, and the headless backend
+`kosmo-backend-headless` and the display server backend `kosmo-backend-display`
+in layer F1. [Rendering, text and determinism](#rendering-text-and-determinism)
+states the rules of drawing.
+
+### Application model and passes
+
+- The core is a retained tree of controls. A keyed declarative view sits on top
+  of it, and application logic uses messages and effects, as in the Elm
+  architecture. There is no immediate mode and, in the first release, no
+  fine-grained signals.
+- An application is a model and two functions. `update` handles messages one at
+  a time in order; it is the only place that changes the model, and it outputs
+  effects and timer requests. `view` reads the model and returns a view tree.
+  Neither function can reach the platform interface, the execution port or the
+  control tree.
+- The framework holds the control tree. It compares each new view tree with the
+  previous one by key and applies only additions, removals and changes; a
+  control under the same parent with the same key and type keeps its identity.
+- Controls hold only presentation state, such as a scroll offset or the phase of
+  a blinking caret. Application state, the editing structure and results are in
+  the model. The formula editing control turns the commands of key presses into
+  messages of editing operations and keeps no copy of the editing structure,
+  whose instance is the Scratchpad's current line.
+
+A round runs eight passes in a fixed order:
+
+1. Events: the round's input becomes messages in this order: receipts of the
+   previous round's effects, input events, other platform events (focus and
+   surface changes), job reports and due timers. Key events reach controls
+   through [dispatch](#dispatch-and-hit-testing).
+2. Update: `update` is called once for each message, in order. For a job report,
+   `update` hands the report to the result slot together with the region's
+   state.
+3. Effects: the effects go to the execution port in the order they were
+   produced.
+4. View: if the round handled a message, `view` is called once and its tree is
+   compared with the previous one; a round in which only presentation state
+   changed skips this pass.
+5. Layout: only dirty subtrees are laid out again.
+6. Drawing: display lists are built for the update regions.
+7. Accessibility: the tree updates of each surface are produced.
+8. Presentation: if there are update regions, the frame is rasterized and
+   presented.
+
+Each pass reads only what earlier passes produced. Receipts, reports and due
+timers that arise after the round's effect pass wait for the next round.
+Receipts come first so that a report is judged after the receipt of its own
+submission has updated the region's latest submission; otherwise a current
+result would be judged superseded. Input comes before reports so that an edit
+changes the source version first, and a result of the same round is judged
+against the new version instead of being shown as current and at once as stale.
+
+### Layout pass
+
+- A parent passes a minimum and a maximum size to each child; the child reports
+  its size and an optional baseline, and the parent places it. Layout reads only
+  the view model, display parameters and text metrics and is a pure function.
+- Only dirty subtrees are laid out again; a node whose size depends only on its
+  parent's constraints bounds the work. Scrolling changes only the offset.
+  Overflow is marked in the layout result, never clipped silently.
+- Coordinates use the [numeric representation](#numeric-representation); a value
+  out of its range makes the whole layout return a distinct error.
+- The first release has rows, columns and scrolling, written in kosmo without a
+  general layout library.
+
+### Control tree
+
+- Controls live in a slot table of `kosmo-ui`. A control's identity,
+  provisionally `WidgetId`, is a `u32` slot and a `u32` generation and fits in a
+  `u64` without loss.
+- Removing a control increases its slot's generation and puts the slot on a free
+  list that is used last in, first out, so the same sequence of operations gives
+  the same identities. A lookup compares the generation, and a mismatch means
+  that the control does not exist. Events, timers and accessibility actions
+  aimed at a control that does not exist are dropped and counted. A slot whose
+  generation would pass its maximum is retired; generations never wrap.
+- Control identities are used only inside the framework. They never enter the
+  application model, job requests or region state.
+- The tree has one root. Each control records its parent and an ordered list of
+  its children, in view tree order. Layout, drawing and accessibility traverse
+  the tree in preorder, never in slot order, and the tree uses no hash
+  containers.
+- The number of controls and the depth of the tree are bounded, with values
+  fixed with the implementation. A view rebuild first counts the new slots it
+  needs; if a bound would be exceeded, the round leaves the tree unchanged and
+  reports a distinct error, without panicking.
+- Through its context, a control reaches only event values, its own identity and
+  presentation state, the messages and requests that it outputs as values,
+  layout constraints and results, the construction of display lists and its
+  accessibility nodes. It reaches neither the platform interface, nor the
+  execution port, nor a mutable reference to the model.
+- The platform interface and its backends see only surfaces, pixel buffers and
+  events returned by value, and know no controls. Rendering reads only display
+  lists. A replacement of the control layer, made of the control tree, the
+  control interface and the basic controls, is thus confined to that layer and
+  leaves the view layer, the result slot, the event loop, the platform interface
+  and display lists unchanged. Whether an outside control library fits this
+  boundary is part of judging such a replacement.
+
+### Effects and the result slot
+
+- Effects are values that `update` and the event handlers of controls write into
+  their output. After the update pass, the event loop hands them to the
+  execution port in the order they were produced. `update`, controls and the
+  drawing entry never reach the execution port.
+- The effects of the first release submit a job, with a request that the
+  application builds, and cancel a job, named by the submission identity of its
+  acceptance receipt. The effect enum is `#[non_exhaustive]`; another kind of
+  effect, such as a semantic edit or an exit that the application requests, is a
+  design change.
+- The execution port answers a submission at once with an acceptance, which
+  carries the submission identity, or with one of the job layer's rejections.
+  The event loop queues this receipt as a message at the start of the next
+  round, and the region updates its latest submission only on acceptance. A
+  cancellation gives the application no receipt: the job layer's acceptance
+  report goes only into the event handling record, and the terminal state
+  arrives as a job report.
+- Effects and receipts are written one by one into the event handling record.
+- The execution port, provisionally `JobPort`, is defined in `kosmo-ui`. It
+  submits, cancels and takes reports, with the request, the submission identity
+  and the report as associated types. Taking reports also returns the number of
+  jobs accepted through the port whose terminal state has not been taken yet,
+  which sets the [polling deadline](#job-reports).
+- `kosmo-ui` depends on neither `kosmo-jobs` nor kalyx, so the control crates
+  built on it, `kosmo-math-controls` included, do not depend on them even
+  indirectly. In the first release the application's assembly, expected in
+  `kosmo-calc` and never in `kosmo-ui` or a control crate, implements the
+  execution port on the job layer with `submit`, `cancel` and `poll`; it never
+  calls `wait`. The execution port is not part of the platform interface.
+- The result slot, provisionally `ResultSlot`, is in `kosmo-ui` and generic over
+  the result value and the submission identity. It holds at most one result with
+  its three versions and its submission identity. Each region has one slot; in
+  the first release that is the calculator's input region. The slot is part of
+  the application model, beside the region's holder.
+- The region's holder, expected to be the Scratchpad, keeps the region's current
+  versions and latest accepted submission and passes them to the slot at
+  delivery and at display.
+- Results are delivered only in the update pass: `update` calls the slot's
+  delivery with the holder's state when it handles a job report, so the
+  acceptance receipts of the round have always updated the latest submission
+  first. The slot judges the result with the function of [current, superseded
+  and stale results](#current-superseded-and-stale-results). A current result is
+  written into the slot and returned to the caller to be written into its
+  record; any other result is returned unchanged, to go into its own
+  submission's record or count toward the region's discard count. The returned
+  value is `#[must_use]`.
+- The result view takes its display value only from the slot: empty, current or
+  stale. The slot's operations take no reference to the editing structure or the
+  cursor. The slot and the Scratchpad do not depend on each other; the
+  application's assembly connects them.
+- No effect of the first release changes shared values, and `kosmo-ui` has no
+  interface that writes them. The only way to change them will be an effect that
+  submits a semantic edit to the document service, added by a design change.
+
+### Event loop and clock
+
+- The framework runs only on the thread that calls `run`, and `kosmo-ui` creates
+  no threads. The platform interface and its backends need no threads and never
+  call into application code.
+- The event loop has two parts in `kosmo-ui`: the round function and `run`. The
+  round function neither reads a clock, nor waits, nor calls a port. Its first
+  step takes the round's time as a `MonoTime` and the round's events, reports
+  and receipts, runs the event and update passes and outputs the effects. Its
+  second step runs the passes from the view to accessibility and outputs the
+  update regions, the display lists, the accessibility updates of each surface,
+  the next deadline and the event handling record.
+- Before the first round, `run` obtains the [fonts](#fonts). In each round it
+  waits for platform events with the round's deadline, reads the clock once,
+  takes job reports through the execution port, calls the first step, hands the
+  effects to the execution port, calls the second step, pushes the accessibility
+  updates of each surface and, if there are update regions, rasterizes and
+  presents them. A single-round entry, provisionally `run_round`, lets a driver
+  advance the framework one round at a time.
+- The wait does not block while receipts or messages are pending. Otherwise its
+  deadline is the earlier of the next timer and the [polling
+  deadline](#job-reports); with neither, it blocks without limit.
+- The job-layer thread is the thread of `run`. Through the execution port the
+  event loop calls only operations that do not block, so input, editing and the
+  stop control stay usable while jobs run.
+- The framework clock is the platform interface's `Clock`: read-only, with
+  `MonoTime` readings and read only on the event loop's thread; it need not be
+  `Send` or forkable. The job layer's clock port stays as [cancellation and
+  deadlines](#cancellation-and-deadlines) describes; the two are separate
+  traits.
+- The application's assembly connects both clocks to one source: for the
+  headless backend and tests, a virtual time source that the driver advances;
+  for the display server backend, one real monotonic clock built in a boundary
+  crate. On the device both will read krepi's monotonic time.
+- `run` reads the clock once per round, and every judgement of the round uses
+  that reading. Only the driver advances the headless backend's virtual clock,
+  and waiting does not advance it. A real backend's clock reads the platform's
+  monotonic clock, and no code advances it.
+- Timing in the framework uses only the clock's readings. The `time` of event
+  records is only recorded and passed on and may belong to another clock domain.
+
+Timers:
+
+- Timer requests are output values like effects and go into the event handling
+  record. The round function registers each in a timer table with an absolute
+  deadline as a `MonoTime`, the requester (a control's identity or the
+  application) and a label. Timers fire once; the requester of a periodic timer
+  registers it again at the previous deadline plus the period.
+- Every timer whose deadline is not later than the round's time is due. Due
+  timers become messages ordered by deadline and then by registration order; a
+  timer whose requester no longer exists is dropped and counted. The next
+  deadline is the earliest deadline in the table.
+- The timer table is bounded, with its value fixed with the implementation;
+  registering into a full table is rejected with a distinct error.
+- Key repeat and long press, which the display server produces, job deadlines,
+  which the job layer handles, and frame requests, which come later, are not
+  timers of this table.
+
+### Job reports
+
+- The platform interface has no wake-up port; job reports reach the event loop
+  by polling. In each round, `run` takes reports through the execution port
+  once, after reading the clock and before the first step, and the job layer's
+  `poll` never blocks. Submissions happen in the effect pass, so the reports
+  that have arrived are always taken before the round's submissions. The
+  acceptance receipt of a submission keeps the next wait from blocking, so the
+  next round reads the new number of jobs whose terminal state has not been
+  taken.
+- While that number is above 0, the deadline of the next wait is at most the
+  round's clock reading plus `JOB_POLL_INTERVAL`; when it is 0, only timers set
+  the deadline. `JOB_POLL_INTERVAL` is 16 ms, one frame at 60 Hz rounded down,
+  and is a constant of `kosmo-ui`.
+- A report that arrives after the round's take is taken in the next round. The
+  next wait starts only after the round's layout, drawing, rasterization and
+  presentation, and it returns at once if its deadline has passed. The delay
+  from a report's arrival to the round that takes it is thus at most the larger
+  of `JOB_POLL_INTERVAL` and the time of one round, from reading the clock to
+  the start of the next wait, plus the host's wake-up latency. While that number
+  is above 0, the loop wakes at least every 16 ms. A frame can take longer than
+  16 ms, so 16 ms alone is not a bound.
+- A job cancelled while queued ends `cancelled` as soon as the job layer accepts
+  the cancellation, and it is counted until its terminal state is taken.
+- The headless backend's wait returns according to the virtual clock, and the
+  order in which jobs complete comes from the release plan of a [script
+  test](#headless-backend-and-scripts).
+- Polling is used while job reports cannot arrive through the platform's wait.
+  These rules are reconsidered when krepi's job service becomes the job layer's
+  backend on the device; if reports then arrive through the platform's wait,
+  the event loop stops polling.
+
+### Dispatch and hit testing
+
+- The first release has only keyboard input, and only key events go through
+  dispatch. A key event that passes the [focus check](#focus) is dispatched as
+  described below. Other input is delivered without dispatch: focus in and focus
+  out go to the region's root, surface changes to the surface's holder, due
+  timers to their requester, and job reports to the application as messages, for
+  `update` to hand to the result slot.
+- The command tables resolve a key event to a command. Dispatch starts at the
+  focused control, the target; if it does not handle the command, its ancestors,
+  the region's root and the application are tried in turn, bubbling, and the
+  first that handles it ends dispatch.
+- Every key event has exactly one outcome, written into the event handling
+  record: dropped with its reason, handled with its handler, or unhandled.
+- Controls of the first release receive no raw key events. The enum of dispatch
+  phases is `#[non_exhaustive]`; a new phase is a design change, and an existing
+  control returns unhandled for a phase it does not know.
+- Hit testing is a geometric query over layout results: given a surface and a
+  point, it returns the path from the root to the control hit, or nothing. Boxes
+  are moved by their ancestors' scroll offsets and clipped by all ancestors; a
+  box includes its left and top edges but not its right and bottom edges. Where
+  boxes overlap, the last in drawing order is hit, and a control that draws
+  nothing is never hit. Hit testing uses the [numeric
+  representation](#numeric-representation), is a pure function and in the first
+  release is called only by tests. Pointer dispatch is defined with the pointer
+  bodies of the event record.
+
+### Focus
+
+- In the first release each surface has one region, and its application chooses
+  the focused control: in the calculator, the input line. There is no focus
+  movement inside a region; Tab and spatial navigation come with two-level
+  focus.
+- Focus in and focus out are platform events that carry the epoch and the focus
+  generation. The framework updates its current values from them and hands them
+  to the region's root. The framework keeps no key state, so leaving focus
+  clears nothing; a later control that keeps key state treats every key as
+  released when focus leaves.
+- The framework checks focus stamps in one place, after it takes platform events
+  and before dispatch; controls and regions do not check them. For each surface
+  it records the epoch and the focus generation of the latest focus in and
+  whether the surface holds focus. A key event whose epoch or focus generation
+  differs from them, or that arrives for a surface without focus, is dropped,
+  counted by that reason and written into the event handling record.
+- The focus generation and the epoch are each a `u64` newtype in the shared
+  types crate, `Copy`, which the framework compares only for equality. How their
+  values are produced and change, and what happens when they run out, is defined
+  with the display server's trusted core; the framework carries them in the
+  outer layer of platform events.
+- A region level of focus generation is added by the first code that moves focus
+  within the framework. Its rules are fixed now: a key event is dispatched only
+  when its epoch, its surface's focus generation and its region's generation all
+  equal the current values; a key event records the region's generation when the
+  framework takes it; and a focus change within the framework and the
+  destruction of a region each increase the region's generation by 1. A region's
+  generation only increases and never wraps, and a focus change that would pass
+  its maximum is rejected. Whether the later key events of a round take the new
+  generation after a focus change caused by input is decided with that code.
+
+### Commands and key bindings
+
+- A command is a value: an identifier and its parameters. Identifiers are
+  constants in namespaces: the framework's shared commands have one, and an
+  application's own commands carry the application's namespace.
+- Binding tables are constant data, compiled in. Each context can have one
+  table, and the framework's minimal key map is the outermost. A table that maps
+  one key meaning and set of modifiers to two commands is an error, which a unit
+  test checks. Keys that the shell reserves are taken by the display server, so
+  the framework has no "reserved" outcome.
+- Each command states whether it repeats: moves and deletions repeat;
+  submitting, templates and cancelling do not, and they ignore repeat events.
+- The display server's key maps turn HID usages and layer state into key
+  meanings and produce repeat and long press. The framework's key maps use only
+  key meanings, never physical usages, and ignore the high 8 bits of `ModSet`.
+  Framework scripts write key meanings directly, so framework tests do not
+  depend on the server's key maps.
+- A binding names a named key, a character, or any character, which then becomes
+  the command's parameter. It lists the Shift, Ctrl, Alt and GUI modifiers it
+  needs, read from the low 8 bits of `ModSet` without distinguishing left and
+  right, and the event's modifiers must equal them. A character binding ignores
+  Shift, because the display server has already applied it to the character.
+- Press triggers a binding; Repeat triggers only repeating commands; Release,
+  synthetic or not, triggers nothing. The first release has no LongPress
+  bindings.
+- Lookup goes along the focus chain from the innermost table outwards, ending
+  with the minimal key map, and the first table with a match gives the command.
+
+The minimal key map of the first release adds five `NamedKey` entries:
+
+| Key meaning | Entry | Command | Repeats |
+| --- | --- | --- | --- |
+| Move the cursor left | `Left` | `MoveLeft` | Yes |
+| Move the cursor right | `Right` | `MoveRight` | Yes |
+| Delete backwards | `Delete` | `DeleteBackward` | Yes |
+| Submit the current line | `Execute` | `EvaluateSelection` | No |
+| Cancel the current job | `Cancel` | `CancelJob` | No |
+| A character `c` | `Char(c)`, a `KeyMeaning` rather than an entry | `InsertText(c)` | Yes |
+
+- Entries get their numbers when they are written into `kosmo-types`, and other
+  entries are added by the same rules.
+- `Cancel` is the application's cancel key, apart from the display server's part
+  of the stop key. The host keys that produce these meanings are defined with
+  the display server's key maps.
+
+### Platform interface
+
+The platform interface is in `kosmo-platform` (layer F0) and has exactly nine
+traits. The root trait `Platform` has `EventSource`, `Clock`, `SurfacePort`,
+`Presenter`, `Capabilities`, `ResourceProvider` and `AccessibilitySink` as
+supertraits and adds only `shutdown`; `PlatformTestHooks` has `Platform` as its
+supertrait. A backend is one value. `run` is generic over `P: Platform`, and the
+conformance suite and the script runner over `P: PlatformTestHooks`. Backends
+implement the interface and never extend it; their constructors and inherent
+methods are only for whoever builds them.
+
+| Trait | Methods (sketch) | Used by |
+| --- | --- | --- |
+| `Platform` | `shutdown(&mut self) -> Result<(), PlatformError>` | `run` and drivers |
+| `EventSource` | `wait(&mut self, deadline: Option<MonoTime>, out: &mut Vec<PlatformEvent>) -> Result<WaitEnd, PlatformError>` | `run` and the single-round entry, once per round |
+| `Clock` | `now(&self) -> MonoTime` | `run` and the single-round entry, once per round |
+| `SurfacePort` | `create_surface(&mut self, req: SurfaceRequest) -> Result<SurfaceId, PlatformError>`; `destroy_surface(&mut self, s: SurfaceId) -> Result<(), PlatformError>` | The application skeleton, which creates the main surface and destroys it before `shutdown` |
+| `Presenter` | `buffer(&mut self, s: SurfaceId) -> Result<PixelBufferMut<'_>, PlatformError>`; `present(&mut self, s: SurfaceId, damage: &[DamageRect]) -> Result<(), PlatformError>` | `run`, for presentation |
+| `Capabilities` | `caps(&self) -> PlatformCaps`, which reports only the accepted pixel formats and the output size | The application skeleton, which chooses the buffer format and the initial size |
+| `ResourceProvider` | `resource(&self, id: ResourceId) -> Result<&[u8], PlatformError>` | `run`, which obtains the two fonts before the first round |
+| `AccessibilitySink` | `update(&mut self, surface: SurfaceId, update: TreeUpdate) -> Result<(), PlatformError>` | `run`, after the accessibility pass |
+| `PlatformTestHooks` | Test builds only: `inject(&mut self, e: PlatformEvent) -> Result<(), PlatformError>`, `advance_to`, `read_back`, `inject_fault`, `a11y_tree` | The conformance suite, the script runner and accessibility queries |
+
+- In the first release `EventSource` returns `Key { surface, stamp, event }`, a
+  delivered key event with its focus stamp `FocusStamp` (the epoch and the focus
+  generation); `FocusIn` and `FocusOut` with their stamps;
+  `Configure { surface, size }`; and `Released { surface }` when a presented
+  buffer is given back. The event enum is `#[non_exhaustive]`; frame events and
+  presentation feedback will be new kinds of it. Lifecycle, clipboard, memory
+  pressure and pointer events are not returned, and events carry no trace
+  number. A wait ends with `Events`, `Deadline` or `Idle`; only a backend that
+  never blocks returns `Idle`.
+- A buffer is `PixelBufferMut { desc: BufferDesc, bytes: &mut [u8] }`, which
+  borrows `&mut self`, so the type ensures that nothing writes to it after
+  presentation. A presented buffer that has not been released is not handed out
+  again; with no free buffer, `buffer` returns `Busy`. [Pixel formats and
+  buffers](#pixel-formats-and-buffers) defines `BufferDesc` and the formats.
+- `PlatformError` is kosmo's own `#[non_exhaustive]` enum with the kinds
+  `Unsupported`, `StaleHandle`, `InvalidArgument`, `Busy`, `Exhausted`,
+  `Disconnected`, `NotFound` (a missing resource) and `Backend`. Applications of
+  the first release do not request exit: when `wait` returns `Disconnected`,
+  `run` calls `shutdown` and returns.
+- The interface allows several surfaces. The enum of surface roles is
+  `#[non_exhaustive]`, and events, `Presenter` and `AccessibilitySink` name a
+  surface by its `SurfaceId`.
+- The number of events returned by one wait, of rectangles in one presentation,
+  of surfaces, of queued injected events and of accessibility nodes per surface
+  is bounded, with values fixed with the implementation. Events beyond the bound
+  wait for the next wait; any other operation beyond a bound returns `Exhausted`
+  and changes nothing.
+- Signatures hold only kosmo values such as `MonoTime`, `ResourceId` and
+  `PlatformError`. Events, requests and capabilities are plain values that can
+  be compared and recorded, without host or krepi types and without callbacks.
+  `run` returns an exit status; exit codes exist only at the program's entry.
+- `kosmo-platform` depends only on the shared types crate and on AccessKit,
+  which it re-exports. It depends neither on other crates of `framework/` nor on
+  `kosmo-proto` or `kosmo-client`, and no type of the raster or text libraries
+  appears in it.
+- Only `run` and drivers hold handles of the platform interface; `update`,
+  `view` and the drawing entry cannot reach any of its traits.
+- `PlatformTestHooks` and the backends' implementations of it compile only under
+  a feature that is off by default and that `kosmo-ui`, the control crates and
+  the program never enable, so applications, the framework core and controls
+  cannot inject events, advance the clock or read buffers back. A driver that
+  builds the headless backend may use its inherent methods. `read_back` returns
+  the last presented buffer with its description, and `kosmo-testkit` computes
+  its digest. `inject_fault` injects platform failures such as a missing
+  resource, and `a11y_tree` returns the tree that the backend kept.
+- `kosmo-platform` and both backends read no files and are core libraries; they
+  have `#![forbid(unsafe_code)]` and are not pure core. `kosmo-testkit` reads
+  script files and is expected to be a boundary crate.
+- Clipboard, text input, lifecycle and memory pressure are not part of the first
+  release's interface. Adding a trait, a method or an event kind is a design
+  change.
+
+### Headless backend and scripts
+
+- The framework has exactly two backends, the headless backend
+  `kosmo-backend-headless` and the display server backend
+  `kosmo-backend-display`. They implement the same traits, `ResourceProvider`
+  included, implement `PlatformTestHooks` in test builds and pass the same
+  conformance suite. The framework has no host window backend.
+- The headless backend has no threads and never blocks. `wait` returns `Events`
+  when events are due, otherwise `Deadline` when the deadline has been reached,
+  otherwise `Idle`.
+- Its clock and input come only from the driver: in tests through `advance_to`
+  and `inject`, otherwise through inherent methods with the same meaning. The
+  backend never advances its clock.
+- `present` records the buffer and the update regions and gives the buffer back
+  at once, so the next wait returns `Released`. The backend keeps the tree that
+  `AccessibilitySink` receives, and `ResourceProvider` returns the resource
+  table given at construction. Once the main surface exists, the backend queues
+  `Configure` and `FocusIn`, so a script of key presses needs no focus line.
+- The headless frontend is the script runner of `kosmo-testkit` (layer F0) with
+  the headless backend. The runner reads scripts of delivered key events and
+  applies them line by line, advancing the framework round by round through the
+  single-round entry; the backend receives only the events injected into it. At
+  each checkpoint the runner runs the framework until it is idle: the backend
+  returns `Idle`, and every job report that the test's release plan has let
+  through has been delivered. It then writes three records, the view model
+  record, the display lists and the pixel digests, in a fixed order with ordered
+  containers, so two runs of one script write byte-identical records.
+- The runner is generic over `PlatformTestHooks` and a driver trait.
+  `kosmo-testkit` also provides call probes, so it obtains records and display
+  lists only through the driver trait and does not depend on `kosmo-render`, and
+  `kosmo-platform` has no probes. The same-layer dependency of `kosmo-testkit`
+  on `kosmo-platform` is listed in the layout table when the crate is created.
+  Tests never sleep or read the wall clock.
+
+Besides key lines, which follow the [event record](#time-decoding-and-scripts),
+a script has these lines; the text format is fixed with the runner:
+
+- a header with the format version and the size and pixel format of the main
+  surface;
+- time lines, which advance the virtual clock and only increase it, as the time
+  of a key line also does;
+- focus lines, only in scripts run through the framework alone;
+- checkpoint lines, which run the framework until it is idle and write the three
+  records.
+
+Scripts hold input only:
+
+- Platform failures are injected through `inject_fault`, never written in
+  scripts.
+- The order in which jobs complete is not written in scripts. A test gives the
+  controllable job-layer backend a release plan as part of the same test code,
+  keyed only on what the client sees: the submission order of jobs, the
+  positions of gates and their release conditions, which are another job
+  reaching its terminal state or the n-th key event of the event handling record
+  being handled, but never virtual time. A script run through both the headless
+  framework and the headless display server therefore uses the same plan in both
+  runs.
+- The key lines of a script run through both are presses and releases only,
+  without repeats or long presses; such a script may also hold time and
+  checkpoint lines, which the runner on the display server side must interpret
+  too.
+  A script run through the framework alone may write repeat lines.
+- A key line of a script run through the framework alone may state the outer
+  focus stamp, a part of the framework's format that does not change `KeyEvent`,
+  and `inject` accepts events with any stamp. A test that input of an earlier
+  focus generation never reaches a new view thus leaves focus, enters again with
+  a new generation and then delivers a key with the old one.
+
+### Display server backend
+
+- `kosmo-backend-display` implements the platform interface through the client
+  library `kosmo-client` (layer F0) and the client transport port, and is
+  generic over the transport. It is single-threaded: `wait` calls the
+  transport's wait with the same deadline, so the client transport port must
+  provide a wait with a deadline.
+- In the first release it covers one session with its main surface; submission
+  with update regions, writing a buffer again only after its release; key events
+  with their focus stamps; events of an earlier epoch, which `kosmo-client`
+  drops; and disconnection, after which it returns `Disconnected` without
+  panicking. Its `Clock` returns the injected clock, and `ResourceProvider` the
+  resource table given at construction.
+- In production builds `AccessibilitySink` counts updates and drops them; only
+  test builds keep the tree and implement `PlatformTestHooks` through an
+  in-process channel.
+- It may depend on the provisional protocol crate and on `kosmo-client`, never
+  on the server crates of `display/`.
+- Reconnection, frame events, clipboard, pop-ups, lifecycle and a transport on
+  krepi are not part of the first release. The path of the shell extension's
+  events is defined with the display protocol and the shell.
+
+### Accessibility
+
+- Controls produce AccessKit nodes in the accessibility pass, and `kosmo-ui`
+  builds one tree per surface, without a schema of its own. Node identifiers are
+  derived deterministically from control identities, one to one, and are never
+  reused. Bounding boxes are converted exactly from the [numeric
+  representation](#numeric-representation) to floating point.
+- `kosmo-platform` is the only crate that depends on AccessKit directly, and it
+  re-exports AccessKit; other crates use the same version through the re-export.
+- After the accessibility pass and before presentation, `run` pushes one
+  AccessKit `TreeUpdate` through `AccessibilitySink` for each surface that
+  changed. The first update holds the whole tree, and focus changes come with
+  the updates. The framework pushes only updates; only the platform side keeps
+  the whole tree.
+- The number of nodes per surface is bounded; an update beyond it returns
+  `Exhausted` and leaves the tree unchanged.
+- In the first release every control has a role and a name. The tree is built
+  but connected to no assistive technology of the system, and there are no
+  action requests.
+- Test queries are in `kosmo-testkit`. A test reads the tree that the backend
+  kept through `a11y_tree(surface)` and queries it by role and name; no match
+  and more than one match are distinct failures. Tests thus query the tree that
+  the platform received.
+
+## Rendering, text and determinism
+
+These rules make the same input give byte-identical display lists and pixels on
+every host. Drawing produces display lists; `kosmo-render` rasterizes them on
+the CPU, and `kosmo-text` shapes text and lays it out. Both crates are in layer
+F0 and are core libraries.
+
+### Renderer interface
+
+- The renderer interface is a trait of `kosmo-render`, provisionally
+  `Rasterizer`. The raster library is one implementation of it, and no type of
+  the library appears in the shared types crate, the platform interface or
+  display lists.
+- One call draws one frame from a display list, the update region, read-only
+  glyph coverage and images into a target that holds the previous frame, and
+  writes only inside the update region. A second entry fills an outline into an
+  8-bit coverage mask. `render` returns a deterministic work count, and both
+  entries return a distinct error: a limit exceeded, an unsupported command or
+  a missing glyph.
+
+```rust
+pub trait Rasterizer {
+    fn render(&mut self, list: &DisplayList, damage: &Damage,
+              glyphs: &dyn GlyphCoverage, images: &ImageStore,
+              target: &mut RenderTarget) -> Result<WorkCount, RenderError>;
+    fn fill_coverage(&mut self, outline: &Path, out: &mut CoverageMask)
+        -> Result<(), RenderError>;
+}
+```
+
+- The interface's documentation states in one place the pixel semantics of each
+  command, the order of clipping and transformation, and how drawing is clipped
+  to the update region. The raster library and a per-pixel reference
+  implementation implement the trait, and tests are generic over it: with the
+  raster library, redrawing only the update region must give the same bytes as
+  redrawing the whole frame, and fixed scenes must give the same pixels with
+  both implementations. The reference implementation supports only the commands
+  that those scenes use and reports the others as unsupported.
+- Glyph commands carry only the font, the size, the glyph identifier and a
+  position in the [numeric representation](#numeric-representation); display
+  lists hold no bitmaps. The glyph cache of `kosmo-text` holds coverage masks,
+  filled through `fill_coverage` by the same library that draws shapes and
+  prepared before drawing; a glyph missing at drawing time is an error. The
+  trait through which the renderer reads coverage, provisionally
+  `GlyphCoverage`, is defined in `kosmo-render` and implemented by `kosmo-text`;
+  this same-layer dependency is listed in the layout table when `kosmo-text` is
+  created.
+- Rasterization starts no threads and reads no clock and no file.
+- These rules assume rasterization on the CPU. If the rendering path on the
+  device does not rasterize on the CPU, the renderer interface, the raster
+  library and the pixel formats are reconsidered, together with whether display
+  lists can be serialized to the display server.
+
+### Raster library
+
+- `kosmo-render` rasterizes with vello_cpu 0.4.0, on one thread, as the
+  implementation of the renderer interface. Its default features are off;
+  `u8_pipeline` and `libm` are on; `std`, `multithreading`, `png`, `text` and
+  `f32_pipeline` stay off.
+- Without `text`, vello_cpu reads no fonts. Glyph outlines come from skrifa, and
+  vello_cpu fills their coverage through `fill_coverage`, as it draws shapes.
+- Partial redraws use the library's default drawing, with which redrawing only
+  the update region gives the same bytes as redrawing the whole frame.
+- The SIMD level is given explicitly through vello_cpu's `RenderSettings` as
+  Neon, the baseline common to the target platforms, instead of the default,
+  which detects the level at run time. Conversion between pixel formats does not
+  use library functions that detect the level themselves; the shared [conversion
+  function](#pixel-formats-and-buffers) converts.
+- vello_cpu's sizes are `u16`, so a buffer is at most 65,535 pixels wide and
+  high, and the buffer limit of `kosmo-render` lies within that.
+- guillotiere 0.7.0, a dependency of vello_cpu that cannot be turned off, states
+  its license as `MIT/Apache-2.0`, which is not a valid SPDX expression. The
+  planned dependency step reads it as `MIT OR Apache-2.0` or lists it as an
+  exception with its reason.
+
+### Glyphs
+
+- Outlines are read only with skrifa. Coverage is 8-bit grayscale by area, with
+  the nonzero winding rule. There is no LCD subpixel rendering, because product
+  screens may rotate, their subpixel order is unknown and it would break
+  determinism; there is no gamma correction and no emboldening.
+- Glyphs are not hinted, and the hinting instructions of fonts never run.
+  Advances do not depend on outlines, and layout never reads outlines.
+- Vertically a glyph has one position: the baseline is rounded to a whole pixel.
+  Horizontally it has four offset steps, 0, $1/4$, $1/2$ and $3/4$ of a pixel.
+  The origin `x` of a glyph, an integer in the numeric representation, is
+  rounded to the nearest quarter pixel as `q = (x + 8) >> 4` with an arithmetic
+  shift; the whole pixel is `q >> 2` and the step `q & 3`.
+- The key of the coverage cache is the digest of the font asset, the glyph
+  identifier, the size in the numeric representation and the horizontal step,
+  and the cache's capacity counts each step separately.
+- The size reaches skrifa in the numeric representation, so the pixels per em,
+  the size divided by 64, is an exact binary fraction. TrueType outlines are
+  already in units of $1/64$ pixel after scaling and enter without loss; CFF
+  outlines would be rounded once by the [rounding
+  rule](#numeric-representation). Both bundled fonts are TrueType.
+
+### Text stack
+
+- `kosmo-text` uses parley 0.13.0 for shaping, through harfrust, for line
+  breaking and paragraph layout, through parley_engine, and for hit testing and
+  caret geometry. fontique registers only the bytes of the two fonts obtained
+  through `ResourceProvider`.
+- parley's default features are off, so its system font back end `system` is not
+  built; `libm` is on; `std` and `complex-scripts` stay off. With `std`,
+  fontique would bring in memmap2, which uses `libc` on Unix, and code that
+  opens font files by path. Without it, the library's floating-point functions
+  come from core_maths and the same `libm` as kosmo's [wrapper
+  module](#transcendental-functions).
+- `kosmo-text` reads outlines through skrifa 0.49.0, the version that
+  parley_engine uses, as a direct dependency.
+- parley lays text out in `f32`. At the exit of `kosmo-text` positions are
+  rounded once into the numeric representation, which is the only one used
+  afterwards, and parley's `quantize` option is off.
+- The first release has no font fallback and no bidirectional text; the
+  paragraph direction is left to right.
+
+### Fonts
+
+- kosmo bundles two unmodified OFL-1.1 fonts, without subsetting, in the asset
+  directory of `kosmo-text`: Fira Sans, the proportional interface font for
+  labels, results and the status area, and Fira Mono, the monospaced font for
+  the optional style of the one-line input and for aligned columns of numbers.
+  There is no CJK font, and a math font comes with two-dimensional typesetting.
+- The files are the static Regular styles `FiraSans-Regular.ttf`, version 4.203,
+  and `FiraMono-Regular.ttf`, version 3.206, from the google/fonts repository at
+  commit `29b4ec6`. The planned asset manifest of `kosmo-text` records their
+  SHA-256 digests. Variable fonts are not used, because taking an instance
+  rewrites the file.
+- Without fallback, each font covers every character of its role; the character
+  set is fixed with `kosmo-text`. Fira Sans has no `□` (U+25A1), so the
+  formula editing control draws a hole as a rectangle and no interface string
+  contains `□`. Fira Mono has no `∆` (U+2206) and no `⋅` (U+22C5), and
+  monospaced interface strings do not use them.
+
+Fonts are loaded through the platform interface:
+
+- `ResourceProvider::resource` returns the bytes of a resource. `ResourceId` is
+  a kosmo value type; in the first release it names one of the two fonts by its
+  file name in the asset manifest.
+- Before the first round, `run` and the single-round entry obtain both fonts and
+  hand them to the font set constructor of `kosmo-text`. `kosmo-text` accepts
+  only bytes, does not depend on `kosmo-platform`, holds no platform handle and
+  stays a core library.
+- Each backend gets its resource table, from identifiers to bytes, from whoever
+  builds it, and reads no files. The builder, a driver or the application's
+  assembly, takes the bytes from the asset directory, with `include_bytes!`
+  inside its workspace or by reading the files in a boundary crate; the expected
+  digests are those of the asset manifest.
+- A resource missing from the table, or injected as missing through
+  `inject_fault`, gives `NotFound` and changes nothing. If `run` meets one at
+  start-up, it calls `shutdown` and returns a distinct exit status. The
+  conformance suite checks that `ResourceProvider` returns the bytes given at
+  construction.
+- Mapping fonts from a read-only system image on the device later does not
+  change this interface.
+
+### Pixel formats and buffers
+
+`PixelFormat` and `BufferDesc` are in the shared types crate `kosmo-types`
+(layer D0), which the display server's compositing and the framework's rendering
+share. Both are fixed-size `Copy` types that never allocate. `PixelFormat` has
+exactly four variants and is `#[non_exhaustive]`; adding or removing a variant
+is a design change.
+
+| Format | Layout |
+| --- | --- |
+| `Rgba8Premul` | Bytes R, G, B, A in memory order, with color premultiplied by alpha; the format that the raster library draws |
+| `Xrgb8888` | A little-endian 32-bit word with X, R, G and B from the high bits to the low bits, so bytes B, G, R, X in memory; X is always `0xFF` |
+| `Argb8888Premul` | A little-endian 32-bit word with A, R, G and B from the high bits to the low bits, so bytes B, G, R, A in memory, with color premultiplied by alpha; reserved for ARGB hardware planes, and used only by conversion in the first release |
+| `Rgb565` | A little-endian 16-bit word with R in bits 15 to 11, G in bits 10 to 5 and B in bits 4 to 0 |
+
+- Packed formats are named as DRM fourcc codes are, by their components from the
+  high bits to the low bits of a little-endian word; formats whose names end in
+  `8` are named in memory byte order. The layout does not depend on the host's
+  byte order. Colors are sRGB-encoded values.
+- `BufferDesc { width: u32, height: u32, stride: u32, format: PixelFormat }`
+  gives `stride` in bytes. The first byte of pixel $(x, y)$ is at
+  `y * stride + x * bpp`, and row 0 is at the top. Construction checks that the
+  width and the height are at least 1, that `stride` is at least `width * bpp`,
+  and that `stride * height` neither overflows `u32` nor exceeds the buffer
+  limit of `kosmo-render`. Rotation is not part of the description.
+- `kosmo-render` keeps the previous frame as a tightly packed `Rgba8Premul`
+  buffer and, before presentation, converts each damage rectangle into the
+  target buffer. Repainting by buffer age for double buffering is done on the
+  presenting side, which can convert any rectangle again.
+
+`kosmo-types` provides one conversion function, from a source description, its
+bytes and a source rectangle into a target, that never allocates. The display
+server and `kosmo-render` share it and its test vectors. It covers the 12
+ordered pairs of different formats, copies rows within one format, never dithers
+and uses integer arithmetic only:
+
+- between the two premultiplied formats it only reorders bytes;
+- from a premultiplied to an opaque format it takes the premultiplied components
+  as they are;
+- from an opaque to a premultiplied format it sets alpha to 255;
+- an 8-bit component `c` becomes 5 bits as `(c * 31 + 127) / 255` and 6 bits as
+  `(c * 63 + 127) / 255`;
+- a 5-bit or 6-bit component `v` becomes 8 bits as `(v * 255 + m / 2) / m`,
+  where `m` is 31 or 63.
+
+### Numeric representation
+
+- Layout coordinates, layout, text positions and sizes and the geometry of
+  display lists use one fixed-point type, provisionally `Fx`: an `i32` in units
+  of $1/64$ pixel, the 26.6 format. It is in the shared types crate, written in
+  kosmo without dependencies, and the layout queries of the editing structure
+  use it too.
+- Multiplication and division go through `i64` intermediate values. Rounding
+  goes only through one function of the shared types crate: to the nearest
+  value, with ties toward positive infinity, that is $\lfloor v + 1/2 \rfloor$;
+  to whole pixels it is `(x + 32) >> 6`. From an `f32`, the function first takes
+  the floor and then compares the exact fraction with $1/2$, using only
+  operations that the [transcendental functions](#transcendental-functions)
+  rules allow.
+- Layout inputs (constraints, content sizes and scroll offsets) have absolute
+  values of at most $2^{18}$ pixels, that is $2^{24}$ units, and larger ones are
+  rejected at entry. Fixed-point arithmetic checks overflow; a value out of
+  range makes the whole layout or drawing return a distinct error and never
+  panics.
+- Fixed-point values meet external libraries only at these points. Into the
+  raster library, `v as f32 / 64.0` is exact up to $2^{24}$ units, and
+  conversion to `f64`, the type of vello_cpu's coordinates, is always exact; the
+  buffer limit of `kosmo-render` stays within that range. Glyph outlines enter
+  as [glyphs](#glyphs) describes. parley's `f32` positions are multiplied by 64,
+  which is exact, and rounded once by the rule above; widths passed to parley
+  are converted to `f32` exactly. Accessibility bounding boxes are converted
+  exactly.
+- Floating point inside dependencies is examined when a library is chosen,
+  because a check of kosmo's code cannot reach it.
+- Layout trees and display lists are written out as integers of this
+  representation, so golden display lists record exactly the numbers handed to
+  the rasterizer.
+
+### Transcendental functions
+
+- The deterministic path is kosmo code that writes layout coordinates, layout
+  trees, display lists, glyph positions, coverage or pixels. In the first
+  release it is every target (`src/`, tests and examples) of `kosmo-types`,
+  `kosmo-ui`, `kosmo-render`, `kosmo-text`, `kosmo-controls` and
+  `kosmo-math-controls`; a later crate is judged by the same definition. Whether
+  `display/` belongs to it is decided with the display server.
+- On the deterministic path, transcendental functions are called only through
+  one wrapper module, provisionally `det_math` in `kosmo-render`, which calls
+  `libm` 0.2.16, pinned exactly. Its functions have only `f32` and `f64`
+  signatures, each forwards to `libm` without an approximation of its own, and
+  each has a unit test. A table may instead be generated offline as constants,
+  with the command that generates it written beside it.
+- `libm`'s `arch` feature, which dependencies enable through its default
+  features, replaces only `fma`, `fmaf`, `rint`, `rintf`, `sqrt` and `sqrtf`
+  with hardware instructions on AArch64. All six are correctly rounded, so the
+  results are the same with and without it.
+- Other code on the deterministic path uses only the basic floating-point
+  operations `+`, `-`, `*`, `/` and `%`, `sqrt`, `mul_add`, and operations whose
+  result is fully determined: `floor`, `ceil`, `round`, `round_ties_even`,
+  `trunc`, `abs`, `signum`, `copysign`, comparisons, `div_euclid`, `rem_euclid`
+  and `as` conversions. Minimum, maximum and clamping are written with explicit
+  comparisons or on integers.
+
+A planned check enforces these rules on the deterministic path. It rejects:
+
+- a direct call to `libm`, `core_maths` or a similar crate outside the wrapper
+  module; only `kosmo-render` depends on `libm` directly;
+- an `f32` or `f64` method whose documentation has an "Unspecified precision"
+  section. In toolchain 1.99.0 these are the 29 stable methods `powi`, `powf`,
+  `exp`, `exp2`, `ln`, `log`, `log2`, `log10`, `abs_sub`, `cbrt`, `hypot`,
+  `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sin_cos`, `exp_m1`,
+  `ln_1p`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh` and `atanh` of `std` and
+  `to_degrees` and `to_radians` of `core`, and the unstable `gamma`, `ln_gamma`,
+  `erf` and `erfc`. `sqrt` and `mul_add` are correctly rounded and not listed;
+- `algebraic_add`, `algebraic_sub`, `algebraic_mul`, `algebraic_div` and
+  `algebraic_rem`, whose results are not deterministic;
+- floating-point `min`, `max` and `clamp`, which may return either of two inputs
+  that compare equal, such as `+0.0` and `-0.0`, while the sign of zero reaches
+  the byte-exact output.
+
+The check reports method calls, path calls and function pointers by the resolved
+receiver type, so a method of the same name on a kosmo type is not reported.
+Expected values in tests are written as constants. The check cannot be turned
+off at a single place in the source, except in the wrapper module. Its list of
+methods is generated from the toolchain's documentation and generated again when
+the toolchain is upgraded. `no_std` does not replace the check: `core` already
+has `to_degrees`, the `algebraic_*` methods, `min` and `max`, and its
+floating-point math will become inherent methods.
+
+The raster library and the text stack are built without `std` and with `libm`,
+so the transcendental functions inside them come from the same `libm` 0.2.16 as
+kosmo's wrapper module, in one version. With `std` they would call the host's
+math library, which differs between macOS, glibc and newlib, the C library on
+krepi, and reaches the pixels: kurbo, for example, computes round stroke joins
+with `atan2`. When both `std` and `libm` are enabled, `std` takes precedence, so
+one package of the workspace that enables `std` for these libraries switches
+them back. The feature table of the allowed dependencies and a check of the
+resolved features reject that. A library that cannot be built without `std` is a
+design change and is listed with the external dependencies.
+
+### Determinism rules
+
+Besides the rules above:
+
+- **SIMD and code generation.** The SIMD level of the pixel and text paths
+  depends only on the compilation target, never on detection at run time; the
+  raster library gets the level explicitly. Paths in dependencies that branch on
+  target features other than `neon` are listed for each library when it is
+  chosen. Builds add neither `-C target-cpu` nor `-C target-feature`. rustc by
+  default neither contracts a multiplication and an addition into a fused
+  multiply-add nor reorders additions.
+- **Hash containers.** kosmo code on the deterministic path uses ordered
+  containers, never `std::collections::HashMap`, `HashSet` or
+  `std::hash::RandomState`, also through re-exports. Hash containers inside
+  dependencies, whose seeds change from run to run, are covered by comparing
+  golden digests across separate processes.
+- **Threads.** The deterministic path starts no threads, and the libraries'
+  threading features stay off; no package of the rayon or crossbeam families is
+  allowed. Multithreaded rasterization is added only after showing that merging
+  tiles does not depend on the number of threads.
+- **Color.** Colors are 8-bit sRGB-encoded constants without color management.
+  Compositing works on sRGB-encoded premultiplied values with the raster
+  library's `u8_pipeline`. RGB565 is produced only when a buffer is submitted,
+  by the conversion function, without dithering.
+- **Font sources.** Fonts come only from the asset directory of `kosmo-text`
+  through `ResourceProvider`, and system font discovery is off; the feature
+  table rejects it.
+- **Environment.** Output depends only on input. Nothing reads the locale or
+  environment variables, line-breaking data is compiled in, options are
+  constants, and records contain no wall-clock time.
+- **Caches.** Each cache counts its own entries and bytes, each entry knowing
+  its size, without the global allocator's statistics, and is bounded. Dropping
+  a cache that can be rebuilt and rebuilding it gives byte-identical pixels.
+- **Finite values.** Layout trees, display lists and their serialization contain
+  no NaN and no infinity, which are rejected at entry; the sign of a NaN is not
+  deterministic.
+- **Digests.** Pixel goldens come only from the CPU rasterizer. Pixels are
+  compared by the SHA-256 of the buffer description and the raw bytes, without
+  image encoding.
+- **Pinning.** The toolchain and the chosen libraries are pinned exactly. Each
+  upgrade is a pull request of its own, which updates the goldens by category,
+  and the list of forbidden methods is generated again with a toolchain upgrade.
+- **Authority.** Pixel goldens have zero tolerance, and the check on
+  GitHub-hosted runners is authoritative. The digests of a local run are
+  compared with those of CI one by one, and a difference between hosts is a
+  failure.
+
+### External dependencies
+
+The libraries chosen above enter as these direct external dependencies, which
+the layout table will list for their crates:
+
+| Package | Version | Default features | Enabled features | Kept off | Crate |
+| --- | --- | --- | --- | --- | --- |
+| `vello_cpu` | `=0.4.0` | Off | `u8_pipeline`, `libm` | `std`, `multithreading`, `png`, `text`, `f32_pipeline` | `kosmo-render` |
+| `parley` | `=0.13.0` | Off | `libm` | `std`, `system`, `complex-scripts` | `kosmo-text` |
+| `skrifa` | `=0.49.0` | Off | `libm` | `std`, `autohint_shaping` | `kosmo-text` |
+| `accesskit` | `=0.25.2` | Off; it has none | None | `serde`, `schemars`, `pyo3`, `enumn` | `kosmo-platform` |
+| `libm` | `=0.2.16` | Off | None; `arch` and `default` after resolution, because other packages use `libm` with its default features | None | `kosmo-render` |
+
+- Each row is one direct dependency of one crate; a package that two crates
+  depend on takes two rows.
+- Changing the version or the features of a listed package is a pull request of
+  its own, checked by the dependency step and with the goldens updated by
+  category. Adding or replacing a package is a design change.
 
 ## Frontends of the first release
 
