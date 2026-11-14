@@ -119,6 +119,24 @@ fn this_repository_passes() {
     ] {
         assert_eq!(fact(key), Some(value), "{key}");
     }
+    // The time of each `cargo metadata` command, in the order they ran.
+    let timed: Vec<&str> = facts
+        .iter()
+        .filter(|(key, _)| key.ends_with("_ms"))
+        .map(|(key, value)| {
+            assert!(value.parse::<u64>().is_ok(), "{key} = {value}");
+            key.as_str()
+        })
+        .collect();
+    assert_eq!(
+        timed,
+        [
+            format!("xtask_{LINUX}_ms"),
+            format!("xtask_{DARWIN}_ms"),
+            format!("desktop_{LINUX}_ms"),
+            format!("desktop_{DARWIN}_ms"),
+        ]
+    );
 }
 
 // The eight cases below and the platform case after them are the main
@@ -648,6 +666,28 @@ fn rejects_a_package_without_a_checksum() {
 }
 
 #[test]
+fn reads_the_checksum_of_each_version_from_the_tracked_lock_file() {
+    let found = problems_with(|model| model.untracked_locks.push("framework".to_string()));
+    assert_eq!(
+        found,
+        ["framework/Cargo.lock: missing; the deps step reads the checksums from it"]
+    );
+    let found = problems_with(|model| {
+        model.files.insert(
+            "framework/Cargo.lock".to_string(),
+            "[[package]\n".to_string(),
+        );
+    });
+    assert_problems(&found, &["framework/Cargo.lock: not valid TOML: "]);
+    let mut model = with_duplicate_reasons(two_versions_of_bar());
+    model.pkg("framework", "bar@1.4.0").checksum = false;
+    assert_eq!(
+        model.problems(),
+        ["framework/Cargo.lock: bar 1.4.0 has no checksum"]
+    );
+}
+
+#[test]
 fn checks_the_directions_of_the_resolved_graph_for_each_target() {
     for kind in [None, Some("build")] {
         let found = problems_with(|model| {
@@ -778,6 +818,37 @@ fn several_versions_need_a_duplicate_reason_on_each_entry() {
             "framework/allowlist.toml: bar 2.1.0 has a duplicate reason, but the workspace resolves only one version of bar"
         ]
     );
+}
+
+/// `model` with the duplicate reason `reason` on the allowlist entries of
+/// both versions of `bar`, as [`two_versions_of_bar`] adds them.
+fn with_duplicate_reason(mut model: Model, reason: &str) -> Model {
+    for version in ["1.4.0", "2.1.0"] {
+        model.edit(
+            "framework/allowlist.toml",
+            &format!("name = \"bar\"\nversion = \"{version}\"\n"),
+            &format!("name = \"bar\"\nversion = \"{version}\"\nduplicate = {reason:?}\n"),
+        );
+    }
+    model
+}
+
+/// `model` with a duplicate reason on both versions of `bar`.
+fn with_duplicate_reasons(model: Model) -> Model {
+    with_duplicate_reason(model, "baz has not moved to bar 2 yet")
+}
+
+#[test]
+fn a_duplicate_reason_is_not_blank() {
+    for blank in ["", " \n"] {
+        assert_eq!(
+            with_duplicate_reason(two_versions_of_bar(), blank).problems(),
+            [
+                "framework/allowlist.toml: bar 1.4.0: the duplicate reason is empty",
+                "framework/allowlist.toml: bar 2.1.0: the duplicate reason is empty",
+            ]
+        );
+    }
 }
 
 #[test]
@@ -1030,6 +1101,171 @@ fn allow_entries_state_the_kind_the_target_and_whether_optional() {
 }
 
 #[test]
+fn declarations_of_one_package_match_their_allow_entries_by_kind_and_target() {
+    // `kosmo-render` also declares `foo` as a dev dependency, with the
+    // default features and `y`.
+    let mut model = fixture::valid();
+    model
+        .pkg("framework", "kosmo-render@0.1.0-dev.1")
+        .deps
+        .push(
+            Dep::new("foo@1.0.0", "=1.0.0")
+                .kind("dev")
+                .features(true, &["y"]),
+        );
+    model.pkg("framework", "foo@1.0.0").features =
+        ["default", "x", "y"].map(str::to_string).to_vec();
+    model.edit(
+        "layout.toml",
+        "resolved-features = [\"x\"]",
+        "resolved-features = [\"default\", \"x\", \"y\"]",
+    );
+    model.append(
+        "layout.toml",
+        &allow(
+            "kosmo-render",
+            "foo",
+            "=1.0.0",
+            "kind = \"dev\"\ndefault-features = true\nfeatures = [\"y\"]\nresolved-features = [\"default\", \"x\", \"y\"]\n",
+        ),
+    );
+    model.edit(
+        "framework/allowlist.toml",
+        "features = [\"x\"]",
+        "features = [\"default\", \"x\", \"y\"]",
+    );
+    assert_eq!(model.problems(), Vec::<String>::new());
+    // `kosmo-render` also declares `foo` under a target condition, with `y`.
+    let mut model = fixture::valid();
+    model
+        .pkg("framework", "kosmo-render@0.1.0-dev.1")
+        .deps
+        .push(
+            Dep::new("foo@1.0.0", "=1.0.0")
+                .features(false, &["y"])
+                .cfg("cfg(target_os = \"macos\")", &[DARWIN]),
+        );
+    model
+        .pkg("framework", "foo@1.0.0")
+        .features_on
+        .insert(DARWIN, vec!["y".to_string()]);
+    model.edit(
+        "layout.toml",
+        "resolved-features = [\"x\"]",
+        "resolved-features = [\"x\", \"y\"]",
+    );
+    model.append(
+        "layout.toml",
+        &allow(
+            "kosmo-render",
+            "foo",
+            "=1.0.0",
+            "target = \"cfg(target_os = \\\"macos\\\")\"\ndefault-features = false\nfeatures = [\"y\"]\nresolved-features = [\"x\", \"y\"]\n",
+        ),
+    );
+    model.edit(
+        "framework/allowlist.toml",
+        "features = [\"x\"]",
+        "features = [\"x\", \"y\"]",
+    );
+    assert_eq!(model.problems(), Vec::<String>::new());
+}
+
+#[test]
+fn an_allow_entry_is_listed_once_with_sorted_resolved_features() {
+    let found = problems_with(|model| model.append("layout.toml", FOO_ALLOWED));
+    assert_eq!(found, ["layout.toml: crates.kosmo-render: lists foo twice"]);
+    let found = problems_with(|model| {
+        model.pkg("framework", "foo@1.0.0").features = vec!["x".to_string(), "y".to_string()];
+        model.edit(
+            "layout.toml",
+            "resolved-features = [\"x\"]",
+            "resolved-features = [\"y\", \"x\"]",
+        );
+        model.edit(
+            "framework/allowlist.toml",
+            "features = [\"x\"]",
+            "features = [\"x\", \"y\"]",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "layout.toml: crates.kosmo-render: foo: the resolved features of the allow entry are not sorted or repeat"
+        ]
+    );
+}
+
+#[test]
+fn two_declarations_without_entries_are_not_paired_with_one_entry() {
+    // `foo` is a normal and a dev dependency of `kosmo-render`, and its only
+    // allow entry is for a build dependency: neither declaration takes it.
+    let found = problems_with(|model| {
+        model
+            .pkg("framework", "kosmo-render@0.1.0-dev.1")
+            .deps
+            .push(Dep::new("foo@1.0.0", "=1.0.0").kind("dev"));
+        model.edit(
+            "layout.toml",
+            FOO_ALLOWED,
+            &FOO_ALLOWED.replace("default-features", "kind = \"build\"\ndefault-features"),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/kosmo-render/Cargo.toml: [dependencies] foo =1.0.0 has no allow entry in layout.toml",
+            "framework/kosmo-render/Cargo.toml: [dev-dependencies] foo =1.0.0 has no allow entry in layout.toml",
+            "layout.toml: crates.kosmo-render: allows foo =1.0.0 in [build-dependencies], which kosmo-render does not depend on for aarch64-unknown-linux-gnu or aarch64-apple-darwin",
+        ]
+    );
+}
+
+#[test]
+fn a_dependency_and_an_entry_of_other_names_are_not_paired() {
+    // `kosmo-render` depends on `baz` in place of `foo`, declared the same
+    // way, and the allowlist follows; the allow entry still names `foo`.
+    let found = problems_with(|model| {
+        model.pkg("framework", "foo@1.0.0").name = "baz".to_string();
+        model.pkg("framework", "kosmo-render@0.1.0-dev.1").deps[0].to = "baz@1.0.0".to_string();
+        model.edit(
+            "framework/allowlist.toml",
+            "name = \"foo\"",
+            "name = \"baz\"",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/kosmo-render/Cargo.toml: [dependencies] baz =1.0.0 has no allow entry in layout.toml",
+            "layout.toml: crates.kosmo-render: allows foo =1.0.0, which kosmo-render does not depend on for aarch64-unknown-linux-gnu or aarch64-apple-darwin",
+        ]
+    );
+}
+
+#[test]
+fn a_difference_names_the_target_table_of_a_normal_dependency() {
+    let found = problems_with(|model| {
+        let render = model.pkg("framework", "kosmo-render@0.1.0-dev.1");
+        render.deps[0] = render.deps[0].clone().cfg("cfg(unix)", &[LINUX, DARWIN]);
+        model.edit(
+            "layout.toml",
+            FOO_ALLOWED,
+            &FOO_ALLOWED.replace(
+                "version = \"=1.0.0\"\n",
+                "version = \"=1.0.1\"\ntarget = \"cfg(unix)\"\n",
+            ),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "layout.toml: crates.kosmo-render: foo in [target.'cfg(unix)'.dependencies]: the allow entry has =1.0.1, the manifest =1.0.0"
+        ]
+    );
+}
+
+#[test]
 fn an_allow_entry_states_its_default_features() {
     let mut model = fixture::valid();
     model.edit(
@@ -1121,6 +1357,27 @@ fn every_resolved_package_is_in_the_allowlist() {
 }
 
 #[test]
+fn the_printed_entries_keep_the_reasons_of_the_allowlist() {
+    let mut model = with_duplicate_reasons(two_versions_of_bar());
+    model.pkg("framework", "bar@1.4.0").license = Some("ISC".to_string());
+    let (report, _) = model.inspect();
+    assert_eq!(
+        report.problems,
+        ["framework/allowlist.toml: bar 1.4.0: the license is ISC, not MIT"]
+    );
+    let note = report
+        .notes
+        .iter()
+        .find(|note| note.contains("framework/allowlist.toml"))
+        .expect("the step prints the entry to replace");
+    let (_, replaced) = note.split_once("same name and version:\n\n").unwrap();
+    assert_eq!(
+        replaced,
+        "[[package]]\nname = \"bar\"\nversion = \"1.4.0\"\nsource = \"crates.io\"\nlicense = \"ISC\"\nbuild-script = false\nfeatures = []\ncrates = [\"kosmo-ui\"]\nduplicate = \"baz has not moved to bar 2 yet\"\n"
+    );
+}
+
+#[test]
 fn every_allowlist_entry_is_resolved_for_some_target() {
     let found = problems_with(|model| {
         model.append(
@@ -1209,6 +1466,46 @@ fn allowlist_entries_match_the_resolved_package() {
             "framework/allowlist.toml: bar 2.1.0: is reached from [kosmo-render, kosmo-ui], not [kosmo-render]"
         ]
     );
+    let found = problems_with(|model| model.pkg("framework", "bar@2.1.0").proc_macro = true);
+    assert_eq!(
+        found,
+        ["framework/allowlist.toml: bar 2.1.0: is a procedural-macro library"]
+    );
+    let found = problems_with(|model| {
+        model.edit(
+            "framework/allowlist.toml",
+            &bar,
+            &format!("{bar}proc-macro = true\n"),
+        );
+    });
+    assert_eq!(
+        found,
+        ["framework/allowlist.toml: bar 2.1.0: is not a procedural-macro library"]
+    );
+    // `links` is compared too; the exception keeps the build script of
+    // `foo-sys` from failing.
+    for (listed, expected) in [("links = \"y\"\n", "z, not y"), ("", "z, not (none)")] {
+        let found = problems_with(|model| {
+            model.add("framework", Pkg::crates_io("foo-sys", "1.0.0").links("z"));
+            model
+                .pkg("framework", "foo@1.0.0")
+                .deps
+                .push(Dep::new("foo-sys@1.0.0", "^1"));
+            model.append(
+                "framework/allowlist.toml",
+                &format!(
+                    "{}{listed}links-exception = \"Reviewed: it links the system zlib.\"\n",
+                    with_build_script(&entry("foo-sys", "1.0.0", "MIT", &[], &["kosmo-render"]))
+                ),
+            );
+        });
+        assert_eq!(
+            found,
+            [format!(
+                "framework/allowlist.toml: foo-sys 1.0.0: links {expected}"
+            )]
+        );
+    }
 }
 
 #[test]
@@ -1465,6 +1762,59 @@ fn reports_the_numbers_of_each_workspace() {
 }
 
 #[test]
+fn counts_each_version_of_a_package_and_each_kind_of_an_internal_edge() {
+    let (report, facts) = with_duplicate_reasons(two_versions_of_bar()).inspect();
+    assert_eq!(report.problems, Vec::<String>::new());
+    assert!(
+        facts.contains(&("framework_crates_io".to_string(), "5".to_string())),
+        "{facts:?}"
+    );
+    let mut model = fixture::valid();
+    model
+        .pkg("framework", "kosmo-jobs@0.1.0-dev.1")
+        .deps
+        .push(Dep::new("kosmo-math-model@0.1.0-dev.1", "=0.1.0-dev.1").kind("dev"));
+    let (report, facts) = model.inspect();
+    assert_eq!(report.problems, Vec::<String>::new());
+    assert!(
+        facts.contains(&("framework_internal_edges".to_string(), "4".to_string())),
+        "{facts:?}"
+    );
+}
+
+#[test]
+fn the_same_version_in_two_workspaces_is_no_drift() {
+    let mut model = fixture::valid();
+    model.add(
+        "desktop",
+        Pkg::crates_io("bar", "2.1.0")
+            .license("MIT OR Apache-2.0")
+            .resolved(&["default"]),
+    );
+    model
+        .pkg("desktop", "kosmo@0.1.0-dev.1")
+        .deps
+        .push(Dep::new("bar@2.1.0", "=2.1.0"));
+    model.append("layout.toml", &allow("kosmo", "bar", "=2.1.0", PLAIN));
+    model.append(
+        "desktop/allowlist.toml",
+        &entry(
+            "bar",
+            "2.1.0",
+            "MIT OR Apache-2.0",
+            &["default"],
+            &["kosmo"],
+        ),
+    );
+    let (report, facts) = model.inspect();
+    assert_eq!(report.problems, Vec::<String>::new());
+    assert!(
+        facts.contains(&("drift".to_string(), "none".to_string())),
+        "{facts:?}"
+    );
+}
+
+#[test]
 fn reports_every_problem_sorted_by_path() {
     let mut model = two_versions_of_bar();
     model.add("framework", Pkg::path("/work/outside", "outside", "0.1.0"));
@@ -1576,19 +1926,21 @@ fn the_step_prints_its_notes_and_then_fails_with_every_problem() {
 fn the_printed_allow_entries_match_what_cargo_resolves() {
     let mut model = fixture::valid();
     model.edit("layout.toml", FOO_ALLOWED, "");
+    model.edit("layout.toml", QA_ALLOWED, "");
     let (report, _) = model.inspect();
-    assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
-    let note = report
-        .notes
-        .iter()
-        .find(|note| note.contains("allow entries of kosmo-render"))
-        .expect("the step prints the allow entries");
-    let (_, entries) = note.split_once("\n\n").unwrap();
-    assert!(
-        entries.starts_with("[[crates.kosmo-render.external]]\n"),
-        "{entries}"
-    );
-    model.append("layout.toml", &format!("\n{entries}"));
+    assert_eq!(report.problems.len(), 2, "{:?}", report.problems);
+    // Each entry is written as the layout table writes it: `kind` and
+    // `optional` only for a dependency that is not normal or is optional.
+    for (krate, allowed) in [("kosmo-render", FOO_ALLOWED), ("kosmo-ui", QA_ALLOWED)] {
+        let note = report
+            .notes
+            .iter()
+            .find(|note| note.contains(&format!("allow entries of {krate} ")))
+            .expect("the step prints the allow entries");
+        let (_, entries) = note.split_once("\n\n").unwrap();
+        assert_eq!(entries, allowed.trim_start());
+        model.append("layout.toml", &format!("\n{entries}"));
+    }
     assert_eq!(model.problems(), Vec::<String>::new());
 }
 

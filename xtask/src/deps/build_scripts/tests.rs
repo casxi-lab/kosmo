@@ -173,6 +173,12 @@ fn follows_the_build_dependencies_to_what_they_bring_in() {
                 .dep(Dep::new("cc@1.2.0", "^1.2")),
             &built("built", ""),
         );
+        // Without a build script, build dependencies build nothing.
+        add_to_foo(
+            model,
+            Pkg::crates_io("unbuilt", "1.0.0").dep(Dep::new("cc@1.2.0", "^1.2").kind("build")),
+            &entry("unbuilt", "1.0.0", "MIT", &[], &["kosmo-render"]),
+        );
     });
     assert_eq!(found, Vec::<String>::new());
 }

@@ -261,6 +261,8 @@ pub struct Pkg {
     pub license: Option<String>,
     pub license_file: Option<String>,
     pub build_script: bool,
+    /// Whether it is a procedural-macro library.
+    pub proc_macro: bool,
     pub links: Option<String>,
     /// Its resolved features on every target.
     pub features: Vec<String>,
@@ -280,6 +282,7 @@ impl Pkg {
             license: Some("MIT".to_string()),
             license_file: None,
             build_script: false,
+            proc_macro: false,
             links: None,
             features: Vec::new(),
             features_on: BTreeMap::new(),
@@ -411,7 +414,8 @@ impl Ws {
         let packages: Vec<Value> = reached
             .values()
             .map(|(pkg, _)| {
-                let mut targets = vec![json!({ "kind": ["lib"] })];
+                let library = if pkg.proc_macro { "proc-macro" } else { "lib" };
+                let mut targets = vec![json!({ "kind": [library] })];
                 if pkg.build_script {
                     targets.push(json!({ "kind": ["custom-build"] }));
                 }
@@ -524,6 +528,9 @@ pub struct Model {
     /// The files besides the lock files, which the workspaces give.
     pub files: BTreeMap<String, String>,
     pub workspaces: Vec<Ws>,
+    /// The directories of the workspaces whose `Cargo.lock` is not
+    /// tracked.
+    pub untracked_locks: Vec<String>,
 }
 
 /// The valid model, with crates in all three product workspaces.
@@ -591,7 +598,11 @@ pub fn valid() -> Model {
         ]
         .map(|(path, text)| (path.to_string(), text)),
     );
-    Model { files, workspaces }
+    Model {
+        files,
+        workspaces,
+        untracked_locks: Vec::new(),
+    }
 }
 
 /// The valid model in which only `desktop/` has a crate, the program
@@ -660,7 +671,11 @@ impl Model {
     /// The tracked files: those of the model and the lock files.
     pub fn tree(&self) -> Tree {
         let mut files = self.files.clone();
-        for ws in &self.workspaces {
+        for ws in self
+            .workspaces
+            .iter()
+            .filter(|ws| !self.untracked_locks.contains(&ws.dir))
+        {
             files
                 .entry(format!("{}/Cargo.lock", ws.dir))
                 .or_insert_with(|| ws.lock());
