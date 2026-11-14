@@ -24,7 +24,10 @@
 //!   table are exactly the `external` entries of the crate in the table;
 //! - allowlists: the crates.io packages are exactly the entries of the
 //!   workspace's allowlist, the file that `lock-allowlist` names, and a
-//!   package with several versions has a `duplicate` reason on each.
+//!   package with several versions has a `duplicate` reason on each;
+//! - licenses: every member has the license of a kosmo crate, and the
+//!   license expression of every crates.io package is in the allowed set or
+//!   has a license exception in the allowlist.
 //!
 //! It also reports, without failing, the versions of a package that differ
 //! between workspaces and four numbers of each workspace: its members, its
@@ -37,6 +40,7 @@ mod allowlist;
 mod direct;
 #[cfg(test)]
 pub mod fixture;
+mod license;
 mod metadata;
 #[cfg(test)]
 mod tests;
@@ -497,31 +501,37 @@ impl<'s> Scope<'s> {
         self.check_checksums(problems);
         self.check_directions(problems);
         direct::check(self, problems, notes);
-        let expected = self.expected_entries();
+        license::check_members(self, problems);
         let path = self.workspace.lock_allowlist;
-        let text = match self.tree.entry(path) {
-            None => Err(format!(
-                "{path}: missing; every workspace of the check has an allowlist, without entries when it has no crates.io package"
-            )),
-            Some(_) => self
-                .tree
-                .text(path)
-                .ok_or_else(|| format!("{path}: not a UTF-8 regular file")),
+        let Some(allowlist) = self.allowlist(problems) else {
+            return;
         };
-        match text {
-            Ok(text) => allowlist::check(
-                path,
-                &self.lock,
-                text,
-                expected,
-                self.workspace.targets,
-                problems,
-                notes,
-            ),
-            Err(problem) => {
-                problems.insert(problem);
-            }
+        allowlist::check(
+            path,
+            &self.lock,
+            &allowlist,
+            self.expected_entries(),
+            self.workspace.targets,
+            problems,
+            notes,
+        );
+        license::check_packages(self, &allowlist, problems);
+    }
+
+    /// The allowlist of the workspace, or why it cannot be read.
+    fn allowlist(&self, problems: &mut Problems) -> Option<allowlist::Allowlist> {
+        let path = self.workspace.lock_allowlist;
+        if self.tree.entry(path).is_none() {
+            problems.insert(format!(
+                "{path}: missing; every workspace of the check has an allowlist, without entries when it has no crates.io package"
+            ));
+            return None;
         }
+        let Some(text) = self.tree.text(path) else {
+            problems.insert(format!("{path}: not a UTF-8 regular file"));
+            return None;
+        };
+        allowlist::read(path, text, problems)
     }
 
     /// Every crates.io package has a checksum in `Cargo.lock`.

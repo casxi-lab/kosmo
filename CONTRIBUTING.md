@@ -304,7 +304,14 @@ although `Cargo.lock` records it. On the union of each workspace it checks:
   the workspace's allowlist, the file that its `lock-allowlist` names, with the
   fields below. A package that the workspace resolves in several versions,
   over all its targets together, has a `duplicate` reason on the entry of each
-  version, and only such a package has one.
+  version, and only such a package has one;
+- licenses: every member has the license of a kosmo crate, compared as
+  written: `MIT`, or `MIT AND OFL-1.1` when the crate has font assets, that is,
+  when a `.ttf`, `.otf`, `.ttc`, `.woff` or `.woff2` file, in any letter case,
+  is tracked in its directory outside the directories of other packages. The
+  license expression of every crates.io package is in the allowed set, or the
+  workspace's allowlist has a license exception for it, as
+  [licenses of dependencies](#licenses-of-dependencies) describes.
 
 The step reports every problem it finds, one per line as
 `<path>[:<line>]: <message>`, sorted by path and then by line number; the line
@@ -314,9 +321,12 @@ allow entries of a crate differ from what Cargo resolves, it also prints every
 `layout.toml`, or says that they all go. When an allowlist differs, it prints
 the entries to add, each replacing the entry with the same name and version if
 there is one, and the entries to remove. The printed entries keep the reasons
-of the entries they replace, and the other entries stay as they are. A
-workspace for which `cargo metadata` fails is reported with Cargo's message,
-indented on the lines that follow, and not checked further.
+of the entries they replace; the other entries and the license exceptions stay
+as they are. A workspace for which `cargo metadata` fails is reported with
+Cargo's message, indented on the lines that follow, and not checked further. An
+allowlist that is missing or cannot be read is reported, and neither its
+entries nor the licenses of the workspace's crates.io packages, whose
+exceptions it holds, are checked.
 
 It also reports, without failing, these facts of the receipt: `drift`, the
 crates.io packages whose versions differ between the workspaces, `xtask`
@@ -372,7 +382,59 @@ bring the package in: each member, or crate of `layout.toml` reached through a
 `path` dependency, from which a chain of crates.io packages alone leads to it;
 and `duplicate`, why the workspace resolves several versions of the package.
 Both lists are sorted. A workspace without crates.io packages has an allowlist
-without entries.
+without entries. The license exceptions of the workspace follow the entries.
+
+#### Licenses of dependencies
+
+The license expression of a crates.io package, its `license` as
+`cargo metadata` reports it, is parsed in the strict mode of the `spdx` crate
+at the version that `xtask/Cargo.toml` pins, 0.13.6, with the SPDX License List
+3.29.0 that it carries; the check has no parser of its own. The allowed set is
+`MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `Zlib` and
+`Unicode-3.0`.
+
+- In the allowed set: a term is in the set when it is one of these
+  identifiers, without `+` and without `WITH`. `A OR B` is in the set when one
+  of its operands is, and `A AND B` when both are. Parentheses group; without
+  them, `+` binds tighter than `WITH`, `WITH` than `AND`, and `AND` than `OR`,
+  so `A OR B AND C` reads as `A OR (B AND C)`. `and`, `or` and `with` in lower
+  case are the same operators. So `MIT OR Apache-2.0`,
+  `(MIT OR Apache-2.0) AND Unicode-3.0`, `Apache-2.0 OR GPL-3.0-only` and
+  `Apache-2.0 WITH LLVM-exception OR MIT` are in the set.
+- Valid, but outside the set: every other identifier of the list, a term with
+  `WITH` or `+`, such as `Apache-2.0 WITH LLVM-exception` or `Apache-2.0+`, and
+  `LicenseRef-`, `DocumentRef-` and `AdditionRef-` terms.
+- Not valid: identifiers in another letter case or spelling, such as `mit` or
+  `Apache 2.0`; deprecated identifiers, such as `GPL-2.0`; operators in mixed
+  case, such as `Or`; and the legacy form of crates.io with `/`, such as
+  `MIT/Apache-2.0`.
+
+A package whose expression is outside the set or not valid, or that has none
+(only a `license-file`, or neither), needs a license exception in the allowlist
+of each workspace that resolves it, for example:
+
+```toml
+[[license-exception]]
+name = "arraydeque"
+version = "0.5.1"
+license = "MIT/Apache-2.0"
+reading = "MIT OR Apache-2.0"
+reason = "The legacy form of crates.io for a choice of licenses, in which `/` reads as OR."
+```
+
+Its fields are `name` and `version`, as in the package's entry; `license`, the
+expression as written, left out for a package without one; `reading`, how the
+workspace reads the license, as an expression in the allowed set; and `reason`.
+The legacy form, an expression that is not valid as written but is once each
+`/` reads as `OR`, has a reading when that expression is in the allowed set,
+and the reading is that expression, with each `/` written as ` OR `. The two
+are compared after parsing: the letter case of the operators does not matter,
+nor do parentheses that leave the grouping as it is. Any other exception may
+leave the reading out. The step fails when an exception has no reason, records
+another expression than the package declares or has a reading that breaks these
+rules, when its package is not resolved for the workspace's targets, and when
+the package's expression is in the set. An exception holds for one version of
+one package in one workspace.
 
 #### Limits of the fetch and deps steps
 
@@ -388,9 +450,11 @@ The fetch and deps steps have limits:
   they can be more than a normal build turns on.
 - `cargo xtask` builds xtask before any step runs, so the build scripts and
   procedural macros of xtask's own dependencies run before the check reads
-  `xtask/allowlist.toml`.
-- The allowlists record the license expression of each package and whether
-  it has a build script, but the deps step does not evaluate them yet.
+  `xtask/allowlist.toml` and checks their licenses.
+- The license rules read only the `license` of each package, not its license
+  files.
+- The allowlists record whether each package has a build script, but the
+  deps step does not judge build scripts yet.
 - The checks find dependencies that were added by mistake. They cannot stop a
   build script, a procedural macro or configuration outside the repository
   that hides a change on purpose.

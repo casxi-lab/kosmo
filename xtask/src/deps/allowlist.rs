@@ -1,7 +1,8 @@
 //! The allowlist of a workspace: the file that its `lock-allowlist` names
 //! in the layout table. It has one `[[package]]` entry for every crates.io
 //! package that Cargo resolves for the workspace's targets, members
-//! excluded, and none for a package that only other platforms use.
+//! excluded, and none for a package that only other platforms use, and the
+//! `[[license-exception]]` entries of the workspace.
 
 use std::collections::btree_map::Entry as Slot;
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,10 +18,33 @@ pub const CRATES_IO: &str = "crates.io";
 
 /// An allowlist file.
 #[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Allowlist {
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Allowlist {
     #[serde(default)]
-    package: Vec<Entry>,
+    pub package: Vec<Entry>,
+    #[serde(default)]
+    pub license_exception: Vec<LicenseException>,
+}
+
+/// A package whose license expression the workspace accepts although it is
+/// not in the allowed set.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct LicenseException {
+    pub name: String,
+    pub version: String,
+    /// The license expression of the package's manifest, as written; left
+    /// out when it has none.
+    #[serde(default)]
+    pub license: Option<String>,
+    /// How the workspace reads the license, as an expression in the allowed
+    /// set; for the legacy form with `/`, the expression with `/` read as
+    /// `OR` when that is in the set, compared after parsing.
+    #[serde(default)]
+    pub reading: Option<String>,
+    /// Why the workspace accepts the license.
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 /// An allowed package.
@@ -73,25 +97,15 @@ fn or_none(value: Option<&str>) -> &str {
     value.unwrap_or("(none)")
 }
 
-/// Checks the allowlist at `path`, with the content `text`, against the
-/// entries that the resolution gives, by name and version. `lock` is the
-/// path of the workspace's `Cargo.lock`, and `targets` are its targets.
-/// When they differ, a note shows the entries to add, replace and remove.
-pub fn check(
-    path: &str,
-    lock: &str,
-    text: &str,
-    mut expected: BTreeMap<(String, String), Entry>,
-    targets: &[String],
-    problems: &mut Problems,
-    notes: &mut Vec<String>,
-) {
+/// Reads the allowlist at `path`, with the content `text`, or reports why
+/// it cannot be read.
+pub fn read(path: &str, text: &str, problems: &mut Problems) -> Option<Allowlist> {
     if let Err(error) = text.parse::<Table>() {
         problems.insert(format!("{path}: not valid TOML: {}", error.message()));
-        return;
+        return None;
     }
-    let allowlist: Allowlist = match toml::from_str(text) {
-        Ok(allowlist) => allowlist,
+    match toml::from_str(text) {
+        Ok(allowlist) => Some(allowlist),
         Err(error) => {
             problems.insert(match error.span() {
                 Some(span) => format!(
@@ -101,9 +115,24 @@ pub fn check(
                 ),
                 None => format!("{path}: {}", error.message()),
             });
-            return;
+            None
         }
-    };
+    }
+}
+
+/// Checks the packages of `allowlist`, the allowlist at `path`, against the
+/// entries that the resolution gives, by name and version. `lock` is the
+/// path of the workspace's `Cargo.lock`, and `targets` are its targets.
+/// When they differ, a note shows the entries to add, replace and remove.
+pub fn check(
+    path: &str,
+    lock: &str,
+    allowlist: &Allowlist,
+    mut expected: BTreeMap<(String, String), Entry>,
+    targets: &[String],
+    problems: &mut Problems,
+    notes: &mut Vec<String>,
+) {
     let mut entries: BTreeMap<(&str, &str), &Entry> = BTreeMap::new();
     // The packages of entries whose version is not a locked version: such an
     // entry is reported alone and stands for its package until it is fixed.

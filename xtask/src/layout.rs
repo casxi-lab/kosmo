@@ -743,11 +743,12 @@ fn validate_targets(key: &str, targets: &[String], problems: &mut Vec<String>) {
 
 /// Whether the last part of `path` is `Cargo.toml` in any letter case, as a
 /// case-insensitive file system reads it.
-fn is_manifest(path: &str) -> bool {
+pub fn is_manifest(path: &str) -> bool {
     file_name(path).eq_ignore_ascii_case("Cargo.toml")
 }
 
-fn file_name(path: &str) -> &str {
+/// The last part of `path`.
+pub fn file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 

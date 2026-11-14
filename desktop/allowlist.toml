@@ -1,7 +1,9 @@
 # The allowlist of the workspace desktop: one entry for each crates.io
 # package of desktop/Cargo.lock that `cargo metadata --filter-platform`
 # resolves for one of the targets of desktop in layout.toml, and none for a
-# package that only other platforms use. The workspace has no crates.io
-# package yet. The deps step of `cargo xtask check` compares the entries
-# with what Cargo resolves and, when they differ, prints the entries to
-# add, replace or remove. CONTRIBUTING.md describes the fields.
+# package that only other platforms use, followed by the license exceptions
+# of the workspace. The workspace has no crates.io package yet. The deps
+# step of `cargo xtask check` compares the entries with what Cargo resolves
+# and, when they differ, prints the entries to add, replace or remove; it
+# also checks the license of each package against the rules and the
+# exceptions. CONTRIBUTING.md describes the fields and the rules.

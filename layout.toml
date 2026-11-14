@@ -26,8 +26,9 @@
 # the fetch and deps steps resolve the dependencies of the workspace.
 # `lock-allowlist` names the allowlist of the workspace, which lies inside
 # it: the file that lists the crates.io packages of its Cargo.lock that
-# Cargo resolves for those targets. The deps step compares it, and the
-# `external` entries of each crate below, with what Cargo resolves.
+# Cargo resolves for those targets, and the license exceptions of the
+# workspace. The deps step compares it, and the `external` entries of each
+# crate below, with what Cargo resolves, and checks the licenses against it.
 
 [workspaces.display]
 path = "display"

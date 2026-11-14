@@ -14,7 +14,7 @@ use crate::check::OFFLINE;
 /// Asserts that `found` has one problem for each of `expected`, each
 /// containing its fragment.
 #[track_caller]
-fn assert_problems(found: &[String], expected: &[&str]) {
+pub fn assert_problems(found: &[String], expected: &[&str]) {
     assert_eq!(found.len(), expected.len(), "{found:#?}");
     let mut unmatched: Vec<&String> = found.iter().collect();
     for fragment in expected {
@@ -27,14 +27,20 @@ fn assert_problems(found: &[String], expected: &[&str]) {
 }
 
 /// The problems of the valid model after `change`.
-fn problems_with(change: impl FnOnce(&mut Model)) -> Vec<String> {
+pub fn problems_with(change: impl FnOnce(&mut Model)) -> Vec<String> {
     let mut model = fixture::valid();
     change(&mut model);
     model.problems()
 }
 
 /// An allowlist entry of a crates.io package without a build script.
-fn entry(name: &str, version: &str, license: &str, features: &[&str], crates: &[&str]) -> String {
+pub fn entry(
+    name: &str,
+    version: &str,
+    license: &str,
+    features: &[&str],
+    crates: &[&str],
+) -> String {
     format!(
         "\n[[package]]\nname = \"{name}\"\nversion = \"{version}\"\nsource = \"crates.io\"\nlicense = \"{license}\"\nbuild-script = false\nfeatures = {features:?}\ncrates = {crates:?}\n"
     )
@@ -105,11 +111,12 @@ fn this_repository_passes() {
     }
 }
 
-// The six cases below and the platform case after them are the main
+// The seven cases below and the platform case after them are the main
 // failures and the main non-failure that the deps step exists for: a Git
 // source, a path outside the repository, a requirement that is not exact,
 // an allowlist that no longer matches Cargo.lock, a package in two
-// versions, a krepi package, and a package that only other platforms use.
+// versions, a krepi package, a license outside the allowed set, and a
+// package that only other platforms use.
 
 #[test]
 fn rejects_a_git_source() {
@@ -244,6 +251,32 @@ fn rejects_a_krepi_package() {
             "framework/Cargo.lock: krepi-abi 0.1.0: kosmo does not depend on krepi: no package is named krepi or starts with krepi- or krepi_"
         ]
     );
+}
+
+/// Makes `foo` in `model` depend on `qux 1.0.0`, whose license
+/// `GPL-3.0-only` is not in the allowed set, and lists `qux` in the
+/// allowlist without a license exception.
+pub fn add_qux_under_the_gpl(model: &mut Model) {
+    model.add(
+        "framework",
+        Pkg::crates_io("qux", "1.0.0").license("GPL-3.0-only"),
+    );
+    model
+        .pkg("framework", "foo@1.0.0")
+        .deps
+        .push(Dep::new("qux@1.0.0", "^1"));
+    model.append(
+        "framework/allowlist.toml",
+        &entry("qux", "1.0.0", "GPL-3.0-only", &[], &["kosmo-render"]),
+    );
+}
+
+/// The problem of the package that [`add_qux_under_the_gpl`] adds.
+pub const QUX_UNDER_THE_GPL: &str = "framework/Cargo.lock: qux 1.0.0: the license GPL-3.0-only is not in the allowed set, and framework/allowlist.toml has no license exception for it";
+
+#[test]
+fn rejects_a_license_outside_the_allowed_set() {
+    assert_eq!(problems_with(add_qux_under_the_gpl), [QUX_UNDER_THE_GPL]);
 }
 
 /// The valid model in which `kosmo-render` depends on `win-only 1.0.0` only
@@ -401,7 +434,7 @@ fn rejects_resolved_edges_against_the_workspace_directions() {
 /// `kosmo-sdk`, which depends on `kosmo-ui`, and `kosmo-calc` depends on it:
 /// the resolution of the desktop has the crates of the other workspaces
 /// that `kosmo-sdk` reaches, and `foo` and `bar` through `kosmo-render`.
-fn desktop_through_a_facade() -> Model {
+pub fn desktop_through_a_facade() -> Model {
     let mut model = fixture::valid();
     model.append(
         "layout.toml",
@@ -1356,6 +1389,15 @@ fn reports_every_problem_sorted_by_path() {
         .pkg("framework", "kosmo-render@0.1.0-dev.1")
         .deps
         .push(Dep::new("outside@0.1.0", "*"));
+    add_qux_under_the_gpl(&mut model);
+    assert_eq!(
+        model.problems(),
+        [
+            "framework/Cargo.lock: bar has 2 versions (1.4.0, 2.1.0), which framework/allowlist.toml does not allow",
+            "framework/Cargo.lock: outside 0.1.0 is a path package outside the repository (../outside/Cargo.toml)",
+            QUX_UNDER_THE_GPL,
+        ]
+    );
     model.pkg("framework", "qa@0.3.0").checksum = false;
     model.edit(
         "framework/allowlist.toml",
@@ -1368,6 +1410,7 @@ fn reports_every_problem_sorted_by_path() {
             "framework/Cargo.lock: bar has 2 versions (1.4.0, 2.1.0), which framework/allowlist.toml does not allow",
             "framework/Cargo.lock: outside 0.1.0 is a path package outside the repository (../outside/Cargo.toml)",
             "framework/Cargo.lock: qa 0.3.0 has no checksum",
+            QUX_UNDER_THE_GPL,
             "framework/allowlist.toml: qa 0.3.0: the license is Apache-2.0, not MIT",
         ]
     );
@@ -1375,8 +1418,10 @@ fn reports_every_problem_sorted_by_path() {
 
 #[test]
 fn a_failing_step_keeps_its_observations() {
-    let (report, facts) = two_versions_of_bar().inspect();
-    assert_eq!(report.problems.len(), 1);
+    let mut model = fixture::valid();
+    add_qux_under_the_gpl(&mut model);
+    let (report, facts) = model.inspect();
+    assert_eq!(report.problems, [QUX_UNDER_THE_GPL]);
     let keys: Vec<&str> = facts.iter().map(|(key, _)| key.as_str()).collect();
     assert!(keys.contains(&"framework_crates_io"), "{keys:?}");
     assert!(keys.contains(&"drift"), "{keys:?}");

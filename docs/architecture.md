@@ -714,9 +714,10 @@ external dependency and no interior mutability), provisional (with the
 condition that ends it), publishable, and whether it may have a build script
 or be a procedural-macro library. The allowed direct external dependencies of
 each crate are listed in its entry, and the allowed packages of each
-workspace's `Cargo.lock` in the allowlist that the workspace's
-`lock-allowlist` names; the deps step of `cargo xtask check` compares both
-with what Cargo resolves.
+workspace's `Cargo.lock`, with the license exceptions of the workspace, in the
+allowlist that the workspace's `lock-allowlist` names; the deps step of
+`cargo xtask check` compares both with what Cargo resolves and checks the
+licenses of the packages.
 
 Crates and workspaces appear with their first code. So far only `desktop/`
 exists, with the program `kosmo`; the table states the rules of `display/` and
@@ -1389,9 +1390,9 @@ pub trait Rasterizer {
 - vello_cpu's sizes are `u16`, so a buffer is at most 65,535 pixels wide and
   high, and the buffer limit of `kosmo-render` lies within that.
 - guillotiere 0.7.0, a dependency of vello_cpu that cannot be turned off, states
-  its license as `MIT/Apache-2.0`, which is not a valid SPDX expression. The
-  planned dependency step reads it as `MIT OR Apache-2.0` or lists it as an
-  exception with its reason.
+  its license as `MIT/Apache-2.0`, which is not a valid SPDX expression, so the
+  deps step requires a license exception for it: the allowlist of the framework
+  will list one that reads it as `MIT OR Apache-2.0`, with its reason.
 
 ### Glyphs
 

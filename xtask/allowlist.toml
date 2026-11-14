@@ -1,10 +1,12 @@
 # The allowlist of the tool workspace xtask: one entry for each crates.io
 # package of xtask/Cargo.lock that `cargo metadata --filter-platform`
 # resolves for one of the targets of xtask in layout.toml, and none for a
-# package that only other platforms use. The deps step of
-# `cargo xtask check` compares the entries with what Cargo resolves and,
-# when they differ, prints the entries to add, replace or remove.
-# CONTRIBUTING.md describes the fields.
+# package that only other platforms use, followed by the license exceptions
+# of the workspace. The deps step of `cargo xtask check` compares the
+# entries with what Cargo resolves and, when they differ, prints the entries
+# to add, replace or remove; it also checks the license of each package
+# against the rules and the exceptions. CONTRIBUTING.md describes the
+# fields and the rules.
 
 [[package]]
 name = "arraydeque"
@@ -143,6 +145,24 @@ features = ["alloc", "serde"]
 crates = ["xtask"]
 
 [[package]]
+name = "smallvec"
+version = "1.16.5"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "spdx"
+version = "0.13.6"
+source = "crates.io"
+license = "Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
 name = "syn"
 version = "3.0.9"
 source = "crates.io"
@@ -222,3 +242,10 @@ license = "MIT"
 build-script = true
 features = []
 crates = ["xtask"]
+
+[[license-exception]]
+name = "arraydeque"
+version = "0.5.1"
+license = "MIT/Apache-2.0"
+reading = "MIT OR Apache-2.0"
+reason = "The legacy form of crates.io for a choice of licenses, in which `/` reads as OR."
