@@ -1,0 +1,251 @@
+# The allowlist of the tool workspace xtask: one entry for each crates.io
+# package of xtask/Cargo.lock that `cargo metadata --filter-platform`
+# resolves for one of the targets of xtask in layout.toml, and none for a
+# package that only other platforms use, followed by the license exceptions
+# of the workspace. The deps step of `cargo xtask check` compares the
+# entries with what Cargo resolves and, when they differ, prints the entries
+# to add, replace or remove; it also checks the license and the build script
+# of each package against the rules and the exceptions. CONTRIBUTING.md
+# describes the fields and the rules.
+
+[[package]]
+name = "arraydeque"
+version = "0.5.1"
+source = "crates.io"
+license = "MIT/Apache-2.0"
+build-script = false
+features = ["default", "std"]
+crates = ["xtask"]
+
+[[package]]
+name = "equivalent"
+version = "1.0.3"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "crates.io"
+license = "Zlib"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "hashbrown"
+version = "0.17.1"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["default-hasher"]
+crates = ["xtask"]
+
+[[package]]
+name = "hashlink"
+version = "0.12.2"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "indexmap"
+version = "2.14.2"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "itoa"
+version = "1.0.18"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "memchr"
+version = "2.8.3"
+source = "crates.io"
+license = "Unlicense OR MIT"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "proc-macro2"
+version = "1.0.107"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["proc-macro", "span-locations"]
+crates = ["xtask"]
+
+[[package]]
+name = "quote"
+version = "1.0.47"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["proc-macro"]
+crates = ["xtask"]
+
+[[package]]
+name = "serde"
+version = "1.0.229"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["alloc", "derive", "serde_derive"]
+crates = ["xtask"]
+
+[[package]]
+name = "serde_core"
+version = "1.0.229"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["alloc", "result"]
+crates = ["xtask"]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.229"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+proc-macro = true
+features = ["default"]
+crates = ["xtask"]
+
+[[package]]
+name = "serde_json"
+version = "1.0.154"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["alloc", "indexmap", "preserve_order"]
+crates = ["xtask"]
+
+[[package]]
+name = "serde_spanned"
+version = "1.1.2"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["alloc", "serde"]
+crates = ["xtask"]
+
+[[package]]
+name = "smallvec"
+version = "1.16.5"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "spdx"
+version = "0.13.6"
+source = "crates.io"
+license = "Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "syn"
+version = "3.0.9"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["clone-impls", "derive", "full", "parsing", "printing", "proc-macro"]
+crates = ["xtask"]
+
+[[package]]
+name = "toml"
+version = "1.2.0+spec-1.1.0"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["display", "parse", "serde"]
+crates = ["xtask"]
+
+[[package]]
+name = "toml_datetime"
+version = "1.1.2+spec-1.1.0"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["alloc", "serde"]
+crates = ["xtask"]
+
+[[package]]
+name = "toml_parser"
+version = "1.1.5+spec-1.1.0"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["alloc"]
+crates = ["xtask"]
+
+[[package]]
+name = "toml_writer"
+version = "1.2.0+spec-1.1.0"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["alloc"]
+crates = ["xtask"]
+
+[[package]]
+name = "unicode-ident"
+version = "1.0.27"
+source = "crates.io"
+license = "(MIT OR Apache-2.0) AND Unicode-3.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "winnow"
+version = "1.0.4"
+source = "crates.io"
+license = "MIT"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "yaml-rust2"
+version = "0.13.0"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "zmij"
+version = "1.0.23"
+source = "crates.io"
+license = "MIT"
+build-script = true
+features = []
+crates = ["xtask"]
+
+[[license-exception]]
+name = "arraydeque"
+version = "0.5.1"
+license = "MIT/Apache-2.0"
+reading = "MIT OR Apache-2.0"
+reason = "The legacy form of crates.io for a choice of licenses, in which `/` reads as OR."

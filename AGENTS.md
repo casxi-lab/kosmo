@@ -62,7 +62,10 @@
   dependencies, only in the directions that the layout table allows, and with
   `version = "=<the version of kosmo>"`. External dependencies come only from
   crates.io, pinned with `=x.y.z`; no git dependencies, no paths outside the
-  repository and no krepi crates.
+  repository and no krepi crates. A change that adds, removes or updates an
+  external dependency updates the crate's allow entries in `layout.toml` and
+  the workspace's allowlist in the same commit; the deps step of
+  `cargo xtask check` prints the entries to add, replace or remove.
 - Before committing, run `cargo xtask check`, `git diff --check` and
   `git diff --cached --check` and review the staged diff. CI runs
   `cargo xtask check` on every pull request to `main` and every push to

@@ -1,9 +1,9 @@
 # The layout table of kosmo: the Cargo workspaces of the repository, the
 # layers of each product workspace and every crate that exists, with the
-# marks that the layout step of `cargo xtask check` reads. The rules are in
-# the Source layout section of docs/architecture.md; CONTRIBUTING.md
-# describes each check of the layout step and its limits. A change that
-# adds a crate registers it here in the same commit.
+# marks that the layout and deps steps of `cargo xtask check` read. The
+# rules are in the Source layout section of docs/architecture.md;
+# CONTRIBUTING.md describes each check of these steps and its limits. A
+# change that adds a crate registers it here in the same commit.
 #
 # A product workspace has its own root manifest and Cargo.lock. It exists
 # once this table lists a crate in one of its layers; its root manifest is
@@ -23,12 +23,13 @@
 # written without `.`, `..` or a trailing `/`.
 #
 # `targets` are the target platforms, at least one and each once, for which
-# dependencies and licenses will be evaluated. The allowed direct external
-# dependencies of a crate will be listed in its entry in this file, and
-# `lock-allowlist` names the file that will list the allowed packages of
-# the workspace's Cargo.lock; both are planned, with the dependency check,
-# and the layout step only checks that `lock-allowlist` lies inside its
-# workspace.
+# the fetch and deps steps resolve the dependencies of the workspace.
+# `lock-allowlist` names the allowlist of the workspace, which lies inside
+# it: the file that lists the crates.io packages of its Cargo.lock that
+# Cargo resolves for those targets, with the exceptions of their build
+# scripts, and the license exceptions of the workspace. The deps step
+# compares it, and the `external` entries of each crate below, with what
+# Cargo resolves, and checks the licenses and build scripts against it.
 
 [workspaces.display]
 path = "display"
@@ -85,6 +86,19 @@ lock-allowlist = "xtask/allowlist.toml"
 # and `proc-macro` allow a build script or a procedural-macro library.
 # `same-layer` lists the crates of the same layer that the crate depends
 # on.
+#
+# `external` lists the allowed direct dependencies of the crate on crates.io
+# packages, for the targets of its workspace, as `[[crates.<name>.external]]`
+# tables: the package `name`; the requirement `version`, `=x.y.z`; `kind`,
+# "build" or "dev", left out for a normal dependency; `target`, the
+# condition of a `[target.<condition>.*]` table, left out otherwise;
+# `optional = true` for an optional dependency; `default-features`; the
+# `features` that the declaration turns on, after inheritance from the
+# workspace root; and the `resolved-features` of the package, for all
+# targets of the workspace together. Both lists are sorted. A crate without
+# such dependencies leaves it out. When the entries differ from what Cargo
+# resolves, the deps step prints all the entries that the crate should have,
+# or, when it should have none, says that they all go.
 [crates.kosmo]
 path = "desktop/kosmo"
 layer = "S2"

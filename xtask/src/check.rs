@@ -7,22 +7,50 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
 use crate::repo::{Entry, Tree};
-use crate::{commits, docs, layout, receipt, workflows};
+use crate::{commits, deps, docs, fetch, layout, receipt, workflows};
 
 /// The Cargo workspaces that the format, Clippy and test steps cover, as
 /// repository-relative directories. The layout step checks that they are
 /// exactly the tool workspaces and the product workspaces with crates in the
-/// layout table.
+/// layout table, which the fetch and deps steps read from the table.
 pub const WORKSPACES: [&str; 2] = ["xtask", "desktop"];
+
+/// The environment variable, and its value, that keeps Cargo off the
+/// network. Every Cargo command after the fetch step sets it; `cargo fmt`
+/// does not accept `--offline`.
+pub const OFFLINE: (&str, &str) = ("CARGO_NET_OFFLINE", "true");
 
 /// A command run in the repository root.
 #[derive(Debug, Clone)]
 pub struct Cmd {
     pub program: OsString,
     pub args: Vec<String>,
+    /// Environment variables set for the command, in addition to those it
+    /// inherits.
+    pub env: Vec<(String, String)>,
     /// The fact under which the receipt records how long the command ran,
     /// in milliseconds.
     pub timing: String,
+}
+
+impl Cmd {
+    /// The command as it is shown: the variables it sets, the program and
+    /// the arguments.
+    pub fn shown(&self) -> String {
+        let mut parts: Vec<String> = self
+            .env
+            .iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect();
+        parts.push(self.program.to_string_lossy().into_owned());
+        parts.extend(self.args.iter().cloned());
+        parts.join(" ")
+    }
+}
+
+/// The offline setting as a variable of a command.
+pub fn offline() -> Vec<(String, String)> {
+    vec![(OFFLINE.0.to_string(), OFFLINE.1.to_string())]
 }
 
 /// Named values that a step observed, in the order it observed them, for the
@@ -66,11 +94,12 @@ pub struct Outcome {
     pub facts: Facts,
 }
 
-fn cargo() -> OsString {
+/// The Cargo that runs `cargo xtask`, or `cargo` when it is not known.
+pub fn cargo() -> OsString {
     std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into())
 }
 
-/// The same Cargo command for each workspace.
+/// The same Cargo command for each workspace, offline.
 fn per_workspace(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
     WORKSPACES
         .iter()
@@ -82,6 +111,7 @@ fn per_workspace(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
             Cmd {
                 program: cargo(),
                 args: all,
+                env: offline(),
                 timing: format!("{workspace}_ms"),
             }
         })
@@ -94,6 +124,14 @@ pub fn steps() -> Vec<Step> {
         Step {
             name: "layout",
             action: Action::Internal(Box::new(layout::run)),
+        },
+        Step {
+            name: "fetch",
+            action: Action::Internal(Box::new(fetch::run)),
+        },
+        Step {
+            name: "deps",
+            action: Action::Internal(Box::new(deps::run)),
         },
         Step {
             name: "fmt",
@@ -208,10 +246,11 @@ pub fn failure(outcomes: &[Outcome]) -> Option<(&'static str, &str)> {
 }
 
 fn run_command(root: &Path, cmd: &Cmd) -> Result<(), String> {
-    let shown = format!("{} {}", cmd.program.to_string_lossy(), cmd.args.join(" "));
+    let shown = cmd.shown();
     println!("$ {shown}");
     let status = Command::new(&cmd.program)
         .args(&cmd.args)
+        .envs(cmd.env.iter().map(|(name, value)| (name, value)))
         .current_dir(root)
         .status()
         .map_err(|error| format!("cannot run `{shown}`: {error}"))?;
@@ -219,6 +258,55 @@ fn run_command(root: &Path, cmd: &Cmd) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("`{shown}` exited with {status}"))
+    }
+}
+
+/// Runs `cmd` in `root` with its output captured and returns its standard
+/// output. The standard error follows on this process's standard error
+/// when the command succeeds, and in the error, each line indented, when
+/// it fails.
+pub fn capture(root: &Path, cmd: &Cmd) -> Result<Vec<u8>, String> {
+    let shown = cmd.shown();
+    println!("$ {shown}");
+    let output = Command::new(&cmd.program)
+        .args(&cmd.args)
+        .envs(cmd.env.iter().map(|(name, value)| (name, value)))
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("cannot run `{shown}`: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success() {
+        eprint!("{stderr}");
+        Ok(output.stdout)
+    } else {
+        let mut problem = format!("`{shown}` exited with {}", output.status);
+        for line in stderr.lines().filter(|line| !line.trim().is_empty()) {
+            problem.push_str("\n  ");
+            problem.push_str(line.trim_end());
+        }
+        Err(problem)
+    }
+}
+
+/// Runs every command of `commands` in `root`, also after one fails, and
+/// records how long each ran. Fails with every failure, one per command.
+pub fn run_each(root: &Path, commands: &[Cmd], facts: &mut Facts) -> Result<(), String> {
+    let mut failures = Vec::new();
+    for cmd in commands {
+        let started = Instant::now();
+        let result = capture(root, cmd);
+        facts.push((
+            cmd.timing.clone(),
+            started.elapsed().as_millis().to_string(),
+        ));
+        if let Err(failure) = result {
+            failures.push(failure);
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
     }
 }
 
@@ -268,8 +356,10 @@ mod tests {
 
     use super::*;
 
-    const ORDER: [&str; 7] = [
+    const ORDER: [&str; 9] = [
         "layout",
+        "fetch",
+        "deps",
         "fmt",
         "clippy",
         "test",
@@ -314,6 +404,7 @@ mod tests {
                         Action::Commands(_) => Action::Commands(vec![Cmd {
                             program: "sh".into(),
                             args: vec!["-c".into(), "exit 3".into()],
+                            env: Vec::new(),
                             timing: "sh_ms".to_string(),
                         }]),
                         Action::Internal(_) => Action::Internal(Box::new(|_, facts| {
@@ -364,6 +455,12 @@ mod tests {
                 }
                 std::cmp::Ordering::Equal => {
                     assert!(matches!(outcome.status, Status::Failed(_)), "{outcome:?}");
+                    // The failing step keeps what it recorded before it
+                    // failed: the time of its command, or the fact of its
+                    // check.
+                    let keys: Vec<&str> =
+                        outcome.facts.iter().map(|(key, _)| key.as_str()).collect();
+                    assert!(keys == ["sh_ms"] || keys == ["seen"], "{outcome:?}");
                 }
                 std::cmp::Ordering::Greater => {
                     assert_eq!(outcome.status, Status::NotRun);
@@ -377,6 +474,16 @@ mod tests {
     #[test]
     fn a_layout_failure_stops_the_check() {
         assert_fails_at("layout");
+    }
+
+    #[test]
+    fn a_fetch_failure_stops_the_check() {
+        assert_fails_at("fetch");
+    }
+
+    #[test]
+    fn a_deps_failure_stops_the_check() {
+        assert_fails_at("deps");
     }
 
     #[test]
@@ -413,12 +520,13 @@ mod tests {
     fn a_failing_step_keeps_the_facts_it_added() {
         let ran = Rc::new(RefCell::new(Vec::new()));
         let outcomes = run_steps(Path::new("."), &with_failure("docs", &ran));
+        assert_eq!(outcomes[6].step, "docs");
         assert_eq!(
-            outcomes[4].facts,
+            outcomes[6].facts,
             [("seen".to_string(), "before failing".to_string())]
         );
         assert_eq!(
-            outcomes[4].status,
+            outcomes[6].status,
             Status::Failed("forced failure".to_string())
         );
     }
@@ -432,6 +540,7 @@ mod tests {
                     .map(|(name, script)| Cmd {
                         program: "sh".into(),
                         args: vec!["-c".into(), script.into()],
+                        env: Vec::new(),
                         timing: format!("{name}_ms"),
                     })
                     .to_vec(),
@@ -452,6 +561,106 @@ mod tests {
         }
     }
 
+    /// The Cargo commands of `steps` after the fetch step that do not set
+    /// the offline variable, the deps step standing for its metadata
+    /// command.
+    fn online_after_fetch(steps: &[Step]) -> Vec<String> {
+        let fetch = steps
+            .iter()
+            .position(|step| step.name == "fetch")
+            .expect("there is a fetch step");
+        let mut online = Vec::new();
+        for step in &steps[fetch + 1..] {
+            let commands = match &step.action {
+                Action::Commands(commands) => commands.clone(),
+                Action::Internal(_) if step.name == "deps" => {
+                    vec![deps::metadata_command("xtask", "aarch64-apple-darwin")]
+                }
+                Action::Internal(_) => continue,
+            };
+            online.extend(
+                commands
+                    .iter()
+                    .filter(|cmd| {
+                        !cmd.env
+                            .iter()
+                            .any(|(name, value)| (name.as_str(), value.as_str()) == OFFLINE)
+                    })
+                    .map(Cmd::shown),
+            );
+        }
+        online
+    }
+
+    #[test]
+    fn cargo_commands_after_the_fetch_step_run_offline() {
+        assert_eq!(online_after_fetch(&steps()), Vec::<String>::new());
+        let mut steps = steps();
+        for step in &mut steps {
+            if let (Action::Commands(commands), "clippy") = (&mut step.action, step.name) {
+                commands.iter_mut().for_each(|cmd| cmd.env.clear());
+            }
+        }
+        let online = online_after_fetch(&steps);
+        assert_eq!(online.len(), WORKSPACES.len(), "{online:?}");
+        assert!(
+            online.iter().all(|cmd| cmd.contains(" clippy ")),
+            "{online:?}"
+        );
+    }
+
+    #[test]
+    fn a_command_step_passes_the_variables_of_its_commands() {
+        // A variable that this process does not have reaches the command
+        // only through the variables of the command, as the offline
+        // variable reaches the Cargo commands after the fetch step.
+        let step = |env: Vec<(String, String)>| Step {
+            name: "fmt",
+            action: Action::Commands(vec![Cmd {
+                program: "sh".into(),
+                args: vec!["-c".into(), "test \"$XTASK_CHECK_PROBE\" = set".into()],
+                env,
+                timing: "sh_ms".to_string(),
+            }]),
+        };
+        let set = vec![("XTASK_CHECK_PROBE".to_string(), "set".to_string())];
+        let outcomes = run_steps(Path::new("."), &[step(set)]);
+        assert_eq!(outcomes[0].status, Status::Passed, "{outcomes:?}");
+        let outcomes = run_steps(Path::new("."), &[step(Vec::new())]);
+        assert!(
+            matches!(outcomes[0].status, Status::Failed(_)),
+            "{outcomes:?}"
+        );
+    }
+
+    #[test]
+    fn run_each_runs_every_command_and_records_each_time() {
+        let cmd = |name: &str, script: &str| Cmd {
+            program: "sh".into(),
+            args: vec!["-c".into(), script.into()],
+            env: vec![("NAME".to_string(), name.to_string())],
+            timing: format!("{name}_ms"),
+        };
+        let commands = [
+            cmd("first", "exit 101"),
+            cmd("second", "test \"$NAME\" = second"),
+            cmd("third", "echo \"$NAME failed\" >&2; exit 2"),
+        ];
+        let mut facts = Facts::new();
+        let error = run_each(Path::new("."), &commands, &mut facts).unwrap_err();
+        let failures: Vec<&str> = error.lines().collect();
+        assert_eq!(
+            failures,
+            [
+                "`NAME=first sh -c exit 101` exited with exit status: 101",
+                "`NAME=third sh -c echo \"$NAME failed\" >&2; exit 2` exited with exit status: 2",
+                "  third failed",
+            ]
+        );
+        let keys: Vec<&str> = facts.iter().map(|(key, _)| key.as_str()).collect();
+        assert_eq!(keys, ["first_ms", "second_ms", "third_ms"]);
+    }
+
     #[test]
     fn every_step_records_each_fact_once() {
         // The receipt writes the facts of a step as the members of one JSON
@@ -470,6 +679,7 @@ mod tests {
                         .map(|cmd| Cmd {
                             program: "sh".into(),
                             args: vec!["-c".into(), "exit 0".into()],
+                            env: Vec::new(),
                             timing: cmd.timing,
                         })
                         .collect(),
