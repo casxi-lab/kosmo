@@ -1734,15 +1734,15 @@ A component is a unit with its own role, contract and level.
 | Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | `planned` |
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | `planned` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | `planned` |
-| Shared types (geometry, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
-| Framework runtime | `kosmo-ui` | Framework core | A0 | `planned` |
-| Layout | `kosmo-ui` | Framework core | A0 | `planned` |
-| Accessibility tree and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
-| Rendering | `kosmo-render` | Presentation | A0 | `planned` |
-| Text | `kosmo-text` | Presentation | A0 | `planned` |
-| Platform interface and conformance suite | `kosmo-platform` (the suite's crate is chosen with the suite) | Platform contract | A1 | `planned` |
-| Headless backend | `kosmo-backend-headless` | Backend | A0, passing the platform conformance suite | `planned` |
-| Test support (script runner, clock control, call probes) | `kosmo-testkit` | Tool | A0 | `planned` |
+| Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
+| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | `planned` |
+| Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
+| Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
+| Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | `planned` |
+| Text (shaping and line breaking with parley, glyph outlines and coverage cache, the two bundled fonts and their asset manifest) | `kosmo-text` | Presentation | A0 | `planned` |
+| Platform interface (nine traits, with AccessKit re-exported) and conformance suite | `kosmo-platform` (the suite's crate is chosen with the suite) | Platform contract | A1 | `planned` |
+| Headless backend (no threads, a virtual clock that only the driver advances) | `kosmo-backend-headless` | Backend | A0, passing the platform conformance suite | `planned` |
+| Test support (script runner with checkpoint records, clock control, call probes, pixel digests) | `kosmo-testkit` | Tool | A0 | `planned` |
 | Basic controls | `kosmo-controls` | Controls | A0 | `planned` |
 | Math controls (one-line formula editing, result view) | `kosmo-math-controls` | Controls | A0 | `planned` |
 | One-line calculator | `kosmo-calc` | Application | A0 | `planned` |
@@ -1756,7 +1756,7 @@ A component is a unit with its own role, contract and level.
 | Headless server backend | `kosmo-server-headless` | Backend | A0, passing the session and device port suite | `planned` |
 | Nested backend | `kosmo-server-host` | Backend | A0 | `planned` |
 | Client library and client transport | `kosmo-client` | Port | A1 | `planned` |
-| Display server backend | `kosmo-backend-display` | Backend | A1 | `planned` |
+| Display server backend (through the client library and the client transport port) | `kosmo-backend-display` | Backend | A1 | `planned` |
 | Window policy module | `kosmo-wm` | Policy | A0 | `planned` |
 | Shell (skeleton, switch and stop entries, lifecycle presentation, status area, notifications) | `kosmo-shell` | Shell | A0 | `planned` |
 | Privileged shell extension | Chosen with the display stack design | Protocol extension | A1, with fuzz tests of extension message decoding | `planned` |
