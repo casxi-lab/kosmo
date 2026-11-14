@@ -2040,6 +2040,7 @@ fn metadata_runs_offline_for_one_target() {
             "desktop/Cargo.toml",
         ]
     );
+    assert_eq!(OFFLINE, ("CARGO_NET_OFFLINE", "true"));
     assert_eq!(cmd.env, [(OFFLINE.0.to_string(), OFFLINE.1.to_string())]);
     assert_eq!(cmd.timing, format!("desktop_{LINUX}_ms"));
 }
@@ -2148,4 +2149,311 @@ fn reads_the_root_without_symbolic_links_as_cargo_reports_the_members() {
     let root = real_root(&link).unwrap();
     assert_eq!(inside(&root, manifest), Some("ws/Cargo.toml"));
     fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_feature_that_only_the_first_target_turns_on_is_resolved_too() {
+    // As in the test of the resolved features of all targets, with the
+    // feature turned on for the first target instead of the last.
+    let found = problems_with(|model| {
+        model.pkg("framework", "qa@0.3.0").deps.push(
+            Dep::new("foo@1.0.0", "^1")
+                .features(false, &["std"])
+                .cfg("cfg(target_os = \"linux\")", &[LINUX]),
+        );
+        model
+            .pkg("framework", "foo@1.0.0")
+            .features_on
+            .insert(LINUX, vec!["std".to_string()]);
+        model.edit(
+            "framework/allowlist.toml",
+            "features = [\"x\"]\ncrates = [\"kosmo-render\"]",
+            "features = [\"std\", \"x\"]\ncrates = [\"kosmo-render\", \"kosmo-ui\"]",
+        );
+        model.edit(
+            "framework/allowlist.toml",
+            "features = [\"default\"]\ncrates = [\"kosmo-render\"]",
+            "features = [\"default\"]\ncrates = [\"kosmo-render\", \"kosmo-ui\"]",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "layout.toml: crates.kosmo-render: foo: the resolved features [std, x] differ from the allow entry [x]"
+        ]
+    );
+}
+
+#[test]
+fn an_allow_entry_does_not_repeat_a_feature() {
+    let found = problems_with(|model| {
+        model.edit(
+            "layout.toml",
+            "features = [\"x\"]\nresolved-features",
+            "features = [\"x\", \"x\"]\nresolved-features",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "layout.toml: crates.kosmo-render: foo: the features of the allow entry are not sorted or repeat"
+        ]
+    );
+}
+
+#[test]
+fn an_allow_entry_has_exactly_its_fields() {
+    for (from, to, error) in [
+        (
+            "resolved-features = [\"x\"]\n",
+            "resolved-features = [\"x\"]\nreason = \"Reviewed.\"\n",
+            "unknown field `reason`",
+        ),
+        (
+            "features = [\"x\"]\nresolved-features",
+            "resolved-features",
+            "missing field `features`",
+        ),
+        (
+            "resolved-features = [\"x\"]\n",
+            "",
+            "missing field `resolved-features`",
+        ),
+    ] {
+        let mut model = fixture::valid();
+        model.edit("layout.toml", from, to);
+        let found = layout::table(&model.tree()).unwrap_err();
+        assert!(found.contains(error), "{error}: {found}");
+    }
+}
+
+#[test]
+fn a_directory_beside_the_repository_that_extends_its_name_is_outside() {
+    let found = problems_with(|model| {
+        model.add(
+            "framework",
+            Pkg::path(&format!("{ROOT}display/kosmo-types"), "beside", "0.1.0"),
+        );
+        model
+            .pkg("framework", "kosmo-render@0.1.0-dev.1")
+            .deps
+            .push(Dep::new("beside@0.1.0", "*"));
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/Cargo.lock: beside 0.1.0 is a path package outside the repository (../kosmodisplay/kosmo-types/Cargo.toml)"
+        ]
+    );
+}
+
+#[test]
+fn the_checksum_comes_from_the_lock_entry_of_crates_io() {
+    let mut model = fixture::valid();
+    model.pkg("framework", "bar@2.1.0").checksum = false;
+    let mut lock = model.ws("framework").lock();
+    lock.push_str(
+        "\n[[package]]\nname = \"bar\"\nversion = \"2.1.0\"\nsource = \"registry+https://example.com/index\"\nchecksum = \"0d5b8e1f3a6c9d2e5f8a1b4c7d0e3f6a9b2c5d8e1f4a7b0c3d6e9f2a5b8c1d4e\"\n",
+    );
+    model.files.insert("framework/Cargo.lock".to_string(), lock);
+    assert_eq!(
+        model.problems(),
+        ["framework/Cargo.lock: bar 2.1.0 has no checksum"]
+    );
+}
+
+#[test]
+fn a_version_missing_from_the_allowlist_needs_its_entry_alone() {
+    let mut model = two_versions_of_bar();
+    model.edit(
+        "framework/allowlist.toml",
+        "name = \"bar\"\nversion = \"2.1.0\"\n",
+        "name = \"bar\"\nversion = \"2.1.0\"\nduplicate = \"baz has not moved to bar 2 yet\"\n",
+    );
+    model.edit(
+        "framework/allowlist.toml",
+        &entry("bar", "1.4.0", "MIT", &[], &["kosmo-ui"]),
+        "",
+    );
+    assert_eq!(
+        model.problems(),
+        ["framework/Cargo.lock: bar 1.4.0 is not in framework/allowlist.toml"]
+    );
+}
+
+#[test]
+fn a_package_with_several_listed_versions_has_not_changed_its_version() {
+    let found = problems_with(|model| {
+        model.edit(
+            "framework/allowlist.toml",
+            "name = \"bar\"\nversion = \"2.1.0\"",
+            "name = \"bar\"\nversion = \"2.0.0\"",
+        );
+        model.append(
+            "framework/allowlist.toml",
+            &entry(
+                "bar",
+                "1.9.0",
+                "MIT OR Apache-2.0",
+                &["default"],
+                &["kosmo-render"],
+            ),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/Cargo.lock: bar 2.1.0 is not in framework/allowlist.toml",
+            "framework/allowlist.toml: bar 1.9.0 is not resolved for aarch64-unknown-linux-gnu or aarch64-apple-darwin",
+            "framework/allowlist.toml: bar 2.0.0 is not resolved for aarch64-unknown-linux-gnu or aarch64-apple-darwin",
+        ]
+    );
+}
+
+#[test]
+fn a_package_with_several_locked_versions_has_not_changed_its_version() {
+    // Cargo.lock has `bar` 2.1.0 and 2.2.0, the allowlist `bar` 2.0.0 alone.
+    let found = problems_with(|model| {
+        model.add(
+            "framework",
+            Pkg::crates_io("bar", "2.2.0")
+                .license("MIT OR Apache-2.0")
+                .resolved(&["default"]),
+        );
+        model
+            .pkg("framework", "qa@0.3.0")
+            .deps
+            .push(Dep::new("bar@2.2.0", "^2.2"));
+        model.edit(
+            "framework/allowlist.toml",
+            "name = \"bar\"\nversion = \"2.1.0\"",
+            "name = \"bar\"\nversion = \"2.0.0\"",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/Cargo.lock: bar 2.1.0 is not in framework/allowlist.toml",
+            "framework/Cargo.lock: bar 2.2.0 is not in framework/allowlist.toml",
+            "framework/Cargo.lock: bar has 2 versions (2.1.0, 2.2.0), which framework/allowlist.toml does not allow",
+            "framework/allowlist.toml: bar 2.0.0 is not resolved for aarch64-unknown-linux-gnu or aarch64-apple-darwin",
+        ]
+    );
+}
+
+#[test]
+fn the_printed_entries_to_add_are_sorted() {
+    // `qa` is missing and `bar` changed: the entries to add are sorted by
+    // name, not missing ones first.
+    let mut model = fixture::valid();
+    model.edit(
+        "framework/allowlist.toml",
+        &entry("qa", "0.3.0", "Apache-2.0", &["default"], &["kosmo-ui"]),
+        "",
+    );
+    model.pkg("framework", "bar@2.1.0").license = Some("ISC".to_string());
+    let (report, _) = model.inspect();
+    assert_eq!(report.problems.len(), 2, "{:?}", report.problems);
+    let note = report
+        .notes
+        .iter()
+        .find(|note| note.contains("framework/allowlist.toml"))
+        .expect("the step prints the entries to add");
+    let (_, added) = note.split_once("same name and version:\n\n").unwrap();
+    let bar = added.find("name = \"bar\"").unwrap();
+    let qa = added.find("name = \"qa\"").unwrap();
+    assert!(bar < qa, "{added}");
+}
+
+#[test]
+fn an_allowlist_entry_has_no_unknown_field() {
+    let found = problems_with(|model| {
+        model.edit(
+            "framework/allowlist.toml",
+            "name = \"qa\"\n",
+            "name = \"qa\"\nreason = \"Reviewed.\"\n",
+        );
+    });
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].starts_with("framework/allowlist.toml:")
+            && found[0].contains("unknown field `reason`"),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn an_allowlist_that_is_not_a_utf8_regular_file_is_reported() {
+    let model = fixture::valid();
+    for entry in [
+        repo::Entry::File(vec![0xff, 0xfe]),
+        repo::Entry::Symlink("allowlist.txt".to_string()),
+    ] {
+        let mut tree = model.tree();
+        tree.insert("framework/allowlist.toml", entry);
+        let (report, _) = model.inspect_tree(&tree);
+        assert_eq!(
+            report.problems,
+            ["framework/allowlist.toml: not a UTF-8 regular file"]
+        );
+    }
+}
+
+#[test]
+fn drift_compares_every_workspace_that_resolves_a_package() {
+    // `bar` is 1.4.0 in the first and the last workspace that resolve it,
+    // and 2.1.0 in the framework between them.
+    let mut model = fixture::valid();
+    for (dir, krate) in [("display", "kosmo-server"), ("desktop", "kosmo")] {
+        model.add(dir, Pkg::crates_io("bar", "1.4.0"));
+        model
+            .pkg(dir, &format!("{krate}@0.1.0-dev.1"))
+            .deps
+            .push(Dep::new("bar@1.4.0", "=1.4.0"));
+        model.append(
+            "layout.toml",
+            &allow(
+                krate,
+                "bar",
+                "=1.4.0",
+                "default-features = true\nfeatures = []\nresolved-features = []\n",
+            ),
+        );
+        model.append(
+            &format!("{dir}/allowlist.toml"),
+            &entry("bar", "1.4.0", "MIT", &[], &[krate]),
+        );
+    }
+    let (report, facts) = model.inspect();
+    assert_eq!(report.problems, Vec::<String>::new());
+    assert!(
+        facts.contains(&(
+            "drift".to_string(),
+            "bar: display 1.4.0, framework 2.1.0, desktop 1.4.0".to_string()
+        )),
+        "{facts:?}"
+    );
+}
+
+#[test]
+fn drift_lists_every_version_of_a_workspace() {
+    let mut model = with_duplicate_reasons(two_versions_of_bar());
+    model.add("xtask", Pkg::crates_io("bar", "2.1.0"));
+    model
+        .pkg("xtask", "yaml-rust2@0.13.0")
+        .deps
+        .push(Dep::new("bar@2.1.0", "^2"));
+    model.append(
+        "xtask/allowlist.toml",
+        &entry("bar", "2.1.0", "MIT", &[], &["xtask"]),
+    );
+    let (report, facts) = model.inspect();
+    assert_eq!(report.problems, Vec::<String>::new());
+    assert!(
+        facts.contains(&(
+            "drift".to_string(),
+            "bar: xtask 2.1.0, framework 1.4.0 and 2.1.0".to_string()
+        )),
+        "{facts:?}"
+    );
 }

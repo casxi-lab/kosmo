@@ -333,3 +333,125 @@ fn the_build_scripts_of_the_packages_of_xtask_are_checked_too() {
         ["xtask/Cargo.lock: yaml-rust2 0.13.0: it declares `links = \"yaml\"`"]
     );
 }
+
+#[test]
+fn a_build_dependency_that_is_also_a_normal_one_counts() {
+    let mut model = zlib_sys_with(&["cc"]);
+    model
+        .pkg("framework", "zlib-sys@1.0.0")
+        .deps
+        .push(Dep::new("cc@1.2.0", "^1.2"));
+    assert_eq!(
+        model.problems(),
+        [
+            "framework/Cargo.lock: zlib-sys 1.0.0: its build script compiles C or C++ (build dependency cc)"
+        ]
+    );
+}
+
+#[test]
+fn a_failure_names_the_shortest_chain() {
+    // `cc` is reached through one build dependency directly and through the
+    // other and `gamma`, in both orders of their names.
+    for (direct, longer) in [("alpha", "beta"), ("beta", "alpha")] {
+        let mut model = zlib_sys_with(&["alpha", "beta"]);
+        model.add("framework", Pkg::crates_io("cc", "1.2.0"));
+        model.add(
+            "framework",
+            Pkg::crates_io("gamma", "1.0.0").dep(Dep::new("cc@1.2.0", "^1.2")),
+        );
+        model
+            .pkg("framework", &format!("{direct}@1.2.0"))
+            .deps
+            .push(Dep::new("cc@1.2.0", "^1.2"));
+        model
+            .pkg("framework", &format!("{longer}@1.2.0"))
+            .deps
+            .push(Dep::new("gamma@1.0.0", "^1"));
+        for (name, version) in [("cc", "1.2.0"), ("gamma", "1.0.0")] {
+            model.append(
+                "framework/allowlist.toml",
+                &entry(name, version, "MIT", &[], &["kosmo-render"]),
+            );
+        }
+        assert_eq!(
+            model.problems(),
+            [format!(
+                "framework/Cargo.lock: zlib-sys 1.0.0: its build script compiles C or C++ (build dependency {direct} -> cc)"
+            )]
+        );
+    }
+}
+
+#[test]
+fn an_exception_holds_for_its_version_alone() {
+    // `zlib-sys 1.0.0` has an exception, and `zlib-sys 1.1.0`, which `bar`
+    // brings in with the same build dependency, has none.
+    let mut model = zlib_sys_listed_with(
+        &["cc"],
+        "native-code-exception = \"Reviewed: it compiles the bundled zlib.\"\n",
+    );
+    model.add(
+        "framework",
+        Pkg::crates_io("zlib-sys", "1.1.0")
+            .build_script()
+            .dep(Dep::new("cc@1.2.0", "^1.2").kind("build")),
+    );
+    model
+        .pkg("framework", "bar@2.1.0")
+        .deps
+        .push(Dep::new("zlib-sys@1.1.0", "^1.1"));
+    model.append(
+        "framework/allowlist.toml",
+        &with_build_script(&entry("zlib-sys", "1.1.0", "MIT", &[], &["kosmo-render"])),
+    );
+    for version in ["1.0.0", "1.1.0"] {
+        model.edit(
+            "framework/allowlist.toml",
+            &format!("name = \"zlib-sys\"\nversion = \"{version}\"\n"),
+            &format!(
+                "name = \"zlib-sys\"\nversion = \"{version}\"\nduplicate = \"foo has not moved to zlib-sys 1.1 yet\"\n"
+            ),
+        );
+    }
+    assert_eq!(
+        model.problems(),
+        [
+            "framework/Cargo.lock: zlib-sys 1.1.0: its build script compiles C or C++ (build dependency cc)"
+        ]
+    );
+}
+
+#[test]
+fn the_printed_entries_keep_the_exceptions_of_the_allowlist() {
+    for (model, field, key) in [
+        (
+            foo_sys_with(&[], "links-exception = \"Reviewed.\"\n"),
+            "links-exception",
+            "foo-sys@1.0.0",
+        ),
+        (
+            zlib_sys_listed_with(&["cc"], "native-code-exception = \"Reviewed.\"\n"),
+            "native-code-exception",
+            "zlib-sys@1.0.0",
+        ),
+        (
+            zlib_sys_listed_with(&["ureq"], "download-exception = \"Reviewed.\"\n"),
+            "download-exception",
+            "zlib-sys@1.0.0",
+        ),
+    ] {
+        let mut model = model;
+        assert_eq!(model.problems(), Vec::<String>::new(), "{field}");
+        // A changed license makes the step print the entry to replace.
+        model.pkg("framework", key).license = Some("ISC".to_string());
+        let (report, _) = model.inspect();
+        assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
+        let note = report
+            .notes
+            .iter()
+            .find(|note| note.contains("framework/allowlist.toml"))
+            .expect("the step prints the entry to replace");
+        assert!(note.contains(&format!("{field} = \"Reviewed.\"")), "{note}");
+    }
+}

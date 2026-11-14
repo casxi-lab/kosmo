@@ -689,12 +689,17 @@ impl Model {
 
     /// What the deps step finds in the model, and the facts it records.
     pub fn inspect(&self) -> (Report, Facts) {
-        let tree = self.tree();
-        let table = layout::table(&tree).expect("the layout table is valid");
+        self.inspect_tree(&self.tree())
+    }
+
+    /// What the deps step finds in `tree`, the files of the model as a test
+    /// has changed them, with the metadata of the model.
+    pub fn inspect_tree(&self, tree: &Tree) -> (Report, Facts) {
+        let table = layout::table(tree).expect("the layout table is valid");
         let index = Index::new(&table);
         let mut facts = Facts::new();
         let report = inspect(
-            &tree,
+            tree,
             &index,
             ROOT,
             &mut facts,

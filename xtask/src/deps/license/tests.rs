@@ -631,3 +631,44 @@ fn an_allowlist_that_cannot_be_read_skips_the_license_exceptions() {
         "{found:?}"
     );
 }
+
+#[test]
+fn a_license_exception_has_no_unknown_field() {
+    // A misspelt `reading` is not left out silently.
+    let found = problems_with(|model| {
+        add_qux_under_the_gpl(model);
+        model.append(
+            "framework/allowlist.toml",
+            &format!(
+                "{}readng = \"MIT\"\n",
+                exception("qux", "1.0.0", Some("GPL-3.0-only"), None, Some(REASON))
+            ),
+        );
+    });
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("unknown field `readng`"), "{found:?}");
+}
+
+#[test]
+fn a_reading_outside_the_set_is_reported_alone() {
+    // The reading of a legacy form is not also compared with the form when
+    // it is outside the allowed set.
+    let found = problems_of_bar(Some("MIT/Apache-2.0"), |model| {
+        model.append(
+            "framework/allowlist.toml",
+            &exception(
+                "bar",
+                "2.1.0",
+                Some("MIT/Apache-2.0"),
+                Some("GPL-3.0-only"),
+                Some(REASON),
+            ),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/allowlist.toml: the license exception for bar 2.1.0: the reading GPL-3.0-only is not in the allowed set"
+        ]
+    );
+}
