@@ -25,6 +25,7 @@ use serde::Deserialize;
 use toml::{Table, Value};
 
 use crate::check::{self, Facts};
+use crate::deps::Allowed;
 use crate::repo::{self, Entry, Tree};
 
 /// The layout table, at the repository root.
@@ -121,7 +122,7 @@ impl Mark {
 /// The layout table.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Layout {
+pub struct Layout {
     workspaces: Workspaces,
     tools: BTreeMap<String, Tool>,
     #[serde(default)]
@@ -150,7 +151,7 @@ impl Workspaces {
 /// A product workspace.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-struct Workspace {
+pub struct Workspace {
     path: String,
     uses: Vec<String>,
     targets: Vec<String>,
@@ -186,10 +187,10 @@ struct Tool {
 /// A crate and its marks.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-struct Crate {
-    path: String,
+pub struct Crate {
+    pub path: String,
     layer: String,
-    export: bool,
+    pub export: bool,
     pure_core: bool,
     publish: bool,
     #[serde(default)]
@@ -202,6 +203,10 @@ struct Crate {
     build_script: bool,
     #[serde(default)]
     proc_macro: bool,
+    /// The allowed direct external dependencies, which the deps step
+    /// compares with what Cargo resolves.
+    #[serde(default)]
+    pub external: Vec<Allowed>,
 }
 
 /// The problems found so far, without repeats.
@@ -276,7 +281,7 @@ fn inspect(tree: &Tree, covered: &[&str]) -> Report {
 
 /// The order of reported problems: by path, then by line number, a
 /// problem without a line first, then by the whole text.
-fn report_order(problem: &str) -> (&str, Option<usize>, &str) {
+pub fn report_order(problem: &str) -> (&str, Option<usize>, &str) {
     let location = problem
         .split_once(": ")
         .map_or(problem, |(location, _)| location);
@@ -289,7 +294,7 @@ fn report_order(problem: &str) -> (&str, Option<usize>, &str) {
 }
 
 /// The line of the byte at `offset`, counted from 1.
-fn line_of(text: &str, offset: usize) -> usize {
+pub fn line_of(text: &str, offset: usize) -> usize {
     text.get(..offset)
         .map_or(1, |before| before.matches('\n').count() + 1)
 }
@@ -310,15 +315,42 @@ fn read_table(tree: &Tree) -> Result<Layout, String> {
 
 /// Where a crate of the table is: its workspace and layer, by index.
 #[derive(Debug, Clone, Copy)]
-struct Place<'a> {
-    name: &'a str,
-    krate: &'a Crate,
-    workspace: usize,
+pub struct Place<'a> {
+    pub name: &'a str,
+    pub krate: &'a Crate,
+    pub workspace: usize,
     layer: usize,
 }
 
+/// A workspace that the fetch and deps steps cover: a tool workspace, or a
+/// product workspace with crates in the table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Checked<'a> {
+    /// Its directory, relative to the repository root.
+    pub dir: &'a str,
+    /// Its target platforms, in the order of the table.
+    pub targets: &'a [String],
+    /// The path of its allowlist.
+    pub lock_allowlist: &'a str,
+    /// The index of the product workspace; `None` for a tool workspace.
+    pub product: Option<usize>,
+}
+
+/// The layout table of `tree` for the steps after the layout step: it
+/// parses and is consistent, or the layout step reports why not.
+pub fn table(tree: &Tree) -> Result<Layout, String> {
+    let layout = read_table(tree)?;
+    if Index::new(&layout).validate().is_empty() {
+        Ok(layout)
+    } else {
+        Err(format!(
+            "{TABLE}: not consistent; the layout step reports why"
+        ))
+    }
+}
+
 /// The table with its layers looked up.
-struct Index<'a> {
+pub struct Index<'a> {
     layout: &'a Layout,
     workspaces: [(&'static str, &'a Workspace); 3],
     /// The workspace and position of each layer; the first one when an
@@ -327,7 +359,7 @@ struct Index<'a> {
 }
 
 impl<'a> Index<'a> {
-    fn new(layout: &'a Layout) -> Index<'a> {
+    pub fn new(layout: &'a Layout) -> Index<'a> {
         let workspaces = layout.workspaces.all();
         let mut layers = BTreeMap::new();
         for (workspace, (_, entry)) in workspaces.iter().enumerate() {
@@ -344,7 +376,7 @@ impl<'a> Index<'a> {
         }
     }
 
-    fn place(&self, name: &str) -> Option<Place<'a>> {
+    pub fn place(&self, name: &str) -> Option<Place<'a>> {
         let (name, krate) = self.layout.crates.get_key_value(name)?;
         let &(workspace, layer) = self.layers.get(krate.layer.as_str())?;
         Some(Place {
@@ -355,7 +387,7 @@ impl<'a> Index<'a> {
         })
     }
 
-    fn places(&self) -> impl Iterator<Item = Place<'a>> + '_ {
+    pub fn places(&self) -> impl Iterator<Item = Place<'a>> + '_ {
         self.layout
             .crates
             .keys()
@@ -389,12 +421,36 @@ impl<'a> Index<'a> {
             || package.is_some_and(|package| self.layout.crates.contains_key(package))
     }
 
-    fn crate_at(&self, dir: &str) -> Option<&'a str> {
+    pub fn crate_at(&self, dir: &str) -> Option<&'a str> {
         self.layout
             .crates
             .iter()
             .find(|(_, krate)| krate.path == dir)
             .map(|(name, _)| name.as_str())
+    }
+
+    /// The workspaces that the fetch and deps steps cover: the tools, in
+    /// the order of their names, and then the product workspaces with
+    /// crates, from `display/` to `desktop/`.
+    pub fn checked(&self) -> Vec<Checked<'a>> {
+        let tools = self.layout.tools.values().map(|tool| Checked {
+            dir: &tool.path,
+            targets: &tool.targets,
+            lock_allowlist: &tool.lock_allowlist,
+            product: None,
+        });
+        let workspaces = (0..self.workspaces.len())
+            .filter(|&workspace| self.exists(workspace))
+            .map(|workspace| {
+                let entry = self.workspaces[workspace].1;
+                Checked {
+                    dir: &entry.path,
+                    targets: &entry.targets,
+                    lock_allowlist: &entry.lock_allowlist,
+                    product: Some(workspace),
+                }
+            });
+        tools.chain(workspaces).collect()
     }
 
     /// The directories of the workspaces that exist and of the tools.
@@ -1051,7 +1107,7 @@ fn program_version<'m>(
 
 /// Whether `version` is `=` followed by an exact version: three numbers,
 /// optionally with a pre-release and build metadata.
-fn is_exact(version: &str) -> bool {
+pub fn is_exact(version: &str) -> bool {
     let Some(version) = version.strip_prefix('=') else {
         return false;
     };
@@ -1091,11 +1147,11 @@ fn entry_path(entry: &Value) -> Option<&str> {
     entry.get("path").and_then(Value::as_str)
 }
 
-fn is_krepi(name: &str) -> bool {
+pub fn is_krepi(name: &str) -> bool {
     name == "krepi" || name.starts_with("krepi-") || name.starts_with("krepi_")
 }
 
-const KREPI: &str =
+pub const KREPI: &str =
     "kosmo does not depend on krepi: no package is named krepi or starts with krepi- or krepi_";
 
 /// The checks of a dependency entry that apply wherever it is written.
@@ -1688,9 +1744,9 @@ fn untokenized(path: &str, (line, error): (usize, String)) -> String {
     }
 }
 
-/// The rules of the layout table for the declared edge `from` -> `to`: the
-/// first one it breaks.
-fn direction(index: &Index, from: Place, to: Place) -> Option<String> {
+/// The rules of the layout table for the edge `from` -> `to`: the first one
+/// it breaks.
+pub fn direction(index: &Index, from: Place, to: Place) -> Option<String> {
     let (from_workspace, from_entry) = index.workspaces[from.workspace];
     let (to_workspace, _) = index.workspaces[to.workspace];
     let from_layer = index.layer(from);
@@ -1784,7 +1840,7 @@ fn check_edges(index: &Index, edges: &[Edge], read: &BTreeSet<&str>, problems: &
 
 /// The cycles that a depth-first search of `graph` meets, each starting and
 /// ending at its smallest crate.
-fn cycles<'a>(graph: &BTreeMap<&'a str, BTreeSet<&'a str>>) -> BTreeSet<Vec<&'a str>> {
+pub fn cycles<'a>(graph: &BTreeMap<&'a str, BTreeSet<&'a str>>) -> BTreeSet<Vec<&'a str>> {
     fn visit<'a>(
         node: &'a str,
         graph: &BTreeMap<&'a str, BTreeSet<&'a str>>,

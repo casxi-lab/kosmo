@@ -28,15 +28,18 @@ fails:
 
 1. `layout`: the source layout, as [the layout step](#the-layout-step)
    describes;
-2. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
+2. `fetch` and `deps`: the packages of each workspace, downloaded once and
+   then checked offline, as
+   [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
+3. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
    workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask` and
    `desktop`;
-3. `docs`: relative links and anchors in the Markdown files;
-4. `commits`: the header of every commit message in `<base>..HEAD` keeps to
+4. `docs`: relative links and anchors in the Markdown files;
+5. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
    environment variable `CHECK_BASE` names; when it is unset, empty or all
    zeros, the base is the merge base of `origin/main` and `HEAD`;
-5. `workflows`: `.github/workflows/` holds only regular files, and every
+6. `workflows`: `.github/workflows/` holds only regular files, and every
    `.yml` or `.yaml` file there, in any subdirectory, is UTF-8 and one YAML
    document with scalar keys, without anchors, aliases, merge keys, repeated
    keys or characters that YAML parsers read differently. No workflow
@@ -47,9 +50,12 @@ fails:
    `secrets` in an expression, an `if` condition or a key, even inside a
    string literal.
 
-The `layout`, `docs` and `workflows` steps read only files that Git tracks, so
-build output and ignored files do not change the result; add a new file to the
-index with `git add` before running the check.
+The `fetch` step is the only one that uses the network: the Cargo commands of
+the later steps run with `CARGO_NET_OFFLINE=true`. The `layout`, `docs` and
+`workflows` steps read only files that Git tracks, and so does the `deps` step
+for the files it reads itself, so build output and ignored files do not change
+the result; add a new file to the index with `git add` before running the
+check.
 
 Every workspace denies the Clippy lints `unwrap_used`, `expect_used`, `panic`,
 `todo`, `unimplemented` and `allow_attributes_without_reason`, and `desktop/`
@@ -64,11 +70,13 @@ expect and panic: code in `#[cfg(test)]` modules and in `#[test]` functions.
 the working tree was clean before and after the run, each step with its
 status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
-`<workspace>_ms`), the first line of
-`rustc --version`, the runner image (`ImageOS`, `ImageVersion`) and the GitHub
-Actions run (`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_EVENT_NAME`,
-`GITHUB_REF`, `GITHUB_SHA`); a value the environment does not provide is
-`null`.
+`<workspace>_ms`; for the `fetch` step and the `cargo metadata` commands of
+the `deps` step, the duration of each command as `<workspace>_<target>_ms`;
+for the `deps` step also the observations that its section lists), the first
+line of `rustc --version`, the runner image (`ImageOS`, `ImageVersion`) and
+the GitHub Actions run (`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`,
+`GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a value the environment
+does not provide is `null`.
 
 CI runs the check as the job `cargo xtask check` of
 `.github/workflows/check.yml` on a GitHub-hosted `ubuntu-24.04-arm` runner,
@@ -95,9 +103,9 @@ that does it.
 `layout.toml` at the repository root is the layout table: the product
 workspaces with their layers, the workspaces each one uses, their target
 platforms and `lock-allowlist` locations, the tool workspace `xtask`, and every
-crate that exists with its directory, layer and marks. Its comments describe
-each field. The `layout` step reads it and the tracked files, without running
-Cargo, and reports every problem it finds, one per line as
+crate that exists with its directory, layer, marks and allow entries. Its
+comments describe each field. The `layout` step reads it and the tracked files,
+without running Cargo, and reports every problem it finds, one per line as
 `<path>[:<line>]: <message>`, sorted by path and then by line number. Problems
 at a place in a Rust file and in a table that does not parse carry a line
 number; problems in manifests and problems of a whole file, such as a missing
@@ -227,14 +235,165 @@ checked. It cannot see what build scripts, procedural macros or configuration
 outside the repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
 `CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no longer runs the
 check at all; review covers these.
-The sources, licenses and allowed packages of the dependencies are checked by
-the planned dependency step, not by this one.
+What Cargo resolves from the manifests is checked by the deps step, not by this
+one.
 
 A change that adds a crate registers it in `layout.toml` with its directory,
 layer and marks, adds it to the `members` of its workspace root, and declares
 it in the root's `[workspace.dependencies]` when other crates depend on it.
-The first crate of a workspace also adds the workspace's root manifest and
-`Cargo.lock` and adds the workspace to `WORKSPACES`.
+The first crate of a workspace also adds the workspace's root manifest,
+`Cargo.lock` and allowlist and adds the workspace to `WORKSPACES`.
+
+### The fetch and deps steps
+
+The `fetch` step downloads the packages that each workspace of the check needs:
+the tool workspace `xtask` and each product workspace with crates in
+`layout.toml`, in this order, for each target platform in the workspace's
+`targets`. For each workspace and target it runs
+
+```sh
+cargo fetch --locked --manifest-path <workspace>/Cargo.toml --target <target>
+```
+
+It runs every command, also after one fails, and reports each failure with
+Cargo's message.
+
+The `deps` step runs, for the same workspaces and targets,
+
+```sh
+CARGO_NET_OFFLINE=true cargo metadata --locked --offline --all-features \
+    --filter-platform <target> --format-version 1 \
+    --manifest-path <workspace>/Cargo.toml
+```
+
+and takes the union of the resolutions of a workspace's targets by package id.
+Normal, build and dev dependencies all count, optional dependencies of members
+count as if their features were on, and a package that only other platforms
+use, such as a dependency under `cfg(windows)`, is not part of the union
+although `Cargo.lock` records it. On the union of each workspace it checks:
+
+- sources: every package is a member of the workspace, a crate of
+  `layout.toml` reached through a `path` dependency from a product workspace,
+  or a package whose source is exactly crates.io,
+  `registry+https://github.com/rust-lang/crates.io-index`, which Cargo reports
+  for crates.io with the sparse protocol too. The directions below decide, edge
+  by edge, whether a crate of the table may be reached: a crate of another
+  workspace that is not an export crate may be reached through an export crate
+  of its own workspace, such as a facade that re-exports it, but no crate of
+  the workspace being checked may depend on it directly. Git packages, packages
+  of other registries, `path` packages that are not crates of the table, inside
+  or outside the repository, and any crate of the table in the tool workspace
+  `xtask` fail, and are not checked further. No package is named `krepi` or
+  starts with `krepi-` or `krepi_`. Every crates.io package has a checksum in
+  the workspace's `Cargo.lock`;
+- exact requirements: every dependency of a member on a crates.io package, in
+  any dependency table, has the requirement `=x.y.z`, with an optional
+  pre-release or build suffix, as `cargo metadata` reports it (`"0.13"` in a
+  manifest is reported as `^0.13`);
+- directions: every resolved edge between crates of the table, for each
+  target, follows the directions that the layout step checks on the declared
+  edges, and the resolved graph, dev-dependencies included, has no cycle;
+- allow entries: the direct dependencies of each crate of the table on
+  crates.io packages are exactly its `external` entries in `layout.toml`,
+  matched by package, kind and target condition and compared in requirement,
+  whether the dependency is optional, default features, the features that the
+  declaration turns on and the resolved features of the package. The tool
+  workspace `xtask` has no allow entries; its allowlist alone lists its
+  packages;
+- allowlists: the crates.io packages of the union are exactly the entries of
+  the workspace's allowlist, the file that its `lock-allowlist` names, with the
+  fields below. A package that the workspace resolves in several versions,
+  over all its targets together, has a `duplicate` reason on the entry of each
+  version, and only such a package has one.
+
+The step reports every problem it finds, one per line as
+`<path>[:<line>]: <message>`, sorted by path and then by line number; the line
+is given for an allowlist whose tables do not have the fields below. When the
+allow entries of a crate differ from what Cargo resolves, it also prints every
+`external` entry that the crate should have, to replace all its entries in
+`layout.toml`, or says that they all go. When an allowlist differs, it prints
+the entries to add, each replacing the entry with the same name and version if
+there is one, and the entries to remove. The printed entries keep the reasons
+of the entries they replace, and the other entries stay as they are. A
+workspace for which `cargo metadata` fails is reported with Cargo's message,
+indented on the lines that follow, and not checked further.
+
+It also reports, without failing, these facts of the receipt: `drift`, the
+crates.io packages whose versions differ between the workspaces, `xtask`
+included, or `none`; and for each workspace `<workspace>_members`, the number
+of its members, `<workspace>_exports`, of its export crates in the table,
+`<workspace>_crates_io`, of its crates.io packages, and
+`<workspace>_internal_edges`, of the distinct edges between crates of the
+repository, counted once per kind.
+
+An allow entry is a `[[crates.<name>.external]]` table in `layout.toml`, for
+example:
+
+```toml
+[[crates.kosmo-render.external]]
+name = "libm"
+version = "=0.2.16"
+default-features = false
+features = []
+resolved-features = ["arch", "default"]
+```
+
+Its fields are the package `name`; the requirement `version`; `kind`,
+`"build"` or `"dev"`, left out for a normal dependency; `target`, the
+condition of a `[target.<condition>.*]` table, left out otherwise;
+`optional = true` for an optional dependency, left out otherwise;
+`default-features`; `features`, the features that the declaration turns on
+after inheritance from the workspace root; and `resolved-features`, the
+features of the package after resolution, for all targets of the workspace
+together. Both lists are sorted.
+
+An allowlist has one `[[package]]` table for each package, for example:
+
+```toml
+[[package]]
+name = "serde"
+version = "1.0.229"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["alloc", "derive", "serde_derive"]
+crates = ["xtask"]
+```
+
+Its fields are `name`; `version`, as `Cargo.lock` records it, build metadata
+included; `source`, always `crates.io`; `license`, the license expression of
+the package's manifest as written, left out when it has none; `build-script`,
+whether it has a build script; `proc-macro = true` for a procedural-macro
+library, left out otherwise; `links`, the value of `links` in its manifest,
+which usually names the native library that its build script links, left out
+when it declares none; `features`, its resolved features for all targets
+together; `crates`, the crates of this repository whose crates.io dependencies
+bring the package in: each member, or crate of `layout.toml` reached through a
+`path` dependency, from which a chain of crates.io packages alone leads to it;
+and `duplicate`, why the workspace resolves several versions of the package.
+Both lists are sorted. A workspace without crates.io packages has an allowlist
+without entries.
+
+#### Limits of the fetch and deps steps
+
+The fetch and deps steps have limits:
+
+- They see what Cargo resolves for the targets in `layout.toml`. A package
+  that only other platforms use is neither listed nor checked. Build
+  dependencies and procedural macros run on the host; they are resolved for
+  the listed targets, which include the host of CI, `aarch64-unknown-linux-gnu`,
+  and `aarch64-apple-darwin`.
+- Resolved features are those that Cargo's resolver gives a package for all
+  its dependents in the resolution together, dev-dependencies included, so
+  they can be more than a normal build turns on.
+- `cargo xtask` builds xtask before any step runs, so the build scripts and
+  procedural macros of xtask's own dependencies run before the check reads
+  `xtask/allowlist.toml`.
+- The allowlists record the license expression of each package and whether
+  it has a build script, but the deps step does not evaluate them yet.
+- The checks find dependencies that were added by mistake. They cannot stop a
+  build script, a procedural macro or configuration outside the repository
+  that hides a change on purpose.
 
 ## Dependencies
 
@@ -252,9 +411,13 @@ repository, `[patch]` and `[replace]` sections and krepi's crates are never
 used. kalyx will also come from crates.io, and only the kalyx adapter crate
 will depend on it.
 
-The layout step checks how the manifests declare dependencies. The planned
-dependency step will check what Cargo resolves from them: the sources, the
-allowed packages of each crate and workspace, and their licenses.
+The layout step checks how the manifests declare dependencies, and the deps
+step checks what Cargo resolves from them: the sources, the exact requirements
+and the allowed packages of each crate and workspace, as
+[the fetch and deps steps](#the-fetch-and-deps-steps) describes. A change that
+adds, removes or updates an external dependency updates the allow entries of
+the crate in `layout.toml` and the allowlist of the workspace in the same
+commit; the deps step prints the entries to add, replace or remove.
 
 Security advisories are checked by hand before each version is tagged,
 pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the

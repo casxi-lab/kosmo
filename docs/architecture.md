@@ -713,17 +713,20 @@ pure core (`no_std` with `alloc`, no unsafe code, no build script, no
 external dependency and no interior mutability), provisional (with the
 condition that ends it), publishable, and whether it may have a build script
 or be a procedural-macro library. The allowed direct external dependencies of
-each crate will be listed in its entry, and the allowed packages of each
-workspace's `Cargo.lock` in the file that the workspace's `lock-allowlist`
-names; both are planned, with the dependency check.
+each crate are listed in its entry, and the allowed packages of each
+workspace's `Cargo.lock` in the allowlist that the workspace's
+`lock-allowlist` names; the deps step of `cargo xtask check` compares both
+with what Cargo resolves.
 
 Crates and workspaces appear with their first code. So far only `desktop/`
 exists, with the program `kosmo`; the table states the rules of `display/` and
 `framework/` and lists no crate for them. A change that adds a crate registers
 it in the table, and the first crate of a workspace adds the workspace root.
 The layout step of `cargo xtask check` enforces this layout on the tracked
-files; [Contributing](../CONTRIBUTING.md#the-layout-step) describes its checks
-and their limits.
+files, and the deps step on what Cargo resolves; Contributing describes the
+checks of [the layout step](../CONTRIBUTING.md#the-layout-step) and of
+[the fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps) and
+their limits.
 
 ## Platform boundary
 
@@ -1675,7 +1678,7 @@ the layout table will list for their crates:
 - Each row is one direct dependency of one crate; a package that two crates
   depend on takes two rows.
 - Changing the version or the features of a listed package is a pull request of
-  its own, checked by the dependency step and with the goldens updated by
+  its own, checked by the deps step and with the goldens updated by
   category. Adding or replacing a package is a design change.
 
 ## Frontends of the first release
