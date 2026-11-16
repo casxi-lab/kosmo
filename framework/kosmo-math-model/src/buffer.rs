@@ -160,8 +160,10 @@ impl EditBuffer {
     /// or a bracketed expression) and an operand is missing where it goes,
     /// the copy is put in brackets, so that it stays one operand: the line
     /// `x+1` inserted after `2*` gives `2*(x+1)`. A fragment whose brackets
-    /// do not pair is put in brackets too; the added brackets then pair with
-    /// its own, and the line stays incomplete or invalid.
+    /// do not pair is put in brackets too, but the added brackets can then
+    /// pair with brackets of the copy or of the line, so the copy need not
+    /// stay one operand: `1)+(1` inserted after `(2*` in `(2*)` gives
+    /// `(2*(1)+(1))`, which is complete.
     ///
     /// The fragment must come from `snapshot`, such as its
     /// [`line`](Snapshot::line) or the range of an error about it: only a

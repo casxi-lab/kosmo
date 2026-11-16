@@ -10,9 +10,10 @@ The library does not depend on kalyx. It reads a line with the grammar of
 kalyx 0.1.0 to find its holes and to tell whether it is complete. Turning a
 line into the text that kalyx reads is planned for the kalyx adapter crate
 `kosmo-math-kalyx`; the display model of results is planned for this library
-and that crate, the result view for the math controls, and two-dimensional
-templates such as fractions for this library. The design rules that it follows are
-in the [editing structure](../../architecture.md#editing-structure) and
+and that crate, the result view for the math controls crate
+`kosmo-math-controls`, and two-dimensional templates such as fractions for
+this library. The design rules that it follows are in the [editing
+structure](../../architecture.md#editing-structure) and
 [versions](../../architecture.md#versions) sections of the architecture.
 
 ## Using it
@@ -25,30 +26,29 @@ the same example as the crate documentation, whose copy `cargo test` runs:
 use kosmo_math_model::{Completeness, EditBuffer, HoleKind, Item, Rejected};
 
 fn main() -> Result<(), Rejected> {
+    // `2*` misses its second operand, at index 2.
+    let mut line = EditBuffer::new();
+    line.insert_text("2*")?;
+    let holes = match line.completeness() {
+        Completeness::Incomplete(holes) => holes,
+        _ => Vec::new(),
+    };
+    assert_eq!(holes.len(), 1);
+    assert_eq!(holes[0].kind, HoleKind::MissingOperand);
+    assert_eq!(holes[0].position.index, 2);
 
-// `2*` misses its second operand, at index 2.
-let mut line = EditBuffer::new();
-line.insert_text("2*")?;
-let holes = match line.completeness() {
-    Completeness::Incomplete(holes) => holes,
-    _ => Vec::new(),
-};
-assert_eq!(holes.len(), 1);
-assert_eq!(holes[0].kind, HoleKind::MissingOperand);
-assert_eq!(holes[0].position.index, 2);
+    // Copying the line `x+1` into the hole adds brackets.
+    let mut other = EditBuffer::new();
+    other.insert_text("x+1")?;
+    let snapshot = other.snapshot();
+    line.insert_fragment(&snapshot, snapshot.line())?;
+    let expected: Vec<Item> = "2*(x+1)".chars().map(Item::Char).collect();
+    assert_eq!(line.items(), expected.as_slice());
+    assert_eq!(line.completeness(), Completeness::Complete);
 
-// Copying the line `x+1` into the hole adds brackets.
-let mut other = EditBuffer::new();
-other.insert_text("x+1")?;
-let snapshot = other.snapshot();
-line.insert_fragment(&snapshot, snapshot.line())?;
-let expected: Vec<Item> = "2*(x+1)".chars().map(Item::Char).collect();
-assert_eq!(line.items(), expected.as_slice());
-assert_eq!(line.completeness(), Completeness::Complete);
-
-// Two edits changed the content, so the source version is 2.
-assert_eq!(line.version().get(), 2);
-Ok(())
+    // Two edits changed the content, so the source version is 2.
+    assert_eq!(line.version().get(), 2);
+    Ok(())
 }
 ```
 
@@ -97,15 +97,18 @@ anything. A rejected edit returns the reason and changes nothing: not the
 items, the cursor, the selection or the source version.
 
 `insert_fragment` puts the copy in brackets when the fragment is not a single
-operand (a number, a name, a call or a bracketed expression) and an operand
-is missing where it goes, so that the copy stays one operand: the line `x+1`
+operand (a number, a name, a call or a bracketed expression) and an operand is
+missing where it goes, so that the copy stays one operand: the line `x+1`
 inserted after `2*` gives `2*(x+1)`, and before `*2` gives `(x+1)*2`. A copy
 that goes where no operand is missing, and a fragment without a token, are
-inserted as they are. A fragment whose brackets do not pair is put in
-brackets too; the added brackets then pair with its own, and the line stays
-incomplete or invalid. The fragment must come from the snapshot it is used
-with, such as its `line()` or the range of an error about it: only a range
-outside the snapshot is detected, and such a fragment is rejected.
+inserted as they are. A fragment whose brackets do not pair is put in brackets
+too, but the added brackets can then pair with brackets of the copy or of the
+line, so the copy need not stay one operand: `(1` inserted after `2*` gives
+the incomplete `2*((1)`, and `1)+(1` inserted after `(2*` in `(2*)` gives
+`(2*(1)+(1))`, which is complete, while typing the same characters gives
+`(2*1)+(1)`. The fragment must come from the snapshot it is used with, such as
+its `line()` or the range of an error about it: only a range outside the
+snapshot is detected, and such a fragment is rejected.
 
 ## Holes and completeness
 
@@ -251,7 +254,7 @@ file).
      `insert_fragment_past_the_item_limit_is_rejected`,
      `insert_fragment_at_line_start_brackets_a_sum`.
 4. After every operation the cursor lies in the root between 0 and the number
-   of items, and a selection has its anchor in the root, apart from the
+   of items, and a selection has its anchor in the root, distinct from the
    cursor; a selection normalizes to a fragment. Tests:
    `structure::tests::a_selection_normalizes_to_a_fragment`;
    `tests/random_sequences.rs`: `random_edit_sequences_keep_the_invariants`.
@@ -300,7 +303,8 @@ file).
     `insert_fragment_keeps_a_single_operand_as_it_is`,
     `insert_fragment_needs_no_brackets_where_no_operand_is_missing`,
     `insert_fragment_replaces_the_selection_and_brackets_where_it_was`,
-    `insert_fragment_copies_part_of_the_line_itself`;
+    `insert_fragment_copies_part_of_the_line_itself`,
+    `insert_fragment_brackets_a_fragment_whose_brackets_do_not_pair`;
     `parse::tests::single_operands_need_no_brackets`,
     `parse::tests::an_operand_is_needed_between_the_tokens_around_a_missing_one`.
 11. A snapshot does not borrow the buffer and keeps what it held; a value, an
