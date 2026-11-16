@@ -192,11 +192,12 @@ graph view.
 - **Screen and keyboard.** The device comes in two forms, a landscape handheld
   and a clamshell. The screen and keyboard of each form are not chosen; no key
   count or size is fixed.
-- **Display protocol details.** The object model, wire format, version
-  negotiation, errors and transport of the first protocol version are
-  provisional. They will be reviewed when krepi settles its side of the
-  display path: the development display path, the form of the drivers and the
-  hardware side of rendering.
+- **Display protocol details.** Protocol v0 is provisional until it is frozen
+  at the first pre-release of the kosmo version paired with krepi 0.2, and the
+  device port details that krepi still decides until krepi fixes its device
+  service interface for krepi 0.2. The
+  [architecture](architecture.md#display-stack) states what is provisional,
+  what is settled and when the design is reviewed.
 - **Math font and image formats.** The math font will be chosen with
   two-dimensional typesetting, and image formats with the features that need
   them. The rasterizer, the text stack, the determinism rules and the two

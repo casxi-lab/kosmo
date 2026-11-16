@@ -3,9 +3,9 @@
 This page states the design rules of kosmo's first release for the editing
 structure of formulas, versions, formula conversion with kalyx, the host job
 layer, the keyboard event record, the source layout, the platform boundary,
-the framework, and rendering, text and determinism. It also names the two
-frontends of the first release and lists every component with its verification
-level.
+the framework, rendering, text and determinism, and the display stack. It
+also names the two frontends of the first release and lists every component
+with its verification level.
 
 The rules are fixed before the code that follows them. So far the product code
 is the `kosmo` program, which only reports its version, and the one-line
@@ -668,7 +668,8 @@ these two types, and no component defines its own.
   packet-end and loss marks; no device identity or sequence number. Modifiers
   are ordinary usages. Repeat and long press cannot be represented.
 - After a loss the server resynchronizes through the device state query; the
-  device description and state query belong to the device ports.
+  device description and state query belong to the
+  [device ports](#device-ports).
 
 ### Delivered key event
 
@@ -680,13 +681,15 @@ these two types, and no component defines its own.
 - Focus generation, epoch and trace number are added in outer layers by the
   framework, the trusted core and the display protocol.
 - `ModSet(u16)`: the low 8 bits follow the HID modifier byte; the high 8 bits
-  are reserved for layer state, defined with the key maps. More bits are a
-  change of the event record.
+  hold the layer state that
+  [layer keys and layer state](#layer-keys-and-layer-state) defines. More bits
+  are a change of the event record.
 - `KeyMeaning` is `Char(char)` or `Named(NamedKey)`. `NamedKey` is a `u16`
   numbered table in `kosmo-types` that only grows and never renumbers; the
   framework and the display stack propose entries.
 - Only kosmo's display server produces repeat and long press, timed by an
-  injected clock; which keys and parameters is defined with the key maps. The
+  injected clock; which keys and parameters is defined with the key maps, as
+  [repeat and long press](#repeat-and-long-press) describes. The
   reserved stop key's long press belongs to krepi's driver: it is not in device
   records, and the server produces no LongPress for it. Host normalization
   drops the host's repeats and pointer events. The framework produces neither;
@@ -703,10 +706,10 @@ these two types, and no component defines its own.
   advances it, timers, timeouts) belong to the framework's [event loop and
   clock](#event-loop-and-clock).
 - Decoding from bytes is bounded and returns errors, never panics. The wire
-  format belongs to the display protocol, device service messages to krepi's
-  input device interface. `RecordBody` and `KeyAction` are
-  `#[non_exhaustive]`; pointer, touch and input methods will be new bodies,
-  added by a design change.
+  format belongs to the display protocol's [wire format](#wire-format), device
+  service messages to krepi's input device interface. `RecordBody` and
+  `KeyAction` are `#[non_exhaustive]`; pointer, touch and input methods will
+  be new bodies, added by a design change.
 - An event script holds one record per line, in one layer only: framework
   scripts use delivered events, server tests may use device records. The
   projection from delivered events to device records takes usage, press or
@@ -824,9 +827,9 @@ their limits.
   streams, arguments, exit code and the real clock, and `kosmo-jobs` for
   threads; `kosmo-types`, `kosmo-math-model`, `kosmo-math-kalyx`,
   `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui` are core libraries. Other
-  crates are registered by the change that creates them; `kosmo-server-host`,
-  `kosmo-testkit` and the crates of the host transport and process entry are
-  expected to be boundary crates.
+  crates are registered by the change that creates them; `kosmo-testkit` is
+  expected to be a boundary crate, and [host programs](#host-programs) lists the
+  boundary crates of the display stack with their categories.
 - The layout step of `cargo xtask check` will gain a static check that
   parses core libraries' `src/`, expands `use` trees and reports every
   forbidden path, macro and type with file and line, and checks that
@@ -1135,8 +1138,9 @@ Timers:
 - The focus generation and the epoch are each a `u64` newtype in the shared
   types crate, `Copy`, which the framework compares only for equality. How their
   values are produced and change, and what happens when they run out, is defined
-  with the display server's trusted core; the framework carries them in the
-  outer layer of platform events.
+  by the display server's trusted core, as
+  [epoch and focus generation](#epoch-and-focus-generation) describes; the
+  framework carries them in the outer layer of platform events.
 - A region level of focus generation is added by the first code that moves focus
   within the framework. Its rules are fixed now: a key event is dispatched only
   when its epoch, its surface's focus generation and its region's generation all
@@ -1189,8 +1193,8 @@ The minimal key map of the first release adds five `NamedKey` entries:
 - Entries get their numbers when they are written into `kosmo-types`, and other
   entries are added by the same rules.
 - `Cancel` is the application's cancel key, apart from the display server's part
-  of the stop key. The host keys that produce these meanings are defined with
-  the display server's key maps.
+  of the stop key. The host keys that produce these meanings are in the display
+  server's [host key map](#host-key-map).
 
 ### Platform interface
 
@@ -1340,8 +1344,8 @@ Scripts hold input only:
 - `kosmo-backend-display` implements the platform interface through the client
   library `kosmo-client` (layer F0) and the client transport port, and is
   generic over the transport. It is single-threaded: `wait` calls the
-  transport's wait with the same deadline, so the client transport port must
-  provide a wait with a deadline.
+  transport's wait with the same deadline, which the
+  [client transport port](#client-transport-port) provides.
 - In the first release it covers one session with its main surface; submission
   with update regions, writing a buffer again only after its release; key events
   with their focus stamps; events of an earlier epoch, which `kosmo-client`
@@ -1354,8 +1358,9 @@ Scripts hold input only:
 - It may depend on the provisional protocol crate and on `kosmo-client`, never
   on the server crates of `display/`.
 - Reconnection, frame events, clipboard, pop-ups, lifecycle and a transport on
-  krepi are not part of the first release. The path of the shell extension's
-  events is defined with the display protocol and the shell.
+  krepi are not part of the first release. The shell extension's events do not
+  pass through this backend: `kosmo-client` hands them to a receiver that the
+  shell registers, as [shell extension](#shell-extension) describes.
 
 ### Accessibility
 
@@ -1622,8 +1627,10 @@ and uses integer arithmetic only:
   trees, display lists, glyph positions, coverage or pixels. In the first
   release it is every target (`src/`, tests and examples) of `kosmo-types`,
   `kosmo-ui`, `kosmo-render`, `kosmo-text`, `kosmo-controls` and
-  `kosmo-math-controls`; a later crate is judged by the same definition. Whether
-  `display/` belongs to it is decided with the display server.
+  `kosmo-math-controls`; a later crate is judged by the same definition. In
+  `display/`, `kosmo-compositor` and later server modules that write pixels
+  belong to it. `display/` needs no transcendental functions in the first
+  release; if it needs them later, their source is a design change.
 - On the deterministic path, transcendental functions are called only through
   one wrapper module, provisionally `det_math` in `kosmo-render`, which calls
   `libm` 0.2.16, pinned exactly. Its functions have only `f32` and `f64`
@@ -1744,6 +1751,2154 @@ the layout table will list for their crates:
   its own, checked by the deps step and with the goldens updated by
   category. Adding or replacing a package is a design change.
 
+## Display stack
+
+The display stack is kosmo's display protocol, its display server and the ports
+through which the server reaches devices, clients and krepi's supervisor. Its
+crates are in `display/`: the protocol `kosmo-proto` and the shared types
+`kosmo-types` in layer D0; the pure cores `kosmo-scene`, `kosmo-focus` and
+`kosmo-surface` in layer D1; the compositor `kosmo-compositor` and the window
+policy module `kosmo-wm` in layer D2; the server `kosmo-server` with its
+headless backend `kosmo-server-headless` and its nested backend
+`kosmo-server-host` in layer D3; and the protocol's conformance tests
+`kosmo-proto-conformance` in layer D4. In the first release the input pipeline
+and the key maps are a module of `kosmo-server`, not a server library of their
+own in layer D2. Clients reach the server through the client library
+`kosmo-client` in layer F0 of `framework/`, which the framework's [display
+server backend](#display-server-backend) uses.
+
+What is provisional:
+
+- Protocol v0 is provisional: its object model, wire format, version
+  negotiation, errors and transport rules, the rules of the shell extension
+  included, and the client transport port that carries its frames. v0 is
+  provisional until it is frozen at the first pre-release of the kosmo version
+  paired with krepi 0.2. Until then, only a revision that a review of this
+  design makes necessary, approved as a design change, may be incompatible;
+  every other revision only adds compatibly, as [version
+  negotiation](#version-negotiation) states. A review is due when krepi's side
+  of the display path changes, that is its development display path, the form of
+  its drivers, the hardware side of rendering, or the formats of events or
+  scan-out, and at the freeze, when the constants and queue capacities are
+  checked against krepi's transport. `kosmo-proto` is the only crate of the
+  display stack that the layout table marks provisional. `kosmo-server` and
+  `kosmo-client` are not marked; their provisional parts are the ports listed
+  here.
+- The device port details that krepi still decides are provisional: the
+  operations, events, errors and description fields of the display and input
+  device ports, the profile of the minimal frame-buffer subset, the holder
+  handover, and that the ports have no mode list, mode switching, brightness or
+  backlight. They are compared with krepi's device service interface when krepi
+  fixes it for krepi 0.2: what the ports can map stays, and krepi's integration
+  adapts to it.
+- These port details are settled, because krepi has chosen the form of its
+  display and input drivers: there is one display device instance for each
+  display engine, which may drive several outputs; there is one input device
+  instance for each input device service, so a stop key on a button driver of
+  its own is an instance of its own; output enumeration states the transforms
+  that the scan-out hardware can do; the display server performs rotations that
+  the hardware cannot do while it composes; each output scans out one plane; and
+  vblank events come from the display device service, which generates them with
+  a timer on QEMU.
+- The route of the protocol is not provisional: a session is a capability, its
+  identity comes from the authenticated endpoint, roles are granted one by one,
+  and every protocol object has a row in the [Wayland table](#wayland-table).
+  Neither are the stop key's path and the boundary between krepi's drivers and
+  the display server.
+- Everything else in this section is not provisional: the structure of the ports
+  and the stop-request port, the trusted core and the execution model, the key
+  map engine and the stop key, and the host form, except that the counts and
+  framing of the [host transport](#host-transport) follow the transport rules of
+  protocol v0 and change with them.
+
+### Protocol v0
+
+Applications and the shell talk to the display server through sessions of
+protocol v0. A session is a capability: its identity comes from the
+authenticated endpoint that the transport reports, and the server grants its
+roles; no message names an application or asks for a role. `kosmo-proto` holds
+the protocol's types, constants and codec, the shell extension's included.
+
+#### Objects and identifiers
+
+v0 has exactly six objects. Each kind of object is an interface with a `u16`
+number:
+
+| Number | Object | What it is |
+| --- | --- | --- |
+| 1 | Session | The session itself, which exists with the connection |
+| 2 | Buffer | A client buffer: pixels in a memory object of the client |
+| 3 | Surface | Content that the client commits |
+| 4 | AppView | The application role of a surface |
+| 5 | Seat | The logical seat |
+| 6 | Keyboard | The key events of the seat |
+
+- Numbers 7 to 11 are reserved for EmbeddedView, Pointer, Touch, TextInput and
+  ImeSession. `kosmo-proto` defines no type or message for them, no `Welcome`
+  lists them, and binding one gives `Unsupported`. They are added later with
+  their messages and their rows of the [Wayland table](#wayland-table); Seat
+  gains capability events with Pointer and Touch.
+- Popup, DataOffer, DataSource, Output, FrameCredit, PresentationFeedback and
+  Capture are not in the first release and reserve no number; objects added
+  later take numbers from 12 in the order they are added.
+- Interface numbers: 0 is unused; `0x0001` to `0x00FF` are the core objects;
+  `0x0100` to `0x01FF` the privileged [shell extension](#shell-extension);
+  `0x0200` to `0xFEFF` later extensions, 256 numbers each, assigned by the
+  revision that adds the extension; `0xFF00` to `0xFFFF` are reserved. A range
+  states which part of the protocol an interface belongs to, not who may use it:
+  permission always comes from the session's roles.
+- Opcodes are `u16`, numbered from 0 within each interface, separately for
+  requests and for events. They only grow and are never reused.
+- Object identifiers are `u32`. 0 means none and is never a target or a
+  reference; 1 is the session itself. A client creates objects with identifiers
+  in $[2, 2^{31})$, each greater than every identifier it has used in the
+  session, so identifiers are never reused and destroying an object needs no
+  acknowledgement. $[2^{31}, 2^{32} - 1)$ is for objects that the server
+  creates, of which v0 has none, and $2^{32} - 1$ is reserved. A client that
+  runs out of identifiers can only end the session. A stale handle is thus
+  always an unknown object on the wire. Extension objects use the same space and
+  the same rule.
+
+#### Messages
+
+A call is a synchronous request with a reply; every other message goes through
+the session's bounded queues, as [transport rules](#transport-rules) describe.
+The body of every call starts with `queued_before: u64`, and every call that
+creates an object carries the new object's `version`. An event marked reserved
+may use the reserved part of the event queue.
+
+| Object | Message | Direction | Path | Arguments |
+| --- | --- | --- | --- | --- |
+| Session | `Hello` | Client to server | Call | `major: u16`; `session_version: u32`, the highest Session version that the client supports |
+| Session | `Welcome` | Server to client | Reply to `Hello` | `epoch: u64`; `formats: u32`, the set of accepted pixel format codes as bits; `output_width: u32`, `output_height: u32`, the logical size of the only output; `session_version: u32`; the interface table, a segment of at most `MAX_INTERFACES` entries of `interface: u16` and `version: u32` |
+| Session | `Reply` | Server to client | Reply to the other calls | `status: u16`, 0 for success or a code of class A; `detail: u32` |
+| Session | `Bind` | Client to server | Call | `interface: u16`, `version: u32`, `new_id: u32` |
+| Session | `CreateBuffer` | Client to server | Call | `new_id: u32`, `version: u32`; `width`, `height`, `stride: u32`; `format: u16`; one memory object attached to the call |
+| Session | `CreateSurface` | Client to server | Call | `new_id: u32`, `version: u32` |
+| Session | `CreateAppView` | Client to server | Call | `new_id: u32`, `version: u32`, `surface: u32` |
+| Session | `Ping` | Server to client | Event | `serial: u32` |
+| Session | `Pong` | Client to server | Queued | `serial: u32` |
+| Session | `Violation` | Server to client | Event, reserved | `reason: u16`, a code of class B; `opcode: u16`; `object: u32` |
+| Buffer | `Released` | Server to client | Event, reserved | `commit_seq: u64` |
+| Buffer | `Destroy` | Client to server | Queued | None |
+| Surface | `Commit` | Client to server | Queued | `seq: u64`; `buffer: u32`; `damage`, a segment of at most `MAX_DAMAGE` rectangles of `x`, `y`, `width` and `height`, each `u32`, in buffer coordinates |
+| Surface | `Destroy` | Client to server | Queued | None |
+| AppView | `Configure` | Server to client | Event | `width: u32`, `height: u32` |
+| AppView | `Destroy` | Client to server | Queued | None |
+| Seat | `GetKeyboard` | Client to server | Call | `new_id: u32`, `version: u32` |
+| Seat | `Destroy` | Client to server | Queued | None |
+| Keyboard | `Enter` | Server to client | Event | `surface: u32`, `epoch: u64`, `gen: u64` |
+| Keyboard | `Leave` | Server to client | Event | `surface`, `epoch` and `gen` as they were before leaving |
+| Keyboard | `Key` | Server to client | Event | `surface`, `epoch`, `gen`; `usage_page: u16`, `usage_id: u16`; `meaning_kind: u16`, `meaning_value: u32`; `mods: u16`; `action: u8`; `synthetic: u8`; `time: u64` |
+| Keyboard | `Overflow` | Server to client | Event, reserved | None |
+| Keyboard | `Destroy` | Client to server | Queued | None |
+
+Session:
+
+- A connection starts without a session. A `Hello` that the server accepts,
+  answered by `Welcome`, establishes the session, and the session closes when
+  the client disconnects, when it violates the protocol or when the server ends.
+  A `Hello` with another major version gets only the rejection, and the
+  connection ends without a session. Any message other than `Hello` before the
+  session is established, and a second `Hello`, are state violations. Closing
+  releases every child object, and the duty to return committed buffers lapses.
+- `Hello` is the first message, and its `queued_before` is 0. It carries no
+  application identity, nothing that could request a role and no interface
+  table.
+- `Welcome` lists the interfaces that the server offers the session, those it
+  supports and the session's roles allow, each with its highest version; Session
+  is always among them. `formats` and the output size are what the framework's
+  `Capabilities` of the [platform interface](#platform-interface) reports, and
+  `epoch` is the server's epoch. It carries no session number, roles or quotas.
+- `Reply.detail` is the server's major version for `VersionMismatch`, the
+  interface number for `Unsupported` and `PermissionDenied`, the kind of quota
+  for `QuotaExceeded` (1 surfaces, 2 views, 3 buffers, 4 buffer bytes), and 0
+  otherwise.
+- `Bind` creates the root object of an interface. In v0 only Seat can be bound;
+  the root objects of extensions are bound the same way. Binding an offered
+  interface that has no root object, such as Buffer, gives `InvalidArgument`.
+- `Ping` serials strictly increase within a session, and a `Pong` must answer a
+  serial that was sent and not yet answered, or it is a state violation. The
+  protocol gives only this mechanism: when the server probes, how long it waits
+  and how the shell learns that an application does not respond are defined with
+  the shell extension.
+- `Violation` is the last message of a session; the server then ends the
+  connection.
+
+Buffer:
+
+- `CreateBuffer` carries the four fields of a
+  [`BufferDesc`](#pixel-formats-and-buffers) and exactly one memory object,
+  which the transport attaches to the call; frames never contain memory objects.
+  The server checks the description by the rules of `BufferDesc`, checks that
+  the format is in `Welcome.formats` and that the memory object holds at least
+  `stride × height` bytes, and otherwise replies `InvalidArgument` and changes
+  nothing. A buffer counts toward the session's quotas of buffers and of buffer
+  bytes. v0 has no pool offsets and no usage flags.
+- Pixel format codes are `u16`: 0 is unused, 1 is `Rgba8Premul`, 2 `Xrgb8888`, 3
+  `Rgb565` and 4 `Argb8888Premul`, the four [pixel
+  formats](#pixel-formats-and-buffers); other values are out of range.
+- A buffer is writable, becomes committed when a `Commit` references it, and
+  becomes writable again with `Released`, which comes once the server has read
+  it or a newer commit of the same surface has superseded it. The server treats
+  it as writable only after the client has taken that `Released` from its event
+  queue, so each buffer has at most one `Released` that the client has not
+  taken. Until then, a commit that references the buffer, or destroying it, is a
+  state violation.
+- `Released` comes exactly once for each commit, or lapses when the session
+  closes; afterwards the server never accesses the buffer. A buffer is
+  referenced by at most one commit that has not been released, and `Destroy` is
+  allowed only while it is writable.
+- Writing a buffer before its `Released` affects only the client's own picture,
+  as [buffer sealing](#buffer-sealing-and-private-copies) explains.
+
+Surface:
+
+- `Commit { seq, buffer, damage }` is the whole pending state, so a commit is
+  atomic by construction. Pending properties added later, such as an input
+  region or a transform, will be separate requests that take effect with the
+  next `Commit`.
+- `seq` strictly increases on each surface; a `Commit` whose `seq` does not is a
+  state violation. `buffer` is a writable Buffer of the session; 0 is out of
+  range, since v0 cannot detach content. Rectangles decode into the damage
+  rectangle type of `kosmo-types`; those with a width or height of 0 are dropped
+  and the parts beyond the buffer are clipped.
+- A new commit supersedes the previous one when the server has not read that
+  yet: the superseded buffer is released unread, and its damage is merged into
+  the new commit.
+- Only a surface with a role can commit; a `Commit` on a surface without a role,
+  or whose role has expired, is a state violation. A surface starts without a
+  role and gets the application role with `CreateAppView`; once its AppView is
+  destroyed its role has expired, and it can only be destroyed. A surface has at
+  most one role in its lifetime.
+- `Destroy` is allowed in any state and destroys the surface's AppView too; each
+  committed buffer that has not been released gets one `Released` once the
+  server has stopped accessing it. Surface has no events in v0.
+
+AppView:
+
+- `CreateAppView` gives `PermissionDenied` when the session has no application
+  role, and is a state violation when the surface already has a role or its role
+  has expired. Views count toward the session's quota of views.
+- v0 has no requests for placement, layers or stacking order: the window policy
+  decides placement, and the trusted core enforces the placement constraints.
+- `Configure` gives the view's logical size, with the server's rotation already
+  applied. It is queued before the reply to `CreateAppView` and again whenever
+  the size changes. The size is a hint that the client commits to; a buffer of
+  another size is composed as [private
+  copies](#buffer-sealing-and-private-copies) describe and is no protocol error.
+  There is no acknowledgement in v0: a configuration in two steps comes with a
+  later window model as a new AppView version. In the first release, whose
+  policy shows applications full screen, the size changes only with the output.
+- When a view is destroyed, focus falls back as the window policy decides.
+
+Seat and Keyboard:
+
+- A session has at most one Seat, bound through `Bind` with interface 5; a
+  second is a state violation. The Seat is a logical seat that merges every
+  keyboard-like input device service that the server holds; the protocol shows
+  no devices and no device identities. A Seat has at most one Keyboard, and a
+  second `GetKeyboard` is a state violation; destroying the Seat destroys its
+  Keyboard. v0 has no capability events.
+- A Keyboard sends no events after its `Destroy` or the destruction of its Seat.
+  If focus is on one of the session's views when the Keyboard is created, the
+  server sends `Enter` at once.
+- `Enter`, `Leave` and `Key` carry an outer stamp of the surface, the epoch and
+  the focus generation `gen`. The epoch and the generation are `u64` newtypes of
+  `kosmo-types`, whose values come from the trusted core, as [epoch and focus
+  generation](#epoch-and-focus-generation) state.
+- `Key` encodes the fields of the [delivered key event](#delivered-key-event)
+  one by one, adding and dropping none:
+  - `usage` as two `u16`;
+  - `meaning_kind` 1 for `Char`, with a Unicode scalar value in `meaning_value`,
+    or 2 for `Named`, with the `NamedKey` number in the low 16 bits of
+    `meaning_value` and 0 in its high 16 bits;
+  - `mods` unchanged: the low 8 bits as the event record defines them, and in
+    the high 8 bits 0 for every bit that the Keyboard's version does not define;
+  - `action` 0 for Press, 1 for Release, 2 for Repeat and 3 for LongPress;
+  - `synthetic` 0 or 1, and 1 only with Release;
+  - `time`, the `MonoTime` in nanoseconds, passed on unchanged.
+- Every argument takes whole words, so `Key` is 64 bytes, and `Enter` and
+  `Leave` are 28 bytes.
+- The server sends a Keyboard only the `NamedKey` numbers and actions of its
+  version; new `NamedKey` entries, one or several, come with a new Keyboard
+  version.
+- Version 1 of Keyboard has the nine `NamedKey` entries of the first release:
+  the five of [commands and key bindings](#commands-and-key-bindings) and the
+  four PC modifier entries of the [key maps](#key-maps).
+- When focus moves, the leaving side first gets a synthetic Release with the old
+  stamp for each key it has pressed, then `Leave`, and then the new focus gets
+  `Enter`. `Enter` lists no pressed keys and no modifiers, since the framework
+  keeps no key state.
+- The stop key's short press and the other reserved keys are never delivered as
+  `Key`. The core protocol has no messages for global keys; the shell learns of
+  them through the shell extension. No object reads another client's input or
+  forges input for another client.
+- The server resolves key meanings, so the protocol has no key map object and no
+  text fields. Key maps for Linux programs are a task of the compatibility
+  service.
+- v0 has no trace number in `Key` or `Commit`. When the server gains trace
+  points, `trace: u64` is appended to both, with new Keyboard and Surface
+  versions, as a compatible revision.
+- A client drops events whose epoch differs from `Welcome.epoch` and events of
+  objects or surfaces that it has destroyed. After `Overflow` it treats every
+  key as released and focus as left until the next `Enter`.
+
+#### Protocol errors
+
+Errors have two classes:
+
+- **Class A, results of calls: the session stays.** They come only in the
+  `Reply.status` of a call, and the state does not change. The one exception is
+  `VersionMismatch`, which comes before there is a session: the server ends the
+  connection after replying.
+- **Class B, protocol violations: the session closes.** The server sends
+  `Violation { reason, opcode, object }` through the reserved part of the event
+  queue and ends the connection.
+
+Queued requests, `Commit`, `Pong` and every `Destroy`, never give a class A
+result: they either take effect or are a violation. Class A results thus come
+only from calls, and a client always learns them synchronously.
+
+| Code | Name | Class | When |
+| --- | --- | --- | --- |
+| 1 | `VersionMismatch` | A | `Hello` has another major version; `detail` is the server's major version, and the connection ends |
+| 2 | `Unsupported` | A | `Bind` names an interface that the server does not support, reserved and unassigned numbers included; a requested `version` is above the one that `Welcome` lists; a creating call needs an interface that `Welcome` does not list |
+| 3 | `PermissionDenied` | A | The server supports the interface but the session's roles do not allow it, as for the shell extension, which is then not listed in its `Welcome`; `CreateAppView` without the application role; a request of the shell extension that would break the core's placement constraints |
+| 4 | `QuotaExceeded` | A | A session quota would be exceeded; `detail` is the kind of quota |
+| 5 | `InvalidArgument` | A | Well formed but invalid: a buffer description that fails its checks, a format not in `formats`, a memory object that is too small or not exactly one, or a memory object that does not meet the transport's requirements |
+| 6 | `OutOfMemory` | A | The server could not allocate its own state for the call |
+| 64 | `Truncated` | B | The frame is shorter than its header or than its stated length; the arguments of the target's version run past the end of the frame, a segment's content included |
+| 65 | `TooLong` | B | The frame is longer than `MAX_FRAME`; bytes remain after the arguments; a segment's count is above its bound |
+| 66 | `OutOfRange` | B | An unknown enum code; a reserved or undefined bit, `mods` included, that is set; nonzero high bits of a narrow value or nonzero padding of a segment; a frame length that is not a multiple of 4; an invalid scalar value or string; an identifier or a version of 0 where it must not be 0 |
+| 67 | `UnknownOperation` | B | The opcode is not defined in the target's version |
+| 68 | `UnknownObject` | B | The target or a referenced identifier is not a live object of the session, destroyed objects included |
+| 69 | `WrongKind` | B | The identifier is a live object of another kind than the one required |
+| 70 | `BadNewId` | B | A new identifier is outside the client's range or not greater than every identifier used |
+| 71 | `StateViolation` | B | The object's current state does not allow the request, as the rules of each object state; `queued_before` does not match the queue; more unprocessed request frames than `C_R` |
+| 72 | `BufferFault` | B | The server could not read a client buffer while copying it |
+
+- Codes 1 to 63 are class A, 64 to 127 class B, and the rest are reserved.
+- The calls give these class A results: `Hello` 1; `Bind` 2, 3 and 5;
+  `CreateBuffer` 2, 4, 5 and 6; `CreateSurface` 2, 4 and 6; `CreateAppView` 2,
+  3, 4 and 6; `GetKeyboard` 2 and 6.
+- `BufferFault` follows no message: it comes when copying at a latch fails, with
+  the buffer as `object` and the opcode of the `Commit` that referenced it.
+- A call that causes a violation gets no `Reply`: the server sends `Violation`
+  and closes the session, and the call ends with `Disconnected`.
+- The client transport port adds three results that are not on the wire:
+  `QueueFull` when the request queue is full, which is backpressure and keeps
+  the session; `Timeout` when a call has no reply by its deadline; and
+  `Disconnected` when the session has ended or the server is gone, with the
+  reason: a `Violation` from the server, a server message that the client could
+  not decode, or a lost connection.
+- An unknown operation, a missing permission, a stale handle, an invalid
+  argument, missing memory, a full queue and a timeout are thus all distinct.
+  Cancelling belongs to the job layer and a failed application ends its session,
+  so v0 has no codes for them.
+- A client that cannot decode a server message ends the session and reports
+  `Disconnected` with the reason, without panicking. After a call times out its
+  result is unknown, so the client ends the session and does not retry.
+
+#### Wire format
+
+1. **Frame header.** 8 bytes: `object: u32`, the target of a request or the
+   source of an event; `opcode: u16`; and `length: u16`, the length of the whole
+   frame in bytes, header included. Everything is little endian. `length` is a
+   multiple of 4, at least 8 and at most `MAX_FRAME`.
+2. **Arguments and words.** The body holds the message's arguments in the order
+   of its definition, which gives the kinds and the order of the arguments and
+   the bound of each segment and comes from the target's interface and version.
+   Each argument takes whole 4-byte words: a `u32` one word; a `u64` two words,
+   the low word first; a `u16`, a `u8` or an enum code one word with its high
+   bits 0. There is no other alignment and no padding between arguments.
+3. **Segments.** A variable-length argument is a segment: a word with the count,
+   then the content, padded with zeros to a multiple of 4 bytes. A segment is a
+   byte string, counted in bytes; a string, counted in bytes, in UTF-8 without
+   U+0000 and without a terminating NUL; or an array of fixed-size elements made
+   of words, counted in elements. A message may have several segments anywhere
+   among its arguments, but no segment contains another, so nesting is one
+   level. Each count has a bound in the message definition, and the decoder
+   compares the count with it before it computes the length, so the length
+   cannot overflow. v0 has two segments, the damage of `Commit` and the
+   interface table of `Welcome`, and no byte strings or strings.
+4. **One encoding.** Reading every argument of the definition from the start
+   must end exactly at the end of the frame: ending early is `Truncated`, bytes
+   left over are `TooLong`, and so is a count above its bound. Padding and the
+   high bits of narrow values are 0, strings are valid UTF-8, and enum codes,
+   reserved bits and scalar values are checked (`OutOfRange`). Decoding an
+   accepted frame and encoding it again therefore gives the same bytes, and
+   encoding a message and decoding it gives the same values.
+5. **A private copy, no allocation.** The transport copies a frame, at most
+   `MAX_FRAME` bytes, into private memory before the decoder reads it. Decoding
+   never allocates on the heap: a segment decodes into a view that borrows the
+   copy, a byte slice, a `&str` once checked or a read-only view of checked
+   elements, or is held inline up to its bound. The definition, not the frame,
+   gives the number of segments, so the work is proportional to the frame's
+   length.
+6. **Capabilities outside frames.** Memory objects never enter frames; the
+   transport attaches them to calls.
+7. **Constants.** `kosmo-proto` has `MAX_FRAME = 512`, `MAX_DAMAGE = 16` and
+   `MAX_INTERFACES = 32`; changing one is a revision of the protocol. The
+   longest v0 messages are a full `Welcome`, 292 bytes, and a full `Commit`, 280
+   bytes. `MAX_FRAME` grows only with a new Session version, and a session uses
+   the value of its Session object's version.
+
+- The decoder's input is one frame and the session's object table, which maps
+  identifiers to an interface and a version. It looks up the header's `object`,
+  which gives `UnknownObject` if it is not a live object of the session; then
+  the opcode in that interface and version, `UnknownOperation` if it is
+  undefined; and then it reads and checks the arguments by rules 1 to 4. `Hello`
+  arrives before the Session object has a version; its arguments are the same in
+  every version and every major version. Identifiers that the body references
+  are checked for `UnknownObject` and `WrongKind`, and new identifiers for
+  `BadNewId`, while decoding or dispatching, with the same result.
+- The server closes the session on any decoding failure, and a client ends the
+  session on any decoding failure. Extension messages decode by the same rules.
+- `kosmo-proto` depends only on `kosmo-types`, has no external dependency, is
+  `no_std` with `alloc` and `#![forbid(unsafe_code)]`, and is fuzz tested. The
+  bounds of its contract are the length `MAX_FRAME`, the bound of each segment's
+  count and one level of nesting.
+
+#### Version negotiation
+
+1. The protocol has one major version, 0 for v0. Every interface, those of
+   extensions included, has a `u32` version from 1; 0 is unused. A version
+   counts compatible revisions of its interface: each one increases it by 1.
+2. `Hello` carries the client's major version and the highest Session version
+   that it supports, but no interface table. Another major version gets
+   `VersionMismatch`, and the connection ends. Otherwise the Session object's
+   version is the lower of the client's and the server's highest, written in
+   `Welcome.session_version`, and `Welcome` lists every interface offered to the
+   session with its highest version.
+3. An object gets its version when it is created. A root object from `Bind`, and
+   an object from `CreateBuffer`, `CreateSurface`, `CreateAppView`,
+   `Seat.GetKeyboard` or a later creating request, has the version that the
+   request names, for life. Objects of one interface may have different
+   versions, so the session's object table keeps a version for each object. The
+   client names the lower of its own highest version and the one that `Welcome`
+   lists. The server only checks it: a version of 0 is `OutOfRange`; an
+   interface missing from `Welcome` gives `PermissionDenied` when the server
+   supports it but the session's roles do not allow it, and `Unsupported`
+   otherwise; a version above the one listed gives `Unsupported`. A new object's
+   version does not depend on the version of the object that created it.
+4. A new version only adds compatibly: opcodes of new requests and events, enum
+   values, `NamedKey` entries and `mods` bits, or arguments, segments included,
+   appended to an existing message. Both sides take the arguments of each
+   message from the object's version, and neither sends an object a message, a
+   value or an entry that its version lacks.
+5. The frame header, `Hello` and `Reply` keep their layout in every major
+   version, and `Welcome` within one major version; new Session versions only
+   add messages.
+6. Until v0 is frozen, a revision that a review of this design makes necessary,
+   approved as a design change, may be incompatible. It keeps major version 0
+   and the interface versions, and is identified by its commit: before the
+   freeze krepi builds the device from one pinned kosmo commit, so no
+   negotiation spans such a revision. Other revisions only add compatibly.
+   Version 1 of the protocol comes with kosmo 1.0.
+
+So the version that both sides support is fixed for each object when it is
+created: no higher than the client supports, because the client names it, and no
+higher than `Welcome` lists, because the server checks it.
+
+#### Transport rules
+
+1. **Two paths.** Each session has a call path, for a synchronous call and its
+   reply, and two bounded queues of frames: the request queue from the client to
+   the server and the event queue from the server to the client.
+2. **Which path.** Operations that need a result are calls: `Hello`, `Bind`,
+   `CreateBuffer`, `CreateSurface`, `CreateAppView`, `Seat.GetKeyboard`, and
+   later the calls of extensions. Operations without a class A result go through
+   the request queue: `Commit`, `Pong` and every `Destroy`, so a destruction
+   stays in order with earlier commits. Every event goes through the event
+   queue.
+3. **Order.** A session has at most one call without a reply. `queued_before` is
+   the number of frames that the client has put into the request queue before
+   the call; the server first processes the request queue up to that number,
+   frames that are already in it, and then the call, and fewer frames is a state
+   violation. All requests of a session are thus processed in the order the
+   client sent them.
+4. **Replies.** Each session has one reply slot. Events that a call causes, such
+   as `Configure`, go into the event queue before the reply. The server handles
+   the call as soon as it has processed the queue up to `queued_before`, without
+   waiting for the client.
+5. **The server never waits for clients.** Writing a reply or an event never
+   blocks the server. Synchronous waits go only from client to server and from
+   server to device service.
+6. **Event queue.** The event queue is a first-in, first-out ring of `C_E + R`
+   frames. Ordinary events (`Enter`, `Leave`, `Key`, `Configure`, `Ping`) are
+   put only while fewer than `C_E` are queued; events that must arrive
+   (`Released`, `Overflow`, `Violation`) may use all `C_E + R`. `R` is
+   `B_max + 2`: `B_max` is the session's quota of buffers, each with at most one
+   `Released` that the client has not taken, and 2 counts one `Overflow` and one
+   `Violation`. This needs the server to see the event queue's read position,
+   and a request that the client sends after taking an event must show that
+   taking when the server reads the request.
+7. **Full request queue.** The request queue holds `C_R` frames. When it is
+   full, the client's put returns `QueueFull` and sends nothing; the session
+   stays, and the client tries again later. The framework's `Presenter` may then
+   return `Busy`.
+8. **Deadlines.** A client's calls carry a deadline, and its waits may; a wait
+   has none only when the framework waits without one. A call that times out
+   ends the session. The server sets no timeout for clients and learns that an
+   application does not respond through `Ping`.
+9. **Private copies.** Frames are copied out of shared memory into private
+   memory before decoding.
+10. **Fairness.** How many request frames of a session the server processes in a
+    round, and the rotation between sessions, belong to the [execution
+    model](#execution-model); processing never blocks across sessions.
+11. **Constants.** `C_E` and `C_R` are 64 frames in the first release, each
+    frame at most `MAX_FRAME` bytes. The in-process channel, the [host
+    transport](#host-transport) and krepi's endpoints and shared queues follow
+    the same rules.
+
+When an ordinary event finds no ordinary slot:
+
+1. The session enters overflow: an `Overflow` goes into the reserved part, and
+   that event and every later ordinary event are dropped, neither kept nor sent
+   again.
+2. During overflow, events that must arrive still go into the reserved part.
+3. Overflow ends when the server sees that the client has taken the `Overflow`.
+   The server then sends the current `Configure` to every view that lost one,
+   and the current `Enter` if focus is on one of the session's views; state
+   events are sent again with their current values, while `Key`, `Leave` and
+   `Ping` are not. When the `Overflow` is taken every earlier event has been
+   taken, so there is room for these events. A new overflow starts only after
+   the previous `Overflow` has been taken, so at most one is untaken at any
+   time.
+4. The client handles `Overflow` as the Keyboard rules state, so the `Leave` and
+   the synthetic releases dropped during overflow need not arrive.
+5. For this the server keeps three things per session: whether it is in
+   overflow, the position of its `Overflow` in the queue, and which views lost a
+   `Configure`.
+
+A full event queue is backpressure, not an error. Only a protocol violation
+closes a session, so a client that stops reading for a while keeps its session;
+disconnecting a client that stops reading is left to a later release.
+
+#### Shell extension
+
+The privileged shell extension is the part of the protocol that only the shell's
+session gets.
+
+1. **Only for the shell role.** Its interfaces appear in `Welcome` only for a
+   session with the shell role. Another session that binds one gets
+   `PermissionDenied` and keeps its session. The trusted core grants the role,
+   as [sessions, roles and placement](#sessions-roles-and-placement) describe,
+   and no client can request it.
+2. **Numbers.** Its interface numbers are `0x0100` to `0x01FF`, assigned from
+   `0x0100` in order; each interface has its own opcodes. Its objects share the
+   session's identifier space and rule, and its root objects are bound through
+   `Session.Bind`.
+3. **Versions.** Each of its interfaces has its own version under the protocol's
+   major version, from 1 in the first release, with the rules of the core:
+   `Welcome` lists them with the server's highest versions only for the shell's
+   session, and its objects get their versions when they are bound or created.
+   It is revised by the rules of the core, and frozen with v0.
+4. **Wayland table.** Each of its objects has a row, with the status "shell
+   extension v0 (provisional)".
+5. **The same rules.** Its messages use the same frame header, encoding, bounded
+   decoding, errors and transport rules as the core, and are split into calls
+   and queued requests the same way, so a placement request that may be refused
+   is a call. A request that would break the core's placement constraints gets
+   `PermissionDenied`, and the session stays.
+6. **Its events.** They go through the shell session's own event queue; the
+   events of the extension that must arrive are listed with the extension and
+   added to that session's reserved part `R`. `kosmo-client` sorts the events of
+   a session by the interface of the object in the frame header: those of core
+   interfaces go to the [display server backend](#display-server-backend), which
+   returns them from the platform interface's `wait`; those of extension
+   interfaces go to a receiver that the shell registers when it sets up the
+   session, never through the platform interface. The transport does not tell
+   them apart. The receiver's interface, and how the shell takes the extension's
+   events in the same round, are defined with the shell.
+7. **Its crates.** Its wire definition, with interface numbers, message types
+   and codec, is a module of `kosmo-proto`, under the same provisional mark and
+   fuzz tests as the core. Its role checks and dispatch are in `kosmo-server`,
+   its policy in `kosmo-wm`, and its client interface in `kosmo-client`; the
+   shell uses it through `kosmo-sdk`.
+8. Its objects and messages are not counted among the six objects of v0.
+
+#### Wayland table
+
+Every protocol object has a row in a table that maps it to its nearest Wayland
+counterpart:
+
+- One row per object, ordered by interface number, with six columns: the kosmo
+  object, its interface number, its status, the Wayland counterpart (interface
+  and protocol, or none), the difference in meaning in one sentence, and the
+  difficulty of translation (low, medium or high, as a judgement).
+- The status is "v0 (provisional)", "shell extension v0 (provisional)" or
+  "reserved". The table is written in English.
+- In the first release it has the six core rows and the rows of the shell
+  extension; the rows of the reserved objects are added with those objects.
+- The table and the interface table of `kosmo-proto` are kept in the same
+  commit, and a check fails when their rows, numbers and statuses do not match
+  one to one.
+- The Buffer row maps each pixel format to its DRM fourcc code, which, like the
+  names of the [pixel formats](#pixel-formats-and-buffers), names components
+  from the high bits of a little-endian word: `Xrgb8888`, `Rgb565` and
+  `Argb8888Premul` have codes of the same names, `Rgba8Premul` has the code that
+  names A, B, G and R, and the row notes that the two premultiplied formats are
+  premultiplied.
+
+The six core rows are, with the status "v0 (provisional)":
+
+| Object | Number | Wayland | Difference | Difficulty |
+| --- | --- | --- | --- | --- |
+| Session | 1 | `wl_display` and `wl_registry`, with security-context | Identity comes from the authenticated endpoint, which core Wayland lacks; only protocol violations close a session, while every Wayland protocol error ends the connection; the protocol has a major version, and objects take their versions when they are bound or created, as in Wayland | Low |
+| Buffer | 2 | `wl_buffer`, through `wl_shm` or dma-buf | Exactly one `Released` for each commit, while a Wayland compositor may read the pixels at any time after a commit until it releases the buffer; formats map to DRM fourcc codes | Medium |
+| Surface | 3 | `wl_surface` | Content and damage come in one `Commit` with a sequence number, where Wayland has separate attach, damage and commit requests | Low |
+| AppView | 4 | `xdg_toplevel` | Position and size come only from the window policy; no configuration acknowledgement in the first release | Low |
+| Seat | 5 | `wl_seat` | One logical seat per session; v0 reports no capabilities | Medium |
+| Keyboard | 6 | `wl_keyboard` | The server delivers the physical usage and the key meaning and sends no key map, and it produces repeats itself; a compatibility service generates XKB key maps for Linux programs | Medium |
+
+The reserved objects will have these counterparts: EmbeddedView none, with high
+difficulty; Pointer and Touch `wl_pointer` and `wl_touch`, medium; TextInput and
+ImeSession text-input-v3 and input-method-v2, medium.
+
+### Trusted core and execution
+
+#### Tiers and trusted modules
+
+The display server's modules fall into three tiers. Tier A decides who gets
+input and what on the screen can be trusted; it is the trusted base of the GUI.
+Tier B affects usability and whether pictures are right, but decides no
+permission. Tier C is policy and appearance.
+
+The trusted core is the three pure cores of tier A, `kosmo-scene`, `kosmo-focus`
+and `kosmo-surface`, and an outer layer: the tier A modules of `kosmo-server`,
+which are sessions and roles, the part of request dispatch that carries out
+transitions of the cores, the wiring of global keys and the copy entry for
+client buffers, and later the trusted presentation. The trusted base holds only
+these.
+
+| Module | Tier | Crate |
+| --- | --- | --- |
+| Sessions and roles: identity, the set of roles, and quotas granted and checked | A, outer layer | A module of `kosmo-server` |
+| The part of request dispatch that carries out transitions of the cores | A, outer layer | `kosmo-server` |
+| Lifecycle of buffers and surfaces, quota counts | A, pure core | `kosmo-surface` |
+| View tree, stacking order, occlusion and placement constraints | A, pure core | `kosmo-scene` |
+| Focus routing, focus generation, the foreground session, the reserved key table and the server's part of global keys | A, pure core | `kosmo-focus` |
+| Wiring of global keys: stop requests through the stop-request port, switch reports through the shell extension | A, outer layer | `kosmo-server` |
+| Copy entry for client buffers: shared memory is read only through the copy function that it calls | A, outer layer | `kosmo-server`, calling the transport's copy function |
+| Input pipeline: device records to key meanings, layers, and the timing of repeat and long press | B | A module of `kosmo-server` |
+| Software compositing, damage, format conversion, private copies and rotation | B | `kosmo-compositor` |
+| Wiring of the device ports, the headless and nested backends | B | `kosmo-server`, `kosmo-server-headless`, `kosmo-server-host` |
+| Window and layout policy | C | `kosmo-wm` |
+| Protocol decoding | Entry, in no tier | `kosmo-proto` |
+
+- **Narrow interface.** Tiers B and C reach the core in two ways only: read-only
+  queries of the pure cores (`&self`), and messages to the outer layer, which
+  turns them into inputs of the cores. They never hold a mutable reference to
+  the state of a core. `kosmo-compositor` depends on the pure cores, and they do
+  not depend on it.
+- **The entry.** `kosmo-proto` parses untrusted bytes. A defect in it can at
+  most misjudge the requests of one session and cannot get past the rules of the
+  cores; it has `#![forbid(unsafe_code)]`, bounded decoding and fuzz tests. It
+  is held to level A1 but is not part of the trusted base, although the layout
+  table marks it pure core.
+- **Sessions and roles** are a tier A module of `kosmo-server`, written as a
+  pure core is, only through inputs and outputs, without input and output of its
+  own and without reading a clock, but it is no crate of its own and not subject
+  to the layout step's pure-core checks. Quota counts are kept in the pure core
+  that holds the objects: surfaces, buffers and buffer bytes in `kosmo-surface`,
+  views in `kosmo-scene`.
+- Later releases add tier A modules for the trusted indicator area and trusted
+  presentation, screenshot authorization and clipboard mediation, and tier B
+  modules for frame scheduling, presentation feedback, output management and
+  reconnection.
+
+The first release has exactly five trusted modules:
+
+| Module | Where | Holds | Takes | Gives | Never |
+| --- | --- | --- | --- | --- | --- |
+| Sessions and roles | `kosmo-server`, tier A outer layer | For each session its identity, from the authenticated endpoint and simulated on a host, its set of roles and its quota limits | Connections with their identities, the grant table, session closes | Results of role checks, the interfaces offered in `Welcome`, the release of child objects at close | Trusts an identity that a message states; accepts a client's request for a role |
+| Lifecycle of buffers and surfaces | `kosmo-surface` | The buffer table with owners, states and commit sequences, the role state of surfaces, and each session's counts of surfaces, buffers and buffer bytes, private copies included | Creation, commits, superseding, latches, finished copies, destruction, session closes | Exactly one `Released` for each commit, quota rejections, violations | Holds pointers or reads pixels |
+| View tree | `kosmo-scene` | Outputs, layers (background, application, shell, overlay and trusted), views, stacking order and placement | View creation, the window policy's placement decisions, destruction | A read-only scene for compositing, hit tests, rejected placements | Decides placement: the policy decides, and it enforces the constraints |
+| Focus and input routing | `kosmo-focus` | The holder of focus, the focus generation, the epoch, the pressed keys and the foreground session | Delivered key events, device records only to look up the reserved key table, the policy's focus decisions, the holder's disappearance, requests that carry an input generation | `Enter`, `Leave`, synthetic releases, keys for the holder, rejected requests | Resolves key meanings, which tier B has done; reads a clock |
+| The server's part of global keys | State in `kosmo-focus`, the reserved key table; wiring in `kosmo-server` | The reserved key table and what judging a short press needs | Device records that hit a reserved key | A stop decision for the foreground session; switch reports for the shell | Recognizes the long press of a reserved key, which belongs to krepi's input driver |
+
+The four parts of the outer layer belong to these modules: sessions and roles is
+the first module; the wiring of global keys is the outer layer of the server's
+part of global keys; the copy entry, which decides when to copy which buffer and
+judges a failed copy a violation, is the outer layer of the lifecycle of buffers
+and surfaces; and dispatch belongs to the module whose core it drives. On a
+host, the code that really reads mapped memory is the server end of the client
+transport port, in the tier B backend crate `kosmo-server-headless`, and on the
+device in krepi's integration; it is outside the five modules.
+
+#### Sessions, roles and placement
+
+Roles:
+
+1. Roles are granted once, when a session is set up: the outer layer looks up
+   the authenticated identity in a grant table and grants what the table says.
+   On a host the table is given when the server starts, in tests it is a table
+   of simulated identities, and on the device it will come from krepi's
+   application registration. Afterwards only the shell's policy and
+   notifications of krepi's policy service may change roles; the first release
+   has neither, so a session's roles never change.
+2. The first release has two roles: application, which `CreateAppView` needs,
+   and shell, which the shell extension needs. Screenshot, input method and
+   accessibility roles come later. Injected input is no role: scripted input on
+   host and headless backends enters through the device ports and has nothing to
+   do with client sessions.
+3. At most one live session holds the shell role at a time. While one does, a
+   new session of another identity entitled to it gets only the other roles that
+   the table grants; the shell role can be granted again once the earlier shell
+   session has closed.
+4. A session can never raise its own roles, and closing a session releases all
+   its child objects.
+
+Placement constraints, enforced by the trusted core:
+
+- Application views are only in the application layer. The shell's views are
+  only in the shell layer and are created only through the shell extension. The
+  overlay layer has no views in the first release. The trusted layer holds only
+  the server's own trusted content.
+- Once a reserved screen area is configured, which comes with the trusted
+  indicator area, no layer other than the trusted layer intersects it.
+- A decision that breaks a constraint is rejected and counted, and nothing
+  changes.
+
+When the holder's view is destroyed or its session closes, the focus core first
+makes the holder none, increasing the focus generation, and then reports the
+holder's disappearance to the window policy. If the policy names a new holder,
+focus changes again by the same rules; otherwise it stays with none.
+
+Global keys are recognized by their physical usage, before the key maps:
+
+1. The reserved key table, the stop key and later system keys such as switch and
+   home, is state of `kosmo-focus`, keyed by HID usage. On the device it comes
+   from the physical keys registered in the configuration of krepi's input
+   device services, on a host from the server's configuration. Neither the shell
+   nor applications can change it; the shell can only configure shell actions
+   through its extension.
+2. The focus core looks up the usage of each device record in the reserved key
+   table before the key map engine. A record that hits goes to the server's part
+   of the [stop key](#stop-key): it never reaches the key map engine or routing,
+   is never delivered as `Key` and cannot be grabbed. Only records that miss go
+   on to the engine, so reserved keys need no entries in key maps.
+3. The usage of a delivered key event is the physical usage of its device
+   record.
+
+The key maps are in tier B, so recognizing the stop key must not depend on them.
+
+The compositor converts pixel formats only with the one conversion function of
+`kosmo-types` that [pixel formats and buffers](#pixel-formats-and-buffers)
+describe, both from client buffers into private copies and from the composed
+buffer into a device's scan-out format, and never dithers. Its conversion
+goldens use the same test vectors as the framework's. Ordered dithering, if ever
+wanted, would first change the conversion function's rules.
+
+#### Epoch and focus generation
+
+The epoch identifies an instance of the display server:
+
+1. The server does not produce its epoch: whoever starts it gives it. On the
+   device it is the epoch that krepi's supervisor gives this service instance
+   through krepi's start and recovery interface; on a host it is a start
+   argument; in headless tests an injected constant. It is a constructor
+   argument of `kosmo-focus`, never changes while the server runs, and is the
+   same for every session, as `Welcome.epoch`.
+2. It is at least 1; 0 is no epoch. The giver ensures that different instances
+   have different epochs and that later ones are larger. The server only
+   compares epochs for equality and never increases one, so it never runs out.
+3. It is not the epoch of a device service, which changes when the device's
+   holder changes; the server keeps its own epoch when a device service instance
+   changes.
+4. The first release has no reconnection, so a client sees one epoch in a
+   session. `kosmo-client` drops events of another epoch; reconnection to a new
+   epoch comes later.
+
+The focus generation:
+
+1. The first release has one seat with one counter in `kosmo-focus`,
+   `FocusGen(u64)`, a newtype of `kosmo-types`. At start the holder is none and
+   the generation 0.
+2. Each change of holder, to none included, increases the generation by 1; a
+   request that leaves the holder unchanged leaves the generation unchanged.
+   Every `Enter`, `Leave` and `Key` carries the epoch and the generation at the
+   time it is sent.
+3. Focus changes for four reasons only: user input, which the server reports to
+   the shell as a global key and the window policy decides on; a decision of the
+   window policy; the holder's disappearance, since a destroyed view cannot keep
+   focus; and a request that carries a recent input generation. The application
+   protocol has no such request in the first release; if the shell extension has
+   one, it is defined with the extension and still goes through the focus core,
+   which applies the rules of generations and releases to the shell's requests
+   too.
+4. A change first sends a synthetic release with the old stamp for each key
+   pressed on the leaving side, then `Leave`, then `Enter` to the new holder,
+   and empties the set of pressed keys.
+5. Running out: like the [version types](#three-version-types), the generation
+   only increases and never wraps. A change to none because the holder has
+   disappeared always takes place and increases the generation; any other change
+   takes place only if the increased generation is below `u64::MAX`, and is
+   otherwise rejected and counted, with holder and generation unchanged. So the
+   generation reaches `u64::MAX` only with the holder none, and focus then never
+   changes until the server restarts with a new epoch. The pure core's
+   constructor can set the starting generation, so tests start from
+   `u64::MAX - 2`.
+6. The foreground session, the target of the stop key's short press, is a
+   separate item of `kosmo-focus`: the window policy decides it, the core
+   records it, and it becomes none when its session closes. The first policy
+   makes it the session of the full-screen application view. It does not change
+   when the shell's switcher takes focus.
+7. The stop key cancels the jobs of the foreground session. This is the session
+   in focus while focus is on an application view, and differs only while focus
+   is on one of the shell's views, where cancelling the shell's own jobs would
+   make no sense.
+
+#### Pure-core rules
+
+These rules hold for `kosmo-scene`, `kosmo-focus` and `kosmo-surface`, and for
+later trusted pure cores of the same layer:
+
+1. **Dependencies.** They depend only on `kosmo-types`, not on each other, not
+   on `kosmo-proto`, which is provisional, and on no external package; they have
+   no build script and no procedural macro. Facts that concern several cores
+   come from the outer layer as inputs to each, such as "surface destroyed" to
+   both `kosmo-scene` and `kosmo-focus`.
+2. **Attributes.** `#![no_std]`, with `alloc` allowed;
+   `#![forbid(unsafe_code)]`; no interior mutability, so no `Cell`, `RefCell`,
+   atomics, `OnceCell` and the like. State changes only through step functions
+   that take `&mut self`.
+3. **Bounded.** The capacity of every collection is a constructor argument, such
+   as the number of clients and objects per session from the quotas. Beyond it a
+   step returns a distinct rejection and nothing changes.
+4. **Deterministic.** No clock, since times are `MonoTime` inputs; no random
+   numbers; no floating point; no hash containers, only ordered ones such as
+   `BTreeMap`, or arrays. The same input sequence gives the same output
+   sequence, and frozen vectors replay it.
+5. **Total.** No input sequence makes them panic: arithmetic is checked, values
+   from inputs are never unwrapped and indices never go out of bounds; errors
+   are return values.
+6. **Interface.** Each core has one step function,
+   `step(&mut self, input) -> Outputs`, whose outputs are a bounded list of
+   values, with no callbacks and no trait objects of the outer layer. Queries
+   are read-only functions of `&self`; the compositor reads the scene through
+   them.
+7. **Keys.** The keys of objects in a core are newtypes of `u64` of that core,
+   which the outer layer allocates and never reuses within an epoch, by the rule
+   of protocol identifiers. The outer layer maps protocol identifiers to the
+   keys of each core; keys shared by several cores are not added to
+   `kosmo-types`.
+8. **Checks.** The layout step checks rules 1 and 2 by the layout table's
+   definition of pure core. That the cores depend only on `kosmo-types` and not
+   on each other follows from the layers and the table: below layer D1 only
+   `kosmo-types` and `kosmo-proto` exist, and pure-core crates never depend on a
+   provisional crate; the cores list no same-layer crates. Review and contract
+   tests, with numbered requirements, bounded exhaustive enumeration and frozen
+   vectors, check rules 3 to 7.
+
+#### Window policy module
+
+1. **Tier and place.** `kosmo-wm` is in tier C and layer D2, outside the trusted
+   base. It depends only on `kosmo-types`, neither on `kosmo-server` nor on the
+   pure cores, and sees state only through the messages below, in which views
+   and sessions carry the policy's own identifiers that the outer layer maps.
+2. **Interface.** The policy trait, provisionally `WindowPolicy`, and its
+   message types are in `kosmo-wm`. `kosmo-server` depends on `kosmo-wm` and is
+   generic over the trait; the first policy and the stand-in policy of tests
+   implement it.
+3. **Messages.** The server tells the policy that a view appeared, with its
+   session and the session's roles; that a view disappeared; that a session
+   closed; that the holder of focus disappeared; the global keys reported to it,
+   switch and the like but never the stop key; the requests that the shell
+   extension forwards; and the output size. The policy decides placements (view,
+   layer and rectangle), focus (a view or none), the foreground session (a
+   session or none) and the stacking order. All of these are plain values.
+4. **The core enforces.** The outer layer turns each decision into an input of
+   the cores, which reject and count a decision that breaks the placement
+   constraints or the focus rules, and nothing changes. The policy cannot give
+   input to a view without focus or bypass the rules of generations and
+   releases.
+5. **No pixels, no input.** The policy never sees client buffers or key events,
+   only the messages above.
+6. **Execution.** The server calls it synchronously in its event loop, at the
+   priority of requests, and each call does bounded work. It does no input or
+   output, reads no clock, since times come in messages, and starts no threads.
+   A panic in it ends the server.
+7. **Later.** When the policy moves into the shell's process, these messages
+   become part of the shell extension; the first release keeps it in the server.
+8. **Before `kosmo-wm` exists.** Until then, the trait and its messages are in a
+   module of `kosmo-server`, and a stand-in policy, such as every application
+   view full screen with focus and the foreground session given to the session
+   of the newest application view, is in `kosmo-server-headless`. They move into
+   `kosmo-wm` with the first policy, and the server's tests then pass unchanged
+   with the stand-in policy.
+
+The first policy shows applications full screen, one region per page.
+
+#### Trusted presentation
+
+The trusted indicator area and the stop and switch entries are drawn by the
+server itself from pre-rendered bitmaps. The first release has the rules only:
+the trusted layer exists in its code but stays empty.
+
+1. **Layer and area.** The trusted layer is above every other layer. Once a
+   reserved area is configured, every other layer is clipped to leave it out.
+2. **Who writes the pixels.** The trusted presentation module, a tier A module
+   of the outer layer of `kosmo-server`, writes the trusted layer into the
+   composed buffer last in each frame. The compositor, in tier B, composes the
+   other layers and never writes the reserved area. The reserved area's pixels
+   are a function of trusted state only, and a defect of the compositor cannot
+   change them.
+3. **Bitmaps only.** Trusted presentation only copies bitmaps of a fixed asset
+   table to fixed positions: it parses no fonts or images, lays nothing out and
+   depends neither on `kosmo-text` nor on `kosmo-render`. The assets are
+   generated at build time and ship with the server program, with pixel formats
+   and descriptions of `kosmo-types`; nothing is generated at run time. They
+   live in the server's own memory.
+4. **Software compositing.** Trusted content is written while composing in
+   software, never through a hardware plane.
+5. **Failing closed.** While the trusted state is unknown, the indicator never
+   shows normal.
+6. **Variable content.** Digits, short hexadecimal codes, timers and status
+   symbols, such as the short code and timer of a restricted mode, use a fixed
+   glyph set of the asset table: one bitmap per glyph at a fixed advance,
+   without shaping. kosmo draws these glyphs itself, under its MIT license, and
+   does not generate them from an OFL font. An application's display name comes
+   from a name bitmap that a trusted party renders in advance and keeps with the
+   application's registration, which kosmo asks krepi to provide; on a host a
+   stand-in registration gives it. Fixed interface text, such as "Stop" and
+   "Switch", and icons are bitmap assets rendered at build time from the two
+   interface fonts; the rendered images are not font files.
+
+#### Buffer sealing and private copies
+
+The server seals a committed buffer by copying it:
+
+1. **Meaning.** The content of a client buffer is taken when the server copies
+   it. The server sends `Released` when the copy is done and never reads the
+   buffer again. Compositing reads only the server's private copies, never
+   client buffers. A client that writes its buffer before the copy tears only
+   its own picture.
+2. **When.** Handling a `Commit`, at the priority of requests, only marks the
+   buffer committed; a newer commit of the same surface releases an earlier one
+   that has not been copied, unread, and merges its damage. The copy happens at
+   the output's next latch: the latch takes each surface's newest commit and
+   copies its merged damage from the client buffer into the private copy in
+   slices; each buffer copied is released at once, and then composing starts. So
+   a private copy never changes during a frame, and of several commits within
+   one frame only the newest is copied.
+3. **One reading point.** Shared memory is read only in one copy function, which
+   takes a buffer, a source rectangle and a target, and which the transport
+   provides: the in-process channel's in safe Rust; the host transport's in
+   `kosmo-server-headless`, the only unsafe code of kosmo that reads mapped
+   memory, in a module of its own with a review of its own; on the device
+   krepi's integration's. It reads word by word and never forms a `&[u8]` of the
+   shared bytes. `kosmo-server`, `kosmo-compositor` and the three pure cores
+   have `#![forbid(unsafe_code)]`. The function is `copy_rows` of the server end
+   of the [client transport port](#client-transport-port). The client end of the
+   host transport has its own code that creates memory objects and writes its
+   own mapping, and never reads the server's memory.
+4. **A failed read.** When the copy function reports that it cannot read, after
+   a revocation on krepi or a mapping fault on a host, the server does not
+   crash: it judges the session a violator and closes it with `BufferFault`. The
+   transport must make such a failure a return value, never a signal: on a Linux
+   host a buffer must carry the `F_SEAL_SHRINK` seal, and on a macOS host its
+   descriptor must be a POSIX shared memory object.
+5. **What krepi provides.** A client can grant a shared memory object to the
+   server read-only, and while the server copies a committed buffer, a
+   revocation by the client or its death causes no fatal fault in the server, at
+   most a failed copy. How is krepi's decision.
+
+Writing a buffer after the server has copied it, even before the client takes
+`Released`, leaves the composed picture unchanged.
+
+Private copies:
+
+1. Each application view has one private copy in `kosmo-compositor`, always in
+   `Rgba8Premul` and of the size of the view's `Configure`, which in the first
+   release is the output's logical size. It is the source of the view's content
+   in compositing, and it is allocated again when the view's size changes.
+2. **Copy, then convert.** The conversion function reads a byte slice, and
+   shared memory never becomes one, so conversion never reads a client buffer
+   directly. For an `Rgba8Premul` client buffer, the copy function writes the
+   damaged rows straight into the private copy. For the other formats, it copies
+   each row into a row buffer of the outer layer, private memory of one
+   `stride`, and the conversion function then writes it into the private copy.
+3. **Other sizes.** A buffer is aligned with the view's top left corner, and
+   what lies beyond the view is clipped. Parts of the view that the buffer does
+   not cover keep the private copy's previous pixels; a new view's private copy
+   is opaque black, `Rgba8Premul` 0, 0, 0, 255. This is no protocol error.
+4. **Quota.** The bytes of a private copy count toward the session's quota of
+   buffer bytes from `CreateAppView`, which otherwise fails with `QuotaExceeded`
+   for buffer bytes, until the view is destroyed; `kosmo-surface` counts them.
+
+#### Execution model
+
+1. **One thread.** The server has one thread and one event loop, and every
+   module, the window policy and compositing included, runs on it; it starts no
+   threads.
+2. **Four priorities,** the lower number first:
+   - 0, control: the server's part of the stop key and the other reserved keys,
+     sending stop requests and taking their reports;
+   - 1, input: the other device records through the key maps and layers to the
+     focus core and into the clients' event queues; the timers of repeat and
+     long press; the display events of the device ports, such as completions,
+     released buffers and epochs;
+   - 2, requests: request frames and calls of clients, calls of the window
+     policy, requests of the shell extension;
+   - 3, compositing: latches, copies, slices of compositing and device commits.
+3. **A round.** Each round (a) does all work of priorities 0 and 1 that has
+   arrived, from the bounded queues of the device ports; (b) serves priority 2,
+   rotating over the sessions; and (c) does one slice of priority 3. After each
+   slice of (b) it checks the sources of priorities 0 and 1 and, when there is
+   new work, does it as in (a) before continuing (b) where it stopped. After (c)
+   the round ends, and the next starts with (a). New input thus waits at most
+   one slice, a request at most one slice of compositing, compositing advances
+   at least one slice per round, and every session gets its turn in every round.
+   With no work, the server waits for any source until the nearest timer of
+   repeat, long press or a frame's deadline; ports never block, and the only
+   wait is the root port's `wait`.
+4. **Control never queues.** When a device record hits the stop key, its
+   handling runs at the step that reads it, and the request goes out at once,
+   without waiting for the other records of the batch to be routed; the port to
+   krepi's supervisor reserves room for these requests. Records are handled in
+   the order they arrive and never reordered, which would change the order of
+   key states.
+5. **Never blocking.** The server never waits for a client. Calls to the
+   stop-request port and the device ports do not block the loop; their reports
+   arrive as events of priority 0 or 1.
+
+Slices, rotation and the frame budget:
+
+1. **Slices.** A slice of priority 2 is one request frame, with the window
+   policy calls it causes. A slice of priority 3 is the copy after a latch or
+   compositing of at most `SLICE_PX` pixels; copying and compositing have the
+   same granularity, divided by damage rectangle and by row segments from top to
+   bottom within it, in a fixed order, copying first. `SLICE_PX` is 16,384 in
+   the first release, so a whole frame of 800 by 480 pixels takes about 24
+   slices.
+2. **Rotation.** Each round, priority 2 starts with the session after the one
+   where the previous round started, in the order of session keys, and serves at
+   most `REQ_PER_ROUND`, 8, slices of each session, in the order that the
+   session sent them. Window policy calls caused by events of priority 0 or 1,
+   such as the holder's disappearance, are made while handling that event, with
+   the same bounded work.
+3. **Flooding.** However much client A submits, client B's input is routed at
+   priority 1 at the next check, at most one slice after it arrives; B's `q`
+   queued request frames are processed within $\lceil q / 8 \rceil$ rounds. A's
+   extra submissions wait in A's own request queue, and A gets `QueueFull` when
+   it is full.
+4. **Frame budget.** Each output has a budget `T` in nanoseconds, its refresh
+   interval: $10^{12}$ divided by the refresh rate in millihertz from the device
+   port's output description, rounded to whole nanoseconds. On the device the
+   refresh rate is that of the mode that the display device service reports, and
+   on QEMU the interval of its timer-generated vblank. The headless and nested
+   backends take the mode of their simulated output from their start
+   configuration, by default 60,000 mHz, which gives 16,666,667 ns, and tests
+   inject it; the nested backend never takes the host window's refresh interval.
+5. **Clock.** The server reads one monotonic clock, the same source as the
+   timing of repeat and long press, in `MonoTime`. The clock is injected, and
+   backend crates build the real clock. The server reads it at the start of each
+   round and after each slice. Headless tests use a virtual clock that only the
+   driver advances, and may inject a duration per slice, so that compositing
+   becomes slow in virtual time.
+6. The constants `SLICE_PX`, `REQ_PER_ROUND` and the default `T` are not based
+   on measurements. Changing their values after measuring on the device does not
+   change these rules.
+
+When compositing is slow, frames are dropped, never input or the stop key:
+
+1. **One frame at a time.** Each output has at most one frame in progress and at
+   most one device commit that has not completed.
+2. **Latch.** When an output has damage to compose, no frame in progress and its
+   previous device commit completed, priority 3 starts a frame for it: it takes
+   each surface's newest committed buffer, and the frame's damage is the union
+   of the surfaces' damage since the previous frame, the changes of the view
+   tree and the changes of trusted content. It records the latch time `L`, and
+   the frame's deadline is `L + T`.
+3. **Finish, then commit.** When the last slice of a frame is done, the frame
+   goes out as one device commit of its update regions. A frame past its
+   deadline is not given up: it is finished slice by slice and committed. The
+   deadlines it misses are the dropped frames.
+4. **No queue, only the newest.** Commits that arrive after a latch wait for the
+   next latch, which takes only each surface's newest commit and releases older
+   ones unread, merging their damage. When compositing is slow, fewer frames go
+   out, and clients get `Released` later, so single-buffered clients slow down
+   too; the server builds up no backlog.
+5. **Input and stop are unaffected.** Priorities 0 and 1 come first in each
+   round and are always done completely, slices are bounded, compositing never
+   waits and frames never queue. So the number of records handled and of
+   routings in a period depends only on the records that arrive, not on the
+   speed of compositing, as long as the queues of the input device ports do not
+   overflow; an overflow there is reported by the device service as `Dropped`
+   and is never caused by compositing. A stop request goes out at priority 0
+   whatever frame is in progress. When an injected duration per slice makes a
+   frame longer than `T`, fewer frames go out in a period than deadlines pass,
+   while the records handled and the routings at priorities 0 and 1 are the same
+   as without it. The frame state of rules 1 to 4 is in `kosmo-compositor`, with
+   times and the copy function given by the caller, so it does not depend on
+   `kosmo-server`, whose loop calls the same code; a test driver can run the
+   same check without the server's loop, routing each round's records through
+   `kosmo-focus` and then letting compositing do one slice.
+6. **Trusted content does not wait.** Once there is trusted content, the
+   reserved area, which no other layer intersects, does not wait for the frame
+   in progress: at the next moment without an uncompleted device commit, trusted
+   presentation writes the reserved area and commits it alone, and the frame in
+   progress goes out afterwards without it. The feedback of the stop key thus
+   does not slow down with compositing.
+
+Input routing and compositing may become two execution contexts once krepi
+offers threads to the display server; the window thread of the nested backend
+stays as it is.
+
+#### Fault scope
+
+The trusted core, the compositor and the window policy share the server's
+process:
+
+- A defect of the compositor can garble the picture, but cannot give input to
+  the wrong client, because tiers A and B meet only through the narrow
+  interface.
+- A defect of the window policy can bring the server down.
+- A panic of any module ends the server's process. The first release has no
+  reconnection, so its clients get `Disconnected` and end.
+
+### Device ports
+
+The display server reaches devices, clients and krepi's supervisor only through
+ports that kosmo defines.
+
+#### Port structure
+
+1. **Two layers.** kosmo's side is Rust traits and plain values, whose
+   signatures contain no krepi, IPC or host types. krepi defines and versions
+   the interfaces of its device services and of its supervisor's control
+   endpoint, and krepi's integration holds the glue between the two layers.
+   kosmo's traits change only by a design change of kosmo; a new version of
+   krepi's interfaces is adapted in the integration.
+2. **Place.** The traits of the device ports for display and input, of the
+   session transport, which is the server end of the client transport port, and
+   of the stop-request port are in a port module of `kosmo-server`. The client
+   end of the client transport port is in `kosmo-client`. The ports' own value
+   types, such as identifiers of instances and outputs, the epoch of a device
+   service, events, errors and the peer's identity, are defined in the same
+   module, not in `kosmo-types`; the ports use only types that `kosmo-types`
+   already has, such as `InputRecord`, `HidUsage`, `MonoTime` and `PixelFormat`,
+   and change neither the [event record](#event-record) nor the [pixel
+   formats](#pixel-formats-and-buffers).
+3. **The root port.** The server is generic over one root trait, provisionally
+   `ServerHost`. Through associated types and accessors it gives every display
+   device instance, every input device instance, the session transport and the
+   stop-request port, and it has two methods: `now(&self) -> MonoTime`, the
+   server's monotonic clock, and
+   `wait(&mut self, deadline: Option<MonoTime>) -> ServerWaitEnd`, which ends
+   with `Ready`, `Deadline` or `Idle`. No method of any port blocks; `wait` is
+   the only call of the server that blocks, and it returns `Ready` as soon as
+   any source, a device event, an input record, a frame or connection of a
+   session, or a stop report, has work. The headless backend never blocks:
+   without work it returns `Deadline` or `Idle`, as the deadline has passed or
+   not, and only its driver advances its clock. The headless backend, the nested
+   backend, whose window events and host transport share one wait through a
+   wake-up handle, and later krepi's integration implement it.
+4. **Clock domain.** The time of input records, the times of device events and
+   `now()` are in one monotonic clock domain. The port's implementation converts
+   interrupt timestamps into it.
+5. **Instances.** The display and input instances are given when the root value
+   is built and do not grow in the first release; their epoch changes and
+   removal are part of the ports, and hot plugging comes later as a compatible
+   revision.
+6. **No external memory in the server.** `kosmo-server` has
+   `#![forbid(unsafe_code)]`. It reads and writes external memory, scan-out
+   buffers and client buffers, only through methods of the ports, and the unsafe
+   code that these methods need is in the backend crates or in krepi's
+   integration.
+7. **Inbound values are checked.** The server checks the handles, identifiers,
+   counts and array lengths that ports hand it against the bounds of this
+   section; unknown handles and values out of range are port errors and never
+   cause a panic. Sequences of device events are fuzz tested.
+8. **Size.** The root port has 2 methods besides its accessors, the display
+   device port 6 operations and 5 events, and the input device port 4 operations
+   and 2 events; the client transport and stop-request ports state their own
+   sizes.
+
+A single-threaded server cannot block on several ports, so all sources share one
+wait, as the framework's backend does with its platform interface's one `wait`.
+
+#### Display device port
+
+The trait is provisionally `DisplayDevice`, and one value is one instance of
+krepi's display device service.
+
+1. **Instances and outputs.** An instance has its own epoch, a `DeviceEpoch`
+   newtype of `u64` compared only for equality, and from 1 to `MAX_OUTPUTS`
+   outputs, 4 in the first release. On the Raspberry Pi 5 one instance drives
+   both HDMI outputs, and each DSI display and QEMU's virtio-gpu is an instance
+   of its own.
+2. **Output enumeration.** `info()` gives the instance's epoch; its
+   capabilities, which state the items that the [minimal frame-buffer
+   subset](#minimal-frame-buffer-subset) may lack: whether it sends `Vblank` and
+   `Released`, how many scan-out buffers each output can allocate
+   (`max_scanouts`) and whether it has panel power; and for each output its
+   identifier, its current mode (width, height and refresh rate in millihertz),
+   the formats it can scan out, a subset of the four pixel formats, and the
+   transforms that its scan-out hardware can do, a subset of the eight
+   symmetries of the plane that always contains the identity. v0 has only the
+   current mode, without a mode list or mode switching.
+3. **Scan-out buffers.**
+   `alloc_scanout(output, format) -> Result<Scanout, DeviceError>` returns a
+   handle and the stride of a buffer of the current mode's size, which the
+   device service allocates; the server provides no pages. The server never maps
+   scan-out buffers:
+   `write_scanout(scanout, rect, src, src_stride) -> Result<(), DeviceError>`
+   copies a rectangle of the server's private composed result, already in the
+   scan-out format, into the scan-out buffer. How scan-out buffers are mapped is
+   krepi's detail behind this method.
+4. **Atomic commit.**
+   `commit(output, scanout, damage) -> Result<CommitId, DeviceError>` takes a
+   list of at most `MAX_COMMIT_RECTS` update regions, 16 in the first release
+   like `MAX_DAMAGE`, and the server merges more before committing. An output
+   has at most one commit that has not completed; another commit returns `Busy`,
+   which is backpressure, not an error. A commit takes effect atomically per
+   output: its scan-out buffer and update regions take effect together with
+   `Completed`, and when it commits another scan-out buffer, the device shows
+   nothing of it before `Completed`. With a single scan-out buffer,
+   `write_scanout` writes the buffer that is being scanned out and may be seen
+   before the commit, so the port does not prevent tearing then. Commits across
+   outputs are not atomic in v0. A commit has no plane argument: each output
+   scans out one plane.
+5. **Panel power.** `set_power(output, PanelPower)` turns a panel on, to standby
+   or off, and returns `Unsupported` when the instance has no panel power. In
+   the first release only the conformance suite calls it; the brightness and
+   screen-off policy comes later.
+6. **Events.** `take_events(out) -> usize` never blocks and gives at most
+   `out`'s length events: `Completed { commit, time }`,
+   `Vblank { output, time }`, `Released { scanout }`, `HolderLost` and
+   `EpochChanged { epoch }`. The enum and each variant are `#[non_exhaustive]`,
+   so hot plugging, time sources and mode events can be added as compatible
+   revisions. `time` is in the ports' clock domain. Whether a completion states
+   its time source is krepi's decision, and v0 has no such field. The vblank
+   events that the device service generates with a timer on QEMU are the same
+   events as those of hardware vblank.
+7. **Errors.** `DeviceError`, `#[non_exhaustive]`, has `Busy`, `Unsupported`,
+   `NotHolder`, `StaleHandle` for a handle of an earlier epoch,
+   `InvalidArgument`, `Exhausted` for more scan-out buffers than `max_scanouts`,
+   and `Failed`.
+8. **Modes and rotation.** The server holds the policy: it chooses the mode, the
+   orientation and the brightness; krepi's driver carries out clocks, scan-out
+   and mode switching. v0 has no mode list, no mode switching, no brightness and
+   no backlight operation, and the server uses the current mode that `info()`
+   gives. When the chosen orientation is in an output's transforms, it will be
+   requested from the hardware through the port; otherwise the server rotates
+   while it composes, and the scan-out buffer it commits is already in the
+   panel's native orientation. In the first release the orientation is always
+   the identity and compositing does not rotate. Runtime mode switching,
+   rotation and hot plugging will add a mode list and a request for hardware
+   transforms as compatible revisions. The brightness and screen-off policy
+   belongs to kosmo and the backlight mechanism to krepi.
+
+#### Minimal frame-buffer subset
+
+krepi implements a minimal frame-buffer subset of the display device service
+first: one plane, a fixed mode, update regions, completion events and a single
+holder. Its profile states for each item of the display device port whether the
+subset has it; an item that it may lack is reported by the instance's
+capabilities, and the server chooses its fallback from them, never by waiting
+for an event that does not come.
+
+| Item | In the subset | When it is missing, the server |
+| --- | --- | --- |
+| Output enumeration: current mode, formats, transforms, capabilities | Always | — |
+| Allocation of scan-out buffers, at least one per output | Always | — |
+| `write_scanout` | Always | — |
+| Commits with update regions | Always | — |
+| `Completed` | Always | — |
+| `HolderLost` and `EpochChanged`, which in the subset come only when the device service restarts | Always | — |
+| `Vblank` | May be missing | Computes the frame deadline from the current mode's refresh rate, without waiting for a vblank, and commits the next frame once the previous commit has completed |
+| `Released` | May be missing | Treats the `Completed` of a commit on an output as the release of the scan-out buffer of the previous commit there; with a single scan-out buffer, it writes again after `Completed` |
+| A second scan-out buffer per output | May be missing | Uses one buffer: writes the damage into it only while no commit is pending and then commits, without protection from tearing |
+| Panel power | May be missing | Never calls `set_power`; the panel stays on |
+| Hardware transforms other than the identity | May be missing | Performs every orientation while composing in software; the first release always uses the identity |
+
+- The subset has no second holder; the [holder handover](#holder-handover) is
+  written for the full device service and checked with a configuration of the
+  headless backend.
+- One plane and a fixed mode are not items of the profile, since the v0 port has
+  only the current mode and one plane per output.
+- In its subset configuration, the headless backend lacks the last five items
+  and has the first six.
+- The epoch events are always present because after the device service restarts,
+  old handles are no longer valid and the server must allocate its scan-out
+  buffers again.
+
+#### Holder handover
+
+The display server holds the display device service, and krepi's minimal
+recovery client is the only other holder that may take over scan-out; when it
+does is krepi's rule.
+
+1. **While the server is gone,** the display device service keeps the last
+   frame, and the server does nothing for that: it neither clears the screen nor
+   withdraws its last commit when it exits. The headless backend keeps the last
+   committed frame after the server stops, for tests to read back.
+2. **`HolderLost`:** a second holder has taken over scan-out, or the device
+   service no longer serves this server. The instance's scan-out buffers and
+   commit handles are no longer valid. A commit that has not completed counts as
+   ended, and the server stops waiting for its `Completed`, stops writing
+   scan-out buffers and committing, and stops composing for these outputs.
+   Clients, input and the server's part of the stop key carry on: the recovery
+   client takes no input, and the server still holds the input device services.
+   A write or a commit while the server does not hold the instance returns
+   `NotHolder`, and the server does not retry.
+3. **`EpochChanged { epoch }`:** the device service hands scan-out back with a
+   new epoch, or gives it to the server after restarting. Handles of the old
+   epoch are no longer valid, and the port delivers no events of the old epoch
+   after `EpochChanged`. The server reads `info()` again, allocates its scan-out
+   buffers again, composes each output whole and commits it once with the whole
+   output as its update region; it assumes nothing about what the screen shows.
+   If an output's size or format has changed, it follows the new enumeration;
+   the first release has a fixed mode, and the headless backend does not
+   simulate such a change.
+4. **Two epochs.** The epoch of a device service and the [server's
+   epoch](#epoch-and-focus-generation) are separate: a handover changes neither
+   the server's epoch nor the focus generation, and v0 sends clients nothing
+   about it.
+5. **Never both.** The server writes and commits only while it holds the
+   instance; who holds it and when it is handed back are krepi's rules. kosmo
+   neither implements nor calls the minimal recovery client and prepares no
+   bitmaps for it; its bitmaps are prepared in the panel's native orientation.
+6. The holder of the input device services does not change during a handover.
+   Restarting the server and reconnecting clients come later.
+
+#### Input device port
+
+The trait is provisionally `InputDevice`, and one value is one instance of
+krepi's input device service.
+
+1. **One queue per instance.** Each input device service is an instance with its
+   own epoch, description, queue of records and state query, and the port never
+   merges instances into one queue. [Device records](#device-record) therefore
+   carry no device identity; the server tells instances apart by their port
+   values.
+2. **Records.** `take_records(out) -> usize` never blocks and gives
+   `InputRecord` values in the order they arrived, at most `out`'s length per
+   call; a packet may span two calls. Their times are already converted into the
+   ports' clock domain.
+3. **Description.** `info()` gives the epoch; the class, `Keyboard`, or
+   `Buttons` for an instance with keys only, such as a driver of buttons on
+   general-purpose pins; a layout hint, which chooses the key map and tells
+   apart keyboards that send the same usages; and the reserved keys registered
+   in the instance's configuration, with usage and kind, which in the first
+   release is only the stop key. The seat's reserved key table is the union of
+   the usages that its instances register. Debouncing and keyboard lights are
+   not in v0.
+4. **State query.** `query_state(out) -> Result<(), DeviceError>` gives the
+   usages that the instance currently reports pressed, at most `MAX_PRESSED`, 32
+   in the first release.
+5. **After a loss.** When the server reads `Dropped`, it drops the instance's
+   records up to the next `PacketEnd`, queries the state, and synthesizes a
+   release, marked `synthetic`, for each key that it believes pressed but the
+   instance reports released. It never adds a press for a key that the instance
+   reports pressed but the server never saw pressed, and never sends a stop
+   request because of a query.
+6. **Epoch changes and removal.** `take_events(out)` gives
+   `EpochChanged { epoch }` and `Removed`, `#[non_exhaustive]`. After either,
+   the server synthesizes releases for the keys pressed on that instance,
+   empties its set of pressed keys and its unfinished packets, and drops every
+   record of the old epoch; layer keys held on that instance count as released.
+   Adding instances, hot plugging, is not in v0.
+7. **Order across instances.** Each round the server first takes the instances
+   that registered reserved keys and then the others in the order of
+   construction, each up to what has arrived. Packets never interleave: an
+   instance's packet reaches the key maps only after its `PacketEnd`, while
+   complete packets of other instances may go first; records that hit a reserved
+   key are still handled when they are read.
+8. **One seat.** The first release has one seat, to which every `Keyboard` and
+   `Buttons` instance belongs. When several instances press the same usage, only
+   the first press is delivered, and the release is delivered with the last
+   release.
+
+#### Stop-request port
+
+The trait is provisionally `StopPort`, in the port module of `kosmo-server`. It
+carries the stop key's short press to whoever cancels the jobs of the foreground
+session.
+
+1. **Request.**
+   `request(&mut self, req: StopRequest) -> Result<StopId, StopError>` never
+   blocks. `StopRequest { peer: PeerId, scope: StopScope }`: `PeerId` is the
+   peer identity that the session transport gave when it accepted the session's
+   connection, from the authenticated endpoint on the device and simulated on a
+   host, and the port's implementation finds the session's restricted stop
+   capability on the device, or the stand-in's target on a host, from it.
+   `StopScope` has only `FocusedJobs` in v0 and is `#[non_exhaustive]`. v0 has
+   no trace number.
+2. **Reports.** `take_reports(out) -> usize` never blocks and gives
+   `StopReport { id, progress }`, where `StopProgress` is `Accepted` or
+   `Rejected(StopRejected)` in v0 and is `#[non_exhaustive]`; the stages that
+   krepi's supervisor reports will be added as a compatible revision.
+3. **Room.** The port reserves room for requests. When it is full, `request`
+   returns `StopError::Full`; the server counts it and reports it to the shell,
+   and neither retries nor blocks.
+4. **Wiring.** `kosmo-focus` gives the decision to stop the foreground session
+   as a plain value, and the outer layer of `kosmo-server` takes that session's
+   `PeerId` and calls `request`.
+5. **On the device** the request goes to the control endpoint of krepi's
+   supervisor, with the session's restricted stop capability, which can stop
+   only that session. The supervisor first asks the job service to cancel
+   cooperatively and, past a grace period, ends the session's isolated worker
+   processes, reporting each stage. Who carries this out, how long the grace
+   period is and how the server gets the capability are krepi's rules.
+6. **On a host** a stand-in implements the port: it calls
+   [`cancel_session`](#cancelling-a-session) of the job layer of the foreground
+   session's client and reports `Accepted`. Tests of the server alone use a
+   stand-in that records requests.
+7. **Not the application's cancel key.** The `Cancel` key goes through the
+   framework's `CancelJob` to the application's own job layer, and has nothing
+   to do with the stop key.
+8. Registering the foreground session with krepi is not in the v0 port; it will
+   be a method with a default implementation, added as a compatible revision.
+9. The port has 2 methods and 2 kinds of report.
+
+#### Client transport port
+
+The client transport port is provisional with protocol v0, whose frames it
+carries.
+
+1. **Two ends.** It is a pair of traits, implemented independently: the client
+   end `ClientTransport` in `kosmo-client`, and the server end
+   `SessionTransport` in the port module of `kosmo-server`. By the direction
+   rules of the [source layout](#source-layout), no crate depends on both
+   `kosmo-client` and a server crate, so each end's in-process implementation is
+   tested against stand-ins, and a real client and a real server connect only
+   through the [host transport](#host-transport), in two processes.
+2. **Frames and capabilities.** Both ends carry byte frames without decoding
+   them. A transport keeps message boundaries: one message is one frame, whose
+   length bound is a constructor argument, `MAX_FRAME`; a received frame is
+   copied into the caller's private buffer before it is handed over. Memory
+   objects never enter frames; they are attached to calls, as the associated
+   type `Memory` of both ends. The signatures thus do not depend on the types of
+   `kosmo-proto`, and changes of the protocol's object model do not change the
+   port.
+3. **Client end.** A value is the connection of one session; connecting is
+   construction, not a method of the trait.
+
+   | Method (sketch) | What it does |
+   | --- | --- |
+   | `call(frame, memory: Option<Self::Memory>, deadline: MonoTime, reply) -> Result<(), TransportError>` | A synchronous call: sends one frame with at most one memory object and waits for its reply until the deadline; at most one call at a time |
+   | `send(frame) -> Result<(), TransportError>` | Puts a frame into the request queue of `C_R` frames; when it is full, returns `QueueFull` and sends nothing |
+   | `take_event(out) -> Result<bool, TransportError>` | Takes one event without blocking; taking it advances the read position that the server sees |
+   | `wait(deadline: Option<MonoTime>) -> Result<WaitEnd, TransportError>` | Waits for an event, the deadline or a disconnection; `WaitEnd` is `Events`, `Deadline` or `Idle`, as for the platform interface's `wait` |
+   | `create_memory(len) -> Result<Self::Memory, TransportError>`; `memory_mut(&m) -> Result<&mut [u8], TransportError>` | Creates a memory object that can be attached to a call, and gives a writable view of it, into which the client writes a buffer's pixels |
+
+   Deadlines are `MonoTime` in the clock domain of the framework's `Clock`, and
+   `wait`'s deadline may be `None` when the framework waits without one.
+   `TransportError`, `#[non_exhaustive]`, has `QueueFull`, `Timeout`, `Closed`,
+   `TooLarge` and `Exhausted`. After a call times out the connection is closed,
+   and a late reply is never delivered. `kosmo-client` turns these errors, its
+   own decoding failures and a `Violation` from the server into the three
+   transport results of [protocol errors](#protocol-errors). The client end has
+   6 methods.
+4. **Server end.** No method blocks; the server waits in the root port's `wait`.
+
+   | Method (sketch) | What it does |
+   | --- | --- |
+   | `accept() -> Option<Accepted>` | A new connection with its peer identity `PeerId`, from the authenticated endpoint on the device and simulated on a host |
+   | `take_call(conn, out) -> Option<Call<Self::Memory>>` | Takes the session's call without a reply: its frame and its memory object |
+   | `take_queued(conn, out) -> Option<usize>` | Takes the next frame of the request queue, in order |
+   | `reply(conn, frame)` | Replies through the session's one reply slot |
+   | `post(conn, frame)` | Puts an event into the ring of `C_E + R` frames; the server counts ordinary and reserved events by the [transport rules](#transport-rules) |
+   | `events_taken(conn) -> u64` | The number of events that the client has taken, its read position |
+   | `close(conn)`; `ended() -> Option<ConnId>` | Closes a session; gives a connection whose peer has gone |
+   | `copy_rows(mem, src, dst, dst_stride) -> Result<(), CopyFault>`; `drop_memory(mem)` | The only place that reads shared memory: copies a rectangle, by the source's offset, stride and bytes per pixel, into the server's private bytes; out of bounds or unreadable gives `CopyFault`, and the server judges the session a violator |
+
+   The server end has 10 methods.
+5. **What both ends guarantee.** One message is one frame. Frames put into the
+   request queue before a call can be taken when the server takes that call.
+   When the client takes an event and then sends a request or a call,
+   `events_taken` has counted that event when the server reads it. Each session
+   has one reply slot, `C_R` request slots and `C_E + R` event slots, with
+   capacities given as constructor arguments. The in-process implementations,
+   the host transport and a later transport on krepi all guarantee the same.
+6. **In-process implementations.** The client end's is in `kosmo-client`:
+   deterministic, with injectable time and in safe Rust only. Its peer is a
+   stand-in that the test gives; `call` gets its reply on the same thread
+   through an advance function given at construction, and returns `Timeout` if
+   the stand-in becomes idle without replying, never looking at the wall clock;
+   `wait` never blocks, as in the headless backend. The server end's is in
+   `kosmo-server-headless`, and its peer is a stand-in client that encodes with
+   `kosmo-proto`.
+7. The events of the shell extension take the path that [shell
+   extension](#shell-extension) describes.
+
+### Key map engine and the stop key
+
+#### Key maps
+
+1. **Place.** The key map engine is the input pipeline module of `kosmo-server`,
+   in tier B and tested at level A0. Its judgements of time use only `now()` and
+   the time of records, never a real clock.
+2. **Pipeline.** An instance's records go to the reserved key table of
+   `kosmo-focus`, which sends those that hit to the server's part of the [stop
+   key](#stop-key); the others go to the engine, which keeps the pressed keys,
+   the PC modifiers and the layer state, resolves meanings and times repeat and
+   long press; it delivers `KeyEvent` values, as the [delivered key
+   event](#delivered-key-event) defines, to the focus core.
+3. **Data model.** A key map is constant data with an identifier and a set of
+   key definitions, keyed by HID usage, the physical key. Each key is exactly
+   one of:
+   - a **layer key**, Shift, Alpha or Fn, which only changes the layer state;
+   - a **PC modifier**, usages `0xE0` to `0xE7` of the keyboard page `0x07`,
+     which changes the low 8 bits of `ModSet` and is delivered on press and
+     release;
+   - an **ordinary key**, with one entry for each set of layers that the map can
+     produce, a subset of Shift, Alpha and Fn. An entry is one key meaning, two
+     key meanings told apart by the PC's second level, which any PC Shift
+     selects, or explicitly empty. The key also has a kind of timing: no repeat,
+     repeating, or long press.
+
+   Caps Lock, Num Lock and a third level such as AltGr are not in the first
+   release; the United States host key map needs none of them. Combinations,
+   sequences, dead keys and sticky keys are not in the first release's engine
+   and are added by a design change. The source form of the data, Rust constants
+   or a text table of kosmo that generates them, is chosen with the
+   implementation, but it expresses exactly this model.
+4. **Resolution and delivery.**
+   - When an ordinary key is pressed, the engine takes its entry for the current
+     set of layers, those whose state is not off, and then the meaning for the
+     PC's level. A key without an entry or with an empty one is not delivered,
+     since `KeyMeaning` has no "none", and neither is its release. Pressing any
+     ordinary key, with or without a meaning, consumes latched layers.
+   - The meaning is fixed at the press: the release, the repeats and the long
+     press of one press carry it, whatever happens to layers and modifiers
+     afterwards.
+   - Layer keys are not delivered in v0; they show only in the meanings of later
+     keys and in the high 8 bits of `ModSet`. When a client needs them, such as
+     a compatibility service that wants raw key codes, they will get `NamedKey`
+     entries and be delivered, with a new Keyboard version.
+   - PC modifiers are delivered on press and release, synthetic releases
+     included. Their meaning is one of four `NamedKey` entries, provisionally
+     `ModShift`, `ModCtrl`, `ModAlt` and `ModGui`, the same for the left and the
+     right key, which the usage tells apart; they neither repeat nor long-press.
+     Scripts run through both the framework and the server need them: such a
+     script can press Shift only with a modifier line, whose device record gives
+     the next character its shifted meaning, and the test compares the server's
+     meanings and modifiers with the script's.
+   - When several instances press the same usage, only the first press is
+     delivered, and the release with the last release.
+   - Each delivered press records the focus generation. When focus changes, the
+     press's repeat and long-press timing is cancelled and it produces no
+     further events: its physical release does not reach the new focus. The
+     focus core sends the synthetic release and `Leave`.
+5. **Choosing a map.** Each input instance gets a key map by the layout hint of
+   its description, from the maps in the server's configuration: start arguments
+   on a host, injected in tests. The first release has only the [host key
+   map](#host-key-map), which is also used for a hint that the server does not
+   know. The layer state belongs to the seat and is shared by all instances.
+6. **Checks.** A unit test checks each key map: every ordinary key has exactly
+   one entry, possibly empty, for every set of layers that the map can produce;
+   a key has one kind only; no key both repeats and long-presses; and the usages
+   of reserved keys are not in the map. The last check covers only the default
+   reserved keys; a reserved key given by a device description or a start
+   argument that has an entry in the chosen map is caught first by the reserved
+   key table, so its entry is never reached.
+7. **Settings.** The server is the authority for input settings. In the first
+   release the parameters and maps are given when the server is built, and never
+   change at run time or persist. Changes of the layer state are not reported to
+   the shell.
+
+An entry is looked up for exactly the current set of layers, never falling back
+to fewer layers, so the check of rule 6 can enumerate every cell.
+
+#### Layer keys and layer state
+
+1. There are three layer keys: Shift and Alpha, the calculator's shift or 2nd
+   and alpha keys, and Fn. Each is off, held, latched or locked, and the current
+   set of layers is the layer keys that are not off.
+2. **Shift and Alpha latch and lock.** Pressed while off, one becomes latched.
+   While it is latched, pressing an ordinary key resolves that key with a set of
+   layers that includes it and then turns it off, and pressing it again locks
+   it. Pressed while locked, it turns off. Releasing a layer key changes
+   nothing.
+3. **Fn is held.** Pressing Fn makes it held and releasing it turns it off;
+   every ordinary key pressed meanwhile is resolved with Fn, and ordinary keys
+   never clear it. Fn's press and release do not change Shift and Alpha, and a
+   latched Shift or Alpha is consumed by the next ordinary key while Fn is held.
+4. **Focus changes** clear latched layers, keep locked ones, and leave held ones
+   as the physical keys are.
+5. **An instance's epoch change or removal** releases the layer keys held on it,
+   so Fn turns off; latched and locked layers stay. A restart of the server
+   resets the layer state.
+6. The engine has these two actions only, latch and lock for Shift and Alpha and
+   hold for Fn; latch only, lock only and sticky keys are added by a design
+   change.
+7. The first release's host key map has no layer keys, so key maps in tests
+   check the layer states.
+
+The high 8 bits of `ModSet` carry the layer state:
+
+1. Bits 8 and 9 are Shift, bits 10 and 11 Alpha and bits 12 and 13 Fn, each pair
+   0 for off, 1 held, 2 latched and 3 locked. Bits 14 and 15 are reserved and
+   always 0 in v0. Shift and Alpha take only 0, 2 and 3, and Fn only 0 and 1.
+2. The low 8 bits follow the [event record](#delivered-key-event): bit `i` means
+   that usage `0x07:0xE0 + i` is pressed on the seat, on any instance. The press
+   of a PC modifier has its own bit set, and its release no longer has it.
+3. `mods` is the seat's state when the event is delivered, after the record or
+   the timer that produced it has been handled. A latched layer that a press
+   consumes is therefore already 0 in that press's `mods`; a repeat or a long
+   press takes the state when it is produced, and a synthetic release when it is
+   synthesized.
+4. Three layer keys of two bits each leave 2 bits free; more layer keys would
+   widen `ModSet` by a change of the event record.
+
+#### Repeat and long press
+
+1. **Data.** Each ordinary key has one kind of timing: no repeat, repeating or
+   long press. Layer keys, PC modifiers and reserved keys never repeat or
+   long-press.
+2. **Parameters,** for the seat, with provisional names:
+   `RepeatParams { delay: u64, interval: u64 }` and
+   `LongPressParams { threshold: u64 }`, in nanoseconds and each above 0, in
+   `InputSettings { repeat: Option<RepeatParams>, long_press: LongPressParams }`,
+   where a `repeat` of `None` turns repeat off. An interval rather than a rate
+   keeps every planned time a whole number of nanoseconds without division or
+   rounding; a settings screen can show it as a rate.
+3. **Repeat.** For a repeating key pressed at $t_0$, repeat $k \ge 1$ is planned
+   at $t_0 + \mathit{delay} + (k - 1) \cdot \mathit{interval}$, and its `time`
+   is the planned time. Only the repeating key pressed last repeats: pressing
+   another ordinary key stops the earlier key's repeats, and so do its release,
+   a focus change, its instance's epoch change or removal, and a
+   resynchronization after a loss that shows it released. If the server is late,
+   with several planned times already past at the start of a round, it delivers
+   one repeat with the last planned time that has passed, drops the others and
+   counts them, so it never sends a burst of repeats after a load. Repeats are
+   ordinary events and are dropped during an overflow.
+4. **Long press.** A long-press key held until $t_0 + \mathit{threshold}$, that
+   instant included, gives one `LongPress` with that planned time. Released
+   earlier, it gives only its press and release; released later, its release
+   too. A focus change cancels it. Only time decides, not the order of handling:
+   when the server reads a release, a long press planned no later than the
+   release's time and not yet delivered is delivered first, and likewise one
+   repeat by rule 3. A release exactly at the threshold therefore gives a
+   `LongPress`, and one a nanosecond earlier gives none.
+5. **Timing.** The engine gives its nearest planned time, which is one of the
+   deadlines of the server's `wait`, and the timing runs at the priority of
+   input.
+6. **Host defaults** of the host key map and the headless backend, which tests
+   can override: a repeat delay of 500 ms, an interval of 33 ms, about 30
+   repeats a second, and a long-press threshold of 600 ms. They are examples,
+   not measurements; the device's defaults are set after measuring on the
+   device.
+7. **Host repeats.** The nested backend drops the repeats of the host's window
+   library and uses only the server's.
+
+#### Host key map
+
+The host key map, provisionally `HOST_US`, is a PC keyboard with the United
+States ANSI layout, on the keyboard page `0x07`. It has no layer keys, so its
+set of layers is always empty.
+
+| Host keys | Usages | Key meaning | Timing |
+| --- | --- | --- | --- |
+| Letters a to z | `0x04` to `0x1D` | `Char`: lower case at the first level, upper case at the second | Repeating |
+| Digits 1 to 0 | `0x1E` to `0x27` | `Char`: the digit at the first level, the symbol of the same key of the United States layout at the second | Repeating |
+| Space | `0x2C` | `Char(' ')` | Repeating |
+| Punctuation of the main block | `0x2D` to `0x31`, `0x33` to `0x38` | `Char`, both levels as in the United States layout | Repeating |
+| Keypad `/`, `*`, `-`, `+`, digits and decimal point | `0x54` to `0x57`, `0x59` to `0x63` | `Char`, whatever Num Lock says | Repeating |
+| Left and right arrows | `0x50`, `0x4F` | `Named(Left)`, `Named(Right)` | Repeating |
+| Backspace | `0x2A` | `Named(Delete)` | Repeating |
+| Return and keypad Enter | `0x28`, `0x58` | `Named(Execute)` | No repeat |
+| Escape | `0x29` | `Named(Cancel)` | No repeat |
+| Left and right Ctrl, Shift, Alt and GUI | `0xE0` to `0xE7` | PC modifiers: `Named(ModCtrl)`, `Named(ModShift)`, `Named(ModAlt)`, `Named(ModGui)`, the same for left and right | No repeat |
+
+- Other keys, such as Tab, the up and down arrows, forward delete, the function
+  keys and the lock keys, have no entries and are not delivered; nothing in the
+  first release uses them.
+- Escape gives `Cancel`, the application's cancel key, which the framework binds
+  to `CancelJob`; Escape is not a reserved key and has nothing to do with the
+  stop key.
+- The reserved stop key on a host is F12, usage `0x07:0x45`, by default, and a
+  start argument can change it. It is not in the host key map; if it is changed
+  to a key that has an entry, the entry is never reached.
+- The map uses the five `NamedKey` entries of the framework's [commands and key
+  bindings](#commands-and-key-bindings) and adds the four PC modifier entries,
+  numbered when they are written into `kosmo-types`, only growing. The
+  framework's minimal key map has no bindings for the four, so they match no
+  command; names start with `Mod` to keep them apart from later entries of
+  calculator layer keys. Other entries are proposed by the same rules when a key
+  map needs them.
+- The keys that repeat agree with the commands that repeat: `Left`, `Right`,
+  `Delete` and characters repeat, `Execute` and `Cancel` do not, so behavior
+  does not depend on the framework ignoring repeats.
+- The nested backend maps host key codes to usages by physical position, not by
+  the character that the host's layout gives. A host keyboard with another
+  layout therefore types the characters of the United States layout; this is a
+  limit of the first release.
+
+#### Stop key
+
+A short press of the reserved stop key goes through the display server and
+cancels the jobs of the foreground session; its long press belongs to krepi's
+input driver and reaches krepi's supervisor even when the display server does
+not respond.
+
+1. **When a short press is judged.** As soon as the server reads a `Press`
+   record of the reserved stop key, which the reserved key table recognizes
+   before the key maps, it judges one short press and, at that same step at
+   priority 0, sends a stop request for the foreground session through the
+   [stop-request port](#stop-request-port). The judgement ignores how long the
+   key is held: the server's part needs no long-press duration, reads no clock
+   and sets no timer.
+2. **No duplicates from the server.**
+   - One press gives at most one request; reserved keys neither repeat nor
+     long-press.
+   - A `Release` record sends nothing and withdraws nothing.
+   - During a long press, and after krepi's driver has recognized one, the
+     server's part does nothing. Whether the driver still sends this key's
+     presses and releases afterwards is krepi's decision: a release is ignored
+     as above, and a further `Press` without a release in between is a new press
+     and sends a request by rule 1.
+   - After a loss, a state query that shows the stop key pressed without a
+     `Press` that the server read sends no request.
+   - Two short presses in a row send two requests; the server's part does not
+     merge them.
+   - With no foreground session, no request is sent and the press is only
+     counted; whether the shell then gets feedback, and through which message of
+     the shell extension, is defined with the extension.
+3. **The receiver merges the two paths.** When a short-press request and the
+   emergency path of a long press both arrive, the receiver publishes one final
+   state: on the device krepi's supervisor, which both paths reach and which
+   kosmo asks to merge concurrent stops of one session, to treat an emergency
+   stop as a superset of cancelling and to publish one final state for each job;
+   on a host the stand-in's cancelling of a session, which is idempotent.
+4. **What krepi's input driver does.** It passes the reserved key's `Press` on
+   at once and never holds it back to judge a long press; otherwise rule 1 could
+   not react at once.
+5. **Feedback.** The first release has no trusted presentation; the server
+   forwards the stop request's reports to the shell through the shell extension,
+   which shows them. Later the trusted presentation draws immediate feedback at
+   the same step that sends the request.
+
+A long press therefore first sends one short-press cancel, which the receiver
+merges with the emergency path.
+
+### Host form
+
+On a host, kosmo runs the display server with two backends, simulates the
+device's display, and connects clients and servers in separate processes through
+a host transport.
+
+#### Host backends and device model
+
+1. **One root port.** The headless backend `kosmo-server-headless` and the
+   nested backend `kosmo-server-host` each implement the [root
+   port](#port-structure) and the display, input, session transport and
+   stop-request ports it gives. `kosmo-server`, `kosmo-compositor` and the three
+   pure cores are the same code with both backends, which differ only in the
+   ports, so nested runs and headless tests never diverge.
+2. **The host's device model.** Both backends simulate a display device service
+   with the settled shape of krepi's:
+   - **Instance and outputs.** One simulated display engine is one instance.
+     Each window of the nested backend is one of its outputs, up to
+     `MAX_OUTPUTS`, but the first release's server uses one, because `Welcome`
+     has the size of one output; one output is the default.
+   - **Mode.** The start configuration gives each output's current mode, its
+     width, height and refresh rate in millihertz, by default 60,000 mHz.
+   - **Format.** The scan-out format is one of the four pixel formats:
+     `Xrgb8888` by default, or `Rgb565` to simulate a product screen.
+   - **Transforms.** The configuration gives the transforms that scan-out can
+     do, by default the identity only, so every other orientation is rotated in
+     software.
+   - **One plane** per output.
+   - **Timing.** The backend generates `Vblank` and `Completed` with a timer at
+     the mode's refresh rate on its own clock, as the device service does on
+     QEMU, never from the host's vertical sync.
+   - **Capabilities.** The nested backend reports every capability, and a panel
+     turned off shows a black window. The headless backend's capabilities,
+     subset profile and handover configuration follow the [minimal frame-buffer
+     subset](#minimal-frame-buffer-subset) and the [holder
+     handover](#holder-handover).
+   - Bandwidth and tearing-effect timing are not simulated.
+3. **Host input.** The nested backend has one input instance of class
+   `Keyboard`, the host's keyboard, whose description gives the host key map as
+   its layout hint and registers the reserved stop key from the server's
+   configuration, F12 by default. The headless backend's instances are given by
+   the test when it is built.
+4. **Where things are checked.** The rules of the server and the clients are
+   checked on the headless backend. The nested backend's own rules are checked
+   on hosted CI only through the stand-in of the [host window
+   interface](#host-window-interface), with one more case when a virtual display
+   is available. Runs in a host window on macOS are only local checks.
+
+#### Server-side script runner
+
+Scripts run through both the headless framework and the headless display server,
+as [headless backend and scripts](#headless-backend-and-scripts) describe, have
+a runner on each side:
+
+1. **Split.** Only the framework's runner in `kosmo-testkit` parses the text of
+   a script; the server's side never reads script text, since `display/` depends
+   on no other workspace. The server's runner is the driver interface of the
+   headless backend, with exactly four commands:
+   - inject one device record;
+   - advance the virtual clock to `t`;
+   - run until idle, which is one step;
+   - give one output's pixel digest, the SHA-256 of the buffer description and
+     the raw bytes, as the [determinism rules](#determinism-rules) state,
+     computed with an exactly pinned package and never written by hand.
+
+   Tests of the server alone call these commands in process; tests across
+   processes send them through a control connection, as [stepping two
+   processes](#stepping-two-processes) describes.
+2. **Key lines.** The framework's side projects key lines into device records as
+   the [event record](#time-decoding-and-scripts) states, with the lines of one
+   time forming a packet that ends with `PacketEnd`, and injects them one by
+   one. These scripts hold only presses and releases.
+3. **Time lines.** For a time line `t`, the server's side advances the headless
+   backend's virtual clock to `t`, which only increases, handling the timers
+   that fall due on the way, such as repeat, long press and frame deadlines, in
+   time order. The client's side advances its injected clock to the same number.
+   The two are separate clock domains: the same number only makes scripts easy
+   to write, and release plans never use times.
+4. **Checkpoint lines.** First both sides run to a common idle. Then the
+   server's side takes the pixel digest of each output, and the client's side
+   writes its three records. The server is idle when priorities 0 to 3 have no
+   work, no timer is due at the current virtual time and no device commit is
+   pending, that is, every `Completed` of the headless backend at the current
+   virtual time has been delivered. For this, scripts run on both sides use a
+   device model in which `Completed` comes at the same virtual time as its
+   commit, as the framework's headless backend gives buffers back at once. The
+   model timed by the refresh rate is for tests of the frame budget and dropped
+   frames, and for nested runs.
+5. Neither the server's runner nor the step mode of the headless server program
+   sleeps or reads the wall clock; they use only the virtual clock.
+
+#### Host window interface
+
+The nested backend uses host windows only through one interface, so that it can
+be checked on hosted CI without opening windows.
+
+1. **The interface.** The trait, provisionally `HostWindow`, is internal to
+   `kosmo-server-host` and not exported.
+
+   | Method (sketch) | What it does |
+   | --- | --- |
+   | `open(spec) -> Result<WindowId, HostWindowError>` | Opens a window; `spec` has the width and height in device pixels, a whole scale factor and a title, which says that the window is a preview and does not show the behavior of the device |
+   | `present(id, frame) -> Result<(), HostWindowError>` | Shows a frame: pixels of the device's resolution in the host format `Xrgb8888`, with rows, size, stride and update regions; scaling happens below the interface |
+   | `take_events(out) -> usize` | Takes host events without blocking |
+   | `close(id)` | Closes a window |
+
+   `HostEvent`, `#[non_exhaustive]`, has four kinds:
+   `Key { usage, down, host_repeat }`, where `usage` is a HID usage of the
+   keyboard page `0x07`; `FocusLost { id }` and `FocusGained { id }`; and
+   `CloseRequested { id }`. Pointer events are dropped below the interface. The
+   interface is single-threaded; the parts across threads are inside its
+   implementation.
+2. **Below the interface,** an adapter of the window library is the only place
+   with the library's types. It maps the library's physical key codes to HID
+   usages through a data table and drops keys without a mapping; its unit tests
+   build key code values directly, never library events. It scales by whole
+   factors with the nearest neighbor, never interpolating, into the library's
+   buffer. It sizes windows in the host's physical pixels, and the host's scale
+   factor never enters kosmo's coordinates.
+3. **Above the interface,** the core of the nested backend is checked on hosted
+   CI through the stand-in:
+   - **Normalization of host keys.** It keeps the pressed state of each usage. A
+     press of a key already pressed, host repeats included, and a release of a
+     key not pressed are dropped. Every remaining event becomes one device
+     record followed by `PacketEnd`, with the backend's clock at normalization
+     as its time, which in nested runs is the real monotonic clock.
+   - **Focus lost.** It puts `Dropped` and `PacketEnd` into the input instance's
+     queue and empties its pressed state. The server then queries the state,
+     which is empty, and synthesizes the releases of the keys that it still
+     believes pressed, so synthetic releases come only from the server.
+   - The device model of the host, with its timer, commits and completions.
+   - **Format.** It converts scan-out buffers to the host's `Xrgb8888` with the
+     shared conversion function, the same as compositing; pixel digests are
+     taken from the scan-out buffer before conversion.
+4. **The stand-in** of `HostWindow` has no threads and no window library: it
+   records the frames it gets, whose digests tests can take, and tests inject
+   `HostEvent` values. The nested backend passes the server's conformance suite
+   with it.
+5. **Closing.** `CloseRequested` stops the nested server program, and its
+   clients get `Disconnected`.
+
+#### Main thread and window library
+
+macOS requires its window system to run on the main thread, and the server's
+event loop is single-threaded. The nested server program therefore gives the
+main thread to the window library:
+
+1. **Startup.** The nested server program first starts the server thread, on
+   which the server's event loop runs and which is the only thread that runs
+   server modules, and then hands the main thread to the window library's event
+   loop, winit's `run_app`.
+2. **The window thread does window work only.** It opens and closes windows,
+   shows frames, turns host events into `HostEvent` values in a bounded queue
+   and wakes the server's wait. It never reads or writes the server's state.
+3. **Handing over.** From the server to the window thread, `present` copies a
+   frame into a buffer that the window side holds, at most one waiting frame per
+   window, and wakes the window library's event loop through winit's
+   `EventLoopProxy::send_event`. From the window thread to the server, a
+   `HostEvent` goes into the bounded queue, and the wake-up handle of the [host
+   transport](#host-transport) makes the root port's `wait` return `Ready`. The
+   server thus still blocks only in that `wait`, which covers the host's sockets
+   and the window events at once; the real `HostWindow` is this handle on the
+   server thread's side.
+4. **Stopping.** On `CloseRequested` the window thread tells the server through
+   the same queue. The server ends its loop and closes every session, whose
+   clients get `Disconnected`, and once its thread has ended the main thread
+   ends the window library's loop.
+5. The window thread is part of a port's implementation, as a device service's
+   separate process is on the device. It runs no server modules, so the server
+   remains a single-threaded event loop.
+
+The window library is winit with softbuffer:
+
+1. **Dependencies.** `kosmo-server-host` has exactly two direct external
+   dependencies: `winit` `=0.30.13` without default features, with the features
+   `rwh_06` and `x11`, and `softbuffer` `=0.4.8` without default features, with
+   the features `x11` and `x11-dlopen`. macOS needs no features.
+2. **Closure.** When chosen, the closure of these two for the two target
+   platforms was 74 packages, seven of whose names appear in more than one
+   version; the deps step counts it again when the crate is added. The allowlist
+   of `display/` holds it.
+3. **Exceptions.** The allowlist of `display/` has seven exceptions for it, each
+   with its reason:
+
+   | Package | Exception | Reason |
+   | --- | --- | --- |
+   | objc-sys 0.3.5 | `links` | Links the Objective-C runtime that macOS has, which every binding of its window system needs, only on macOS; compiles no C and downloads nothing |
+   | x11-dl 2.21.0 | Native code through pkg-config | Only reads the library directory with pkg-config and links libdl on Linux; the X11 libraries are loaded at run time with `dlopen`, so no X11 development packages are needed to build |
+   | tiny-xlib 0.2.5 | Native code through pkg-config | The same, with its `dlopen` feature |
+   | bitflags 1.3.2 | License | States `MIT/Apache-2.0`, read as `MIT OR Apache-2.0`; only on macOS |
+   | foreign-types 0.5.0 | License | The same |
+   | foreign-types-macros 0.2.4 | License | The same |
+   | foreign-types-shared 0.3.1 | License | The same |
+
+   The other ten packages of the closure with build scripts only probe the
+   compiler's version or emit configuration flags; they compile no C or C++ and
+   download nothing at build time.
+4. **Linux.** Building needs no X11 development packages and links only libdl.
+   At run time, winit and softbuffer load libX11.so.6, libXcursor.so.1,
+   libX11-xcb.so.1, libXi.so.6, libxkbcommon.so.0, libxkbcommon-x11.so.0 and
+   libxcb.so.1 with `dlopen`. On hosted Ubuntu runners these libraries and Xvfb
+   are installed as packages.
+5. **macOS.** The nested backend builds on macOS; windows there are checked
+   locally.
+6. **Wayland.** On Linux only X11 is enabled, and on Wayland desktops the nested
+   backend runs through XWayland. Native Wayland would add the features
+   `wayland` and `wayland-dlopen`, 26 more packages, two more native-code
+   exceptions and three more license exceptions, and is a separate decision.
+7. **Versions.** These versions and features are fixed. An upgrade, for a new
+   winit release with its changed interface, a security advisory or a build that
+   fails with a new toolchain, follows the allowlist rules, and one that needs
+   an exception beyond this table is a design change.
+
+Only `kosmo-server-host` in `display/` allows `winit` and `softbuffer`; no other
+crate depends on them directly, and the closures of `framework/` and `desktop/`
+never contain them. No crate depends on `kosmo-server-host`, a program and
+backend in layer D3, so the window library enters `display/`'s lock file and
+allowlist only through it. The layout step's negative case for this rule uses
+these two package names.
+
+#### Host transport
+
+On a host, a client and a server in separate processes connect through local
+sockets, and buffers travel as shared memory whose descriptors are passed over
+the socket, as a capability is granted on krepi. Sealing a buffer is still the
+copy that [buffer sealing](#buffer-sealing-and-private-copies) describes; this
+is how the host carries it out.
+
+| Item | Linux | macOS |
+| --- | --- | --- |
+| Connection | `AF_UNIX`, `SOCK_STREAM` | The same; `SOCK_SEQPACKET` is not available |
+| Frame boundaries | Each transport message is a header of fixed size, with kind, length and counts, followed by one protocol frame; messages are split by length, at most `MAX_FRAME` | The same |
+| Creating a memory object, `create_memory(len)` | `memfd_create` with `MFD_CLOEXEC` and `MFD_ALLOW_SEALING`, `ftruncate(len)`, then the seals `F_SEAL_SHRINK`, `F_SEAL_GROW` and `F_SEAL_SEAL` | `shm_open` with `O_CREAT`, `O_EXCL` and `O_RDWR`, mode `0600`, under a short unique name that `shm_unlink` removes at once, then `ftruncate(len)` once |
+| Writing pixels, `memory_mut` | `mmap` once with `PROT_READ`, `PROT_WRITE` and `MAP_SHARED` | The same |
+| Passing it with `CreateBuffer` | The descriptor travels as `SCM_RIGHTS` with that call's message, exactly one per call | The same |
+| The server's checks | `F_GET_SEALS` must include `F_SEAL_SHRINK`, which only a memfd can have, so ordinary files are excluded too; `fstat`'s size is at least `stride × height`; otherwise `InvalidArgument` | The descriptor must be a POSIX shared memory object, and `fstat`'s size at least `stride × height`; otherwise `InvalidArgument`. A size check alone would let a client pass an ordinary file and shrink it, so that the server gets a signal when it reads the mapping |
+| The server's mapping | `mmap` once with `PROT_READ` and `MAP_SHARED`, then the descriptor is closed; `drop_memory` unmaps | The same; the mapping stays readable after the client closes its descriptor |
+| Copying, `copy_rows` | Reads the read-only mapping word by word into the server's private bytes, after checking that the rectangle and stride lie inside the object, and returns `CopyFault` otherwise; an object that passed the checks cannot shrink, so reading never gets a signal | The same, as far as observed; see below |
+| The server's wait | One `poll(2)` over every descriptor of the process, the listening socket, the sessions, the wake-up handle and the control connection, with its timeout from the deadline. Sockets never block; bytes that cannot be written wait in the connection's outgoing queue until it can take them, so writing never blocks the server | The same |
+| The client's wait | It has one connection: the standard library's `UnixStream` with a read timeout from the deadline | The same |
+| A closed peer | Sending with `MSG_NOSIGNAL` gives `EPIPE` | The socket has `SO_NOSIGPIPE`, and sending gives `EPIPE` |
+
+On macOS, telling a shared memory object from an ordinary file relies on `fstat`
+reporting no file type for it, which is an observation on current systems rather
+than a documented guarantee; and that the object's size cannot change has been
+observed while the client still maps it, but not after the client unmaps it. If
+a client could shrink it after unmapping it, a local client could make the
+server get a signal while copying and end. The host transport is for development
+hosts and is not the device's security boundary.
+
+1. **The server end** is in `kosmo-server-headless` and uses `rustix` `=1.1.6`
+   without default features, with the features `std`, `net`, `mm`, `shm`, `fs`
+   and `event`; `shm` can go, since the server creates no objects. rustix gives
+   safe interfaces for receiving descriptors, reading seals and `poll`; only
+   mapping needs unsafe code. The server end has unsafe code in two places only,
+   the read-only mapping and the reading of mapped memory in `copy_rows`, each
+   in a module of its own with a review of its own. Its closure, rustix,
+   linux-raw-sys, bitflags, libc and errno, needs no exceptions and lies within
+   the window library's closure.
+2. **The client end** is in `kosmo-client`, written directly over the system
+   calls. `kosmo-client` has no external dependency, and the framework's
+   backends are core libraries without unsafe code, so the client end can use
+   neither rustix nor libc, nor live in `kosmo-backend-display`.
+   - Connecting, reading, writing and waiting with a timeout use the standard
+     library's `UnixStream`, and error codes come from
+     `std::io::Error::last_os_error()`.
+   - `extern "C"` declarations give the calls that the standard library lacks:
+     `memfd_create`, `fcntl`, `ftruncate`, `mmap` and `sendmsg` on Linux;
+     `shm_open`, `shm_unlink`, `ftruncate`, `mmap` and `sendmsg` on macOS.
+   - `msghdr`, `cmsghdr` and the alignment of control messages differ between
+     the two systems, so each has its own `repr(C)` layout, checked against the
+     system headers by compile-time assertions of sizes and field offsets. Only
+     local runs check the macOS layout.
+   - These declarations, calls and the access to mappings are in one module,
+     compiled only on Linux and macOS and reviewed on its own; the trait, the
+     in-process implementation and the other modules of `kosmo-client` have no
+     unsafe code. The allowlist of `framework/` does not grow.
+   - kosmo otherwise takes such general functions from exactly pinned packages;
+     this is the one exception, because export crates have no external
+     dependency.
+3. **A memory object is passed once.** The client keeps its descriptor and
+   mapping, and the server refers to the object by its handle in the session;
+   later commits are ordinary queued frames without descriptors. When a session
+   ends, the server unmaps all its objects.
+4. **Counts travel with frames.**
+   - The header of each message from client to server carries the number of
+     events that the client has taken, `events_taken`, so the server sees each
+     taking when it reads a later request.
+   - The header of each message from server to client carries the number of
+     request frames that the server has taken, from which the client computes
+     `QueueFull` with `C_R`.
+   - When the server has taken requests in a round and has nothing else to send,
+     it sends a message with only the counts, at most one per round. Counts are
+     totals, so at most one such message waits in the outgoing queue, and a
+     newer one replaces it.
+   - The client does the same: when it has taken events and has nothing else to
+     send, it sends a message with only the counts before it blocks in `wait`.
+     Otherwise a client that only reads events would make the server believe
+     that the event queue is full, and the server would never see its `Overflow`
+     taken.
+   - Each session has one reply slot.
+   - Both directions are bounded: a connection's outgoing queue in the server
+     holds at most `C_E + R` events, one reply and one count message, so a
+     client that stops reading does not grow the server's memory; more than
+     `C_R` unprocessed request frames from a client mean that it ignored
+     `QueueFull`, a protocol violation.
+5. **Deadlines.** The client end turns the deadlines of `call` and `wait` into a
+   socket read timeout, and the server end turns the deadline of the root port's
+   `wait` into the timeout of `poll`. A timeout is the deadline minus the
+   injected clock's reading. In nested and production runs the program's entry
+   injects the real monotonic clock that it builds; `kosmo-client` never builds
+   one. In step mode the deadlines are virtual.
+6. **Wake-up handle.** The server end gives a handle that another thread can
+   call, the writing end of a local socket pair, through which the nested
+   backend's window thread wakes the root port's `wait`.
+
+#### Host programs
+
+Placement:
+
+- The server end of the host transport, the headless server program and its step
+  mode are in `kosmo-server-headless`, in layer D3. `kosmo-server-host` uses its
+  server end through a same-layer dependency listed in the layout table.
+  `kosmo-server` has no host transport.
+- The client end is in `kosmo-client`, in layer F0 and exported, compiled only
+  on Linux and macOS and without external dependencies; its trait and its
+  in-process implementation are unchanged.
+- `kosmo-backend-display` remains a core library with `#![forbid(unsafe_code)]`,
+  generic over the transport and without the host transport.
+- The program `kosmo` builds the client end of the host transport with a
+  constructor of `kosmo-client`, which `desktop/` may use directly, injects the
+  real clock that it builds, and hands it to the display server backend that it
+  gets through `kosmo-sdk`; how `kosmo-sdk` re-exports the backend's constructor
+  is decided with it.
+- `kosmo-client`, `kosmo-server-headless` and `kosmo-server-host` are boundary
+  crates, registered by the changes that create them as [platform
+  boundary](#platform-boundary) states, with these categories: `kosmo-client`
+  for local sockets and shared memory; `kosmo-server-headless` for local
+  sockets, shared memory and its program entry's arguments, environment and exit
+  code; `kosmo-server-host` for the window library, threads, the real clock and
+  its program entry's arguments, environment, exit code and child processes. The
+  program `kosmo` adds no category: it takes the rendezvous path only as an
+  argument, and its real clock is already registered.
+
+Rendezvous and identity:
+
+- A server listens on the path that a start argument gives. Without one, the
+  nested server uses a default path in the user's runtime directory,
+  `$XDG_RUNTIME_DIR` on Linux and `$TMPDIR` on macOS, and removes it when it
+  exits.
+- A second path, the first with `.shell` appended, is only for the shell.
+- Clients get the path as an argument, never from an environment variable. Tests
+  use a unique path in a temporary directory for each case.
+- Peer identities, `PeerId`, are assigned in the order of acceptance. A session
+  that connects through the `.shell` path is set up with the shell's identity,
+  any other with an application's; this is the simulated authenticated identity
+  of a host. A host does not check the credentials of the peer process.
+
+Program entries:
+
+- Both server programs take the path to listen on, the configuration of the
+  simulated outputs and the server's epoch.
+- The headless server program has only its step mode in the first release; a
+  test driver starts it, and it starts no clients.
+- The nested server program may take a client command after `--`: it starts that
+  command with `--display <path>`, a provisional name, appended, and does not
+  wait for it when the server ends.
+- The calculator subcommand of `kosmo`, given `--display <path>`, connects to
+  that server through the host transport, and without it runs through the
+  headless framework. The path is an argument rather than an environment
+  variable because `kosmo` is registered for arguments but not for the
+  environment.
+- The commands that run these programs will be given in the display stack's
+  feature documents, which are planned.
+
+#### Stepping two processes
+
+Scripts run through the headless server with a client in another process give
+byte-identical results only if both processes advance under the test's control:
+
+1. **Step mode.** Started in step mode, the headless server program reads no
+   wall clock, only its virtual clock, and advances only on the driver's
+   commands, the four commands of the [server-side script
+   runner](#server-side-script-runner), which come through a control connection
+   whose path is given at start. While it waits for a command, it still reads
+   the bytes that have arrived on each connection into that connection's receive
+   buffer without handling them, so a client never blocks on a full socket
+   buffer; what it reads is bounded by the counts of the host transport. A step
+   that runs until idle works like this:
+   - The command carries the number of transport messages that the client has
+     sent on each session, and the server first reads until all of them have
+     arrived, without relying on when the kernel delivers them.
+   - It then runs rounds of the [execution model](#execution-model) until idle.
+   - It replies with the numbers of request frames it took and events it sent in
+     the step.
+2. **The client end's step hook.** In test builds, the client end of the host
+   transport can take a step hook, an inherent method of that implementation and
+   not part of `ClientTransport`. With a hook, `call` sends its call, asks the
+   driver through the hook to let the server take a step, and then takes the
+   reply; `wait` never blocks; and deadlines are virtual.
+3. **Checkpoints.** The driver alternates between letting the server take a step
+   and running the client's side until idle, as the framework's single-round
+   entry allows, until a round moves no frame in either direction: the server
+   took no request frame and sent no event, and the client sent no message. It
+   then takes the checkpoint's records. Both processes advance only under
+   commands and the hook, and the server rotates over sessions in the order of
+   their keys, so two runs are the same, also with two clients in one test
+   process.
+4. **The stop stand-in.** On a host, the stand-in of the stop-request port in
+   `kosmo-server-headless` turns a `PeerId` and a scope into a cancel message of
+   the transport, not a protocol frame, on that session's connection, and
+   reports `Accepted` if the connection exists and `Rejected` otherwise. The
+   client end hands the message to a handler that the program's entry registers,
+   the program `kosmo` or a test driver, and the handler calls `cancel_session`
+   on the job-layer thread. The handler, too, is an inherent method, not part of
+   the trait. Nested runs and step mode use the same path.
+5. **Formats.** The commands of the control connection and the kinds of
+   transport messages, the count message and the cancel message, exist only on
+   hosts and are not part of the protocol. Their encoding is fixed with the host
+   transport and its feature document.
+
 ## Frontends of the first release
 
 The first release has exactly two frontends: the line-mode terminal of
@@ -1789,8 +3944,8 @@ A component is a unit with its own role, contract and level.
 
 - Every planned crate and `xtask/` appear in at least one row; crates with
   components of different roles (`kosmo-math-model`, `kosmo-math-kalyx`,
-  `kosmo-server`, and possibly the crate of the privileged shell extension,
-  chosen with the display stack design) appear in several.
+  `kosmo-proto`, `kosmo-server` and `kosmo-client`, the last three also for the
+  privileged shell extension) appear in several.
 - Evidence is `planned` until the component is delivered; the delivering
   change replaces it with a link to the feature document and the location of
   the tests. Whether a component exists is read from this column, not from
@@ -1828,10 +3983,10 @@ A component is a unit with its own role, contract and level.
 | Software compositing | `kosmo-compositor` | Presentation | A0 | `planned` |
 | Session and device ports | `kosmo-server` | Port | A1, with fuzz tests of inbound messages | `planned` |
 | Input pipeline and key maps | `kosmo-server` (module) | Server module | A0 | `planned` |
-| Headless server backend | `kosmo-server-headless` | Backend | A0, passing the session and device port suite | `planned` |
+| Headless server backend, with the server end of the host transport, the headless server program and its step mode (unsafe code only in the read-only mapping and in `copy_rows`) | `kosmo-server-headless` | Backend | A0, passing the session and device port suite | `planned` |
 | Nested backend | `kosmo-server-host` | Backend | A0 | `planned` |
-| Client library and client transport | `kosmo-client` | Port | A1 | `planned` |
+| Client library and client transport, with the client end of the host transport (hand-written system calls in one module, a platform boundary) | `kosmo-client` | Port | A1 | `planned` |
 | Display server backend (through the client library and the client transport port) | `kosmo-backend-display` | Backend | A1 | `planned` |
 | Window policy module | `kosmo-wm` | Policy | A0 | `planned` |
 | Shell (skeleton, switch and stop entries, lifecycle presentation, status area, notifications) | `kosmo-shell` | Shell | A0 | `planned` |
-| Privileged shell extension | Chosen with the display stack design | Protocol extension | A1, with fuzz tests of extension message decoding | `planned` |
+| Privileged shell extension (wire definition and codec; role checks and dispatch; client interface) | `kosmo-proto`, `kosmo-server`, `kosmo-client` | Protocol extension | A1, with fuzz tests of extension message decoding | `planned` |
