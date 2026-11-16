@@ -20,8 +20,9 @@ The last two report whitespace errors in unstaged and staged changes.
 
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
-workspace `desktop/` with the program `kosmo`, and the repository tasks in
-`xtask/`, run as `cargo xtask`. Run the program with
+workspaces `framework/`, with the library `kosmo-math-model`, and `desktop/`,
+with the program `kosmo`, and the repository tasks in `xtask/`, run as
+`cargo xtask`. Run the program with
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version`.
 `cargo xtask check` runs these steps in order and stops at the first one that
 fails:
@@ -32,8 +33,8 @@ fails:
    then checked offline, as
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
 3. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
-   workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask` and
-   `desktop`;
+   workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask`,
+   `framework` and `desktop`;
 4. `docs`: relative links and anchors in the Markdown files;
 5. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
@@ -58,12 +59,13 @@ the result; add a new file to the index with `git add` before running the
 check.
 
 Every workspace denies the Clippy lints `unwrap_used`, `expect_used`, `panic`,
-`todo`, `unimplemented` and `allow_attributes_without_reason`, and `desktop/`
-and `xtask/` also forbid unsafe code. The root `clippy.toml` lets tests unwrap,
-expect and panic: code in `#[cfg(test)]` modules and in `#[test]` functions.
-`todo!()` is rejected in tests too. A helper function in `tests/` outside a
-`#[test]` function returns a `Result` or carries an `#[allow]`, and every
-`#[allow]` states its reason with `reason = "..."`.
+`todo`, `unimplemented` and `allow_attributes_without_reason`, and
+`framework/`, `desktop/` and `xtask/` also forbid unsafe code. The root
+`clippy.toml` lets tests unwrap, expect and panic: code in `#[cfg(test)]`
+modules and in `#[test]` functions. `todo!()` is rejected in tests too. A
+helper function in `tests/` outside a `#[test]` function returns a `Result`
+or carries an `#[allow]`, and every `#[allow]` states its reason with
+`reason = "..."`.
 
 `cargo xtask check --receipt <path>` also writes a JSON receipt of the run to
 `<path>`, whether the check passes or fails. It records the commit, whether

@@ -1,0 +1,11 @@
+[package]
+name = "kosmo-math-model"
+description = "The editing structure of formulas: one-line input, cursor, selection, holes and the source version"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

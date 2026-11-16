@@ -13,7 +13,7 @@ use crate::{commits, deps, docs, fetch, layout, receipt, workflows};
 /// repository-relative directories. The layout step checks that they are
 /// exactly the tool workspaces and the product workspaces with crates in the
 /// layout table, which the fetch and deps steps read from the table.
-pub const WORKSPACES: [&str; 2] = ["xtask", "desktop"];
+pub const WORKSPACES: [&str; 3] = ["xtask", "framework", "desktop"];
 
 /// The environment variable, and its value, that keeps Cargo off the
 /// network. Every Cargo command after the fetch step sets it; `cargo fmt`
@@ -385,7 +385,14 @@ mod tests {
                         cmd.args[at.expect("each command names a manifest") + 1].as_str()
                     })
                     .collect();
-                assert_eq!(targets, ["xtask/Cargo.toml", "desktop/Cargo.toml"]);
+                assert_eq!(
+                    targets,
+                    [
+                        "xtask/Cargo.toml",
+                        "framework/Cargo.toml",
+                        "desktop/Cargo.toml"
+                    ]
+                );
             }
         }
     }

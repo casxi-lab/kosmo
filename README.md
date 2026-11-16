@@ -89,21 +89,27 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo has no usable capability yet: none of the features above work today.
-The repository holds documentation, the kosmo logo, a commit hook, the
-repository checks, the layout table `layout.toml` and the `desktop/` workspace
-with the `kosmo` program, which so far only reports its version. CI runs the
-repository checks on every pull request to `main` and every push to `main`.
-These commands run from the repository root:
+kosmo has no usable application yet: of the features above, only the
+editing structure of one-line formula input works, as a library. The
+repository holds documentation, the kosmo logo, a commit hook, the repository
+checks, the layout table `layout.toml`, the `framework/` workspace with the
+library `kosmo-math-model`, which holds
+[one-line formula input](docs/features/math/one-line-editing.md) while you
+edit it, and the `desktop/` workspace with the `kosmo` program, which so far
+only reports its version. CI runs the repository checks on every pull request
+to `main` and every push to `main`. These commands run from the repository
+root:
 
 ```sh
 cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-model
 cargo xtask check
 ```
 
-The first prints `kosmo` and its version; the second runs the repository
-checks. No version has been released yet: a release is a tagged commit, and
-the version that `main` shows is not a release until it is tagged.
+The first prints `kosmo` and its version, the second runs the tests of the
+editing structure, and the third runs the repository checks. No version has
+been released yet: a release is a tagged commit, and the version that `main`
+shows is not a release until it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates will use only `core` and `alloc`. Its first releases will run

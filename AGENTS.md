@@ -53,11 +53,11 @@
 - kosmo's product code is divided into three Cargo workspaces, `display/`,
   `framework/` and `desktop/`, each with its own `Cargo.lock`, and the
   repository tasks are the separate `xtask/` workspace, as the source layout in
-  `docs/architecture.md` describes. So far only `desktop/`, with the program
-  `kosmo`, and `xtask/` exist; a workspace root is added with the workspace's
-  first crate. There is no `Cargo.toml` at the repository root. `layout.toml`
-  lists every crate, and a change that adds a crate registers it there in the
-  same commit.
+  `docs/architecture.md` describes. So far `framework/`, with the library
+  `kosmo-math-model`, `desktop/`, with the program `kosmo`, and `xtask/`
+  exist; a workspace root is added with the workspace's first crate. There is
+  no `Cargo.toml` at the repository root. `layout.toml` lists every crate, and
+  a change that adds a crate registers it there in the same commit.
 - Crates of this repository depend on each other only through `path`
   dependencies, only in the directions that the layout table allows, and with
   `version = "=<the version of kosmo>"`. External dependencies come only from
