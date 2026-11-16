@@ -4,7 +4,7 @@
 
 mod support;
 
-use kosmo_math_model::{EditBuffer, Fragment, Position, Rejected};
+use kosmo_math_model::{Completeness, EditBuffer, Fragment, Position, Rejected};
 use support::{line, put_cursor, text};
 
 /// The cursor index and the selected item range of a buffer, with its root
@@ -446,6 +446,25 @@ fn insert_fragment_brackets_a_sum_after_times() -> Result<(), Rejected> {
     buffer.insert_fragment(&snapshot, snapshot.line())?;
     assert_eq!(text(buffer.items()), "2*(x+1)");
     assert_eq!(cursor_and_selection(&buffer), (7, None));
+    Ok(())
+}
+
+#[test]
+fn insert_fragment_brackets_a_fragment_whose_brackets_do_not_pair() -> Result<(), Rejected> {
+    // The added brackets pair with the copy's own left bracket.
+    let snapshot = line("(1")?.snapshot();
+    let mut buffer = line("2*")?;
+    buffer.insert_fragment(&snapshot, snapshot.line())?;
+    assert_eq!(text(buffer.items()), "2*((1)");
+    assert!(matches!(buffer.completeness(), Completeness::Incomplete(_)));
+    // Here they pair with the line's left bracket, and the line is complete
+    // with a grouping that typing the same characters would not give.
+    let snapshot = line("1)+(1")?.snapshot();
+    let mut buffer = line("(2*)")?;
+    put_cursor(&mut buffer, 3);
+    buffer.insert_fragment(&snapshot, snapshot.line())?;
+    assert_eq!(text(buffer.items()), "(2*(1)+(1))");
+    assert_eq!(buffer.completeness(), Completeness::Complete);
     Ok(())
 }
 

@@ -212,12 +212,13 @@ fn surplus_brackets_do_not_lower_the_depth_below_zero() {
 #[test]
 fn single_operands_need_no_brackets() {
     for single in [
-        "x", "12", "1.2.3", "(x+1)", "f(x)", "f (x+1)", " x ", "((x))", "", "  ",
+        "x", "12", "1.2.3", "(x+1)", "f(x)", "f()", "f (x+1)", " x ", "((x))", "", "  ",
     ] {
         assert!(!needs_grouping(&items(single)), "{single:?}");
     }
     for compound in [
         "x+1", "-x", "x^2", "(1)+(2)", "((x)", ")", "+", "f x", "2x", "f(x)(y)", "(x)y", "f)",
+        "-(x)", "x-(1)", "2(x)",
     ] {
         assert!(needs_grouping(&items(compound)), "{compound:?}");
     }
@@ -234,6 +235,7 @@ fn an_operand_is_needed_between_the_tokens_around_a_missing_one() {
     assert!(needs("-", 1));
     assert!(needs("x^", 2));
     assert!(needs("( )", 1) && needs("( )", 2));
+    assert!(!needs("()", 2));
     assert!(!needs("2*x", 2));
     assert!(!needs("", 0));
     assert!(!needs("2x", 1));
