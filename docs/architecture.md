@@ -268,7 +268,7 @@ lines.
   position that makes the structure invalid instead, as
   [holes and completeness](#holes-and-completeness) defines them.
 - **Only the locked grammar.** Conversion writes only forms that kalyx 0.1.0's
-  grammar accepts, with one exception:
+  grammar accepts, with one exception that the last item names:
   - no juxtaposition, and no digit directly followed by a name: kosmo treats
     `2x` as a juxtaposition, and kalyx reads it as one invalid number literal,
     never as a product;
@@ -286,14 +286,14 @@ lines.
   on the worker thread (see [host job layer](#host-job-layer)); the runner
   takes the outcome kind and the error class from the `Outcome`, or from
   `serialize` when writing the line fails, as
-  [protocol stub types](#protocol-stub-types) state. kosmo never uses the
+  [protocol stub types](#protocol-stub-types) states. kosmo never uses the
   `Debug` formatting of kalyx's types. The wording of an error's message is
   not part of kalyx's interface, so kosmo reads the other fields of the line.
 - **Spans.** The span of an error is a half-open range of bytes of the linear
   text, and it may be empty. The submitter maps it back into the snapshot that
   the text was converted from: a non-empty span to a fragment, an empty span
-  to a position, which is an index between items, and an error without a
-  span, written `-`, to the whole line.
+  to a position between items, and an error without a span, written `-`, to
+  the whole line.
 - **Version echo.** The output line echoes the three versions of the request.
   The job layer first checks them against the request: outside
   `cancel_requested`, a mismatch ends the job as `failed`, as
@@ -303,8 +303,8 @@ lines.
   describes.
 - **Reading back.** The display text of every value of kalyx 0.1.0 is text
   that its grammar accepts and reads back as the same term, so a value can be
-  read back into a separate editing structure, which reuse inserts into the
-  buffer as a copy. That structure is checked against the editing structure's
+  read back into a separate editing structure, from which reuse inserts copies
+  into the buffer. That structure is checked against the editing structure's
   own limits, as [node identity](#node-identity) states. When the text is
   submitted again, kalyx reads it under the limits of that request like any
   other input, so the text of a term near those limits is read only under
