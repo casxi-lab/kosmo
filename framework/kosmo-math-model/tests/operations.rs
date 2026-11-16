@@ -451,20 +451,24 @@ fn insert_fragment_brackets_a_sum_after_times() -> Result<(), Rejected> {
 
 #[test]
 fn insert_fragment_brackets_a_fragment_whose_brackets_do_not_pair() -> Result<(), Rejected> {
-    // The added brackets pair with the copy's own left bracket.
+    // The added right bracket pairs with the copy's left bracket, and the
+    // added left bracket stays open.
     let snapshot = line("(1")?.snapshot();
     let mut buffer = line("2*")?;
     buffer.insert_fragment(&snapshot, snapshot.line())?;
     assert_eq!(text(buffer.items()), "2*((1)");
     assert!(matches!(buffer.completeness(), Completeness::Incomplete(_)));
-    // Here they pair with the line's left bracket, and the line is complete
-    // with a grouping that typing the same characters would not give.
-    let snapshot = line("1)+(1")?.snapshot();
-    let mut buffer = line("(2*)")?;
-    put_cursor(&mut buffer, 3);
+    // The added left bracket pairs with the copy's right bracket and the
+    // added right bracket with the line's left one: the line is complete
+    // and means 3-2x, while typing the same characters gives (3-x)*2.
+    let snapshot = line("x)*2")?.snapshot();
+    let mut buffer = line("(3-")?;
     buffer.insert_fragment(&snapshot, snapshot.line())?;
-    assert_eq!(text(buffer.items()), "(2*(1)+(1))");
+    assert_eq!(text(buffer.items()), "(3-(x)*2)");
     assert_eq!(buffer.completeness(), Completeness::Complete);
+    let mut typed = line("(3-")?;
+    typed.insert_text("x)*2")?;
+    assert_eq!(text(typed.items()), "(3-x)*2");
     Ok(())
 }
 
