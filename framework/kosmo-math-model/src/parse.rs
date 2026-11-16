@@ -1,6 +1,9 @@
 //! The parser of a block: its tokens, holes, completeness and parse depth.
 //!
-//! The parser reads the grammar of kalyx 0.1.0:
+//! The parser reads the grammar of kalyx 0.1.0, with two readings of
+//! kosmo's own: function-call syntax is an operand, and a number is any run
+//! of digits and points with at most one point, so `.5` and `1.` are numbers
+//! (conversion writes them as `0.5` and `1`):
 //!
 //! ```text
 //! expression = term , { ( "+" | "-" ) , term } ;

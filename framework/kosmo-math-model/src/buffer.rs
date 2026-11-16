@@ -159,7 +159,14 @@ impl EditBuffer {
     /// When the fragment is not a single operand (a number, a name, a call
     /// or a bracketed expression) and an operand is missing where it goes,
     /// the copy is put in brackets, so that it stays one operand: the line
-    /// `x+1` inserted after `2*` gives `2*(x+1)`.
+    /// `x+1` inserted after `2*` gives `2*(x+1)`. A fragment whose brackets
+    /// do not pair is put in brackets too; the added brackets then pair with
+    /// its own, and the line stays incomplete or invalid.
+    ///
+    /// The fragment must come from `snapshot`, such as its
+    /// [`line`](Snapshot::line) or the range of an error about it: only a
+    /// range outside the snapshot is detected, as
+    /// [`Rejected::NotInSnapshot`].
     pub fn insert_fragment(
         &mut self,
         snapshot: &Snapshot,
@@ -323,6 +330,8 @@ impl EditBuffer {
         at: usize,
         inserted: &[Item],
     ) -> Result<(), Rejected> {
+        // `commit` checks the same limit; this early check only avoids
+        // building a line that is too long.
         if items.len() + inserted.len() > MAX_ITEMS {
             return Err(Rejected::TooManyItems);
         }
@@ -390,7 +399,8 @@ impl Snapshot {
     }
 
     /// The items of a fragment, or `None` when it does not lie in the
-    /// snapshot.
+    /// snapshot. The fragment must come from this snapshot: a fragment of
+    /// another snapshot whose range fits gives that range of this one.
     pub fn items_of(&self, fragment: Fragment) -> Option<&[Item]> {
         self.structure.items_of(fragment)
     }

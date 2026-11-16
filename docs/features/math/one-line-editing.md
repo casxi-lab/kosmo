@@ -8,20 +8,23 @@ computation never changes the line you are editing.
 
 The library does not depend on kalyx. It reads a line with the grammar of
 kalyx 0.1.0 to find its holes and to tell whether it is complete. Turning a
-line into the text that kalyx reads, and showing results, are planned for the
-kalyx adapter crate `kosmo-math-kalyx`; two-dimensional templates such as
-fractions are planned for this library. The design rules that it follows are
+line into the text that kalyx reads is planned for the kalyx adapter crate
+`kosmo-math-kalyx`; the display model of results is planned for this library
+and that crate, the result view for the math controls, and two-dimensional
+templates such as fractions for this library. The design rules that it follows are
 in the [editing structure](../../architecture.md#editing-structure) and
 [versions](../../architecture.md#versions) sections of the architecture.
 
 ## Using it
 
 An `EditBuffer` is one line. Its operations edit at the cursor and return
-`Result<(), Rejected>`; cursor and selection commands cannot fail. This
-example is the crate documentation's example, which `cargo test` runs:
+`Result<(), Rejected>`; cursor and selection commands cannot fail. This is
+the same example as the crate documentation, whose copy `cargo test` runs:
 
 ```rust
-use kosmo_math_model::{Completeness, EditBuffer, HoleKind, Item};
+use kosmo_math_model::{Completeness, EditBuffer, HoleKind, Item, Rejected};
+
+fn main() -> Result<(), Rejected> {
 
 // `2*` misses its second operand, at index 2.
 let mut line = EditBuffer::new();
@@ -45,6 +48,8 @@ assert_eq!(line.completeness(), Completeness::Complete);
 
 // Two edits changed the content, so the source version is 2.
 assert_eq!(line.version().get(), 2);
+Ok(())
+}
 ```
 
 Run the library's tests from the repository root with:
@@ -96,8 +101,11 @@ operand (a number, a name, a call or a bracketed expression) and an operand
 is missing where it goes, so that the copy stays one operand: the line `x+1`
 inserted after `2*` gives `2*(x+1)`, and before `*2` gives `(x+1)*2`. A copy
 that goes where no operand is missing, and a fragment without a token, are
-inserted as they are. A fragment that does not lie in the snapshot is
-rejected.
+inserted as they are. A fragment whose brackets do not pair is put in
+brackets too; the added brackets then pair with its own, and the line stays
+incomplete or invalid. The fragment must come from the snapshot it is used
+with, such as its `line()` or the range of an error about it: only a range
+outside the snapshot is detected, and such a fragment is rejected.
 
 ## Holes and completeness
 
@@ -128,9 +136,11 @@ when no token follows:
 
 - `.5` and `1.` are complete. kalyx 0.1.0 does not read them, so converting
   the line for kalyx will write them as `0.5` and `1`.
-- A call, a name followed by `(` with spaces allowed between, is an operand,
-  and so are the reserved names `pi`, `i` and `undefined`. They are complete
-  here; kalyx 0.1.0 reports them as unsupported.
+- A call, a name followed by a bracketed expression with spaces allowed
+  before the bracket, is an operand, and so are the reserved names `pi`, `i`
+  and `undefined`. They are complete here; kalyx 0.1.0 reports them as
+  unsupported. The brackets of a call hold an expression like any other, so
+  `f()` misses an operand and `f(` a right bracket.
 - kalyx 0.1.0 has no juxtaposition, no unary plus and no commas: `2x` and
   `+1` miss something, and `,` cannot be typed.
 - Filling each hole with what it misses, an operand, an operator or a right
@@ -173,8 +183,9 @@ same items, identities and versions.
   1; its limit comes with two-dimensional templates.
 - A line within these limits is within kalyx's default limits on input bytes
   and syntax nodes. kalyx also counts exponents and operator chains in its
-  depth, so a very tall tower of exponents can still be rejected by kalyx as
-  a resource limit and is shown as an error.
+  depth, so a tall tower of exponents, or brackets nested deeply inside sums
+  and products, can still be rejected by kalyx as a resource limit and is
+  shown as an error.
 - There is no undo yet.
 
 ## Requirements
@@ -319,6 +330,7 @@ file).
     `buffer::tests::text_of_the_byte_limit_is_accepted_and_longer_text_is_rejected`,
     `buffer::tests::text_that_would_overfill_the_line_is_rejected_whole`,
     `buffer::tests::replacing_a_selection_counts_the_items_that_remain`,
+    `buffer::tests::a_fragment_of_the_byte_limit_is_accepted`,
     `buffer::tests::a_fragment_longer_than_the_byte_limit_is_rejected`,
     `buffer::tests::added_brackets_count_toward_the_item_limit`.
 14. An edit past the parse depth limit is rejected, deletions included;

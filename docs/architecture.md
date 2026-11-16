@@ -39,7 +39,8 @@ contains no kalyx type.
   only adds templates as items; the types of blocks, items, identities and
   positions do not change.
 - Items are stored per character. The character set is fixed when the
-  structure is implemented; it is a subset of ASCII that includes the space.
+  structure is implemented; it is a subset of ASCII that includes the space,
+  listed in [one-line editing](features/math/one-line-editing.md#the-line).
 - Whitespace is stored as characters and is only a separator when tokenizing,
   as in kalyx's lexer. Frontends never remove it.
 - Token boundaries are not stored; kosmo's tokenizer derives them. A name
@@ -79,7 +80,8 @@ contains no kalyx type.
   (bracket nesting and chains of unary minus) and input bytes. Their values
   are fixed when the structure is implemented and are meant to stay within
   kalyx's defaults (`max_nodes` 8,192, `max_depth` 128, `max_input_bytes`
-  65,536).
+  65,536); the values are in
+  [one-line editing](features/math/one-line-editing.md#limits).
 
 ### Positions, fragments and selection
 
@@ -96,7 +98,8 @@ contains no kalyx type.
 - A fragment is (block, half-open item range), used for reusing
   subexpressions and for error ranges. A selection is an anchor and an active
   end in one block and normalizes to a fragment. Interactive selection
-  commands are defined with the editing operations.
+  commands are defined with the editing operations, listed in
+  [one-line editing](features/math/one-line-editing.md#editing-operations).
 
 ### Holes and completeness
 
