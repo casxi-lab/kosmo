@@ -186,6 +186,12 @@ fn the_parse_depth_counts_brackets_and_unary_minus_signs() {
     assert_eq!(depth("f(-x)"), 2);
     assert_eq!(depth("-2*-3"), 1);
     assert_eq!(depth("-2x-3"), 1);
+    // A missing operator, like `*`, ends the unary minus before it.
+    assert_eq!(depth("-2(1)"), 1);
+    assert_eq!(depth("-2(-3)"), 2);
+    // A right bracket ends the unary minus signs inside it.
+    assert_eq!(depth("(-1)+(-1)"), 2);
+    assert_eq!(depth("(--1+-1+(((1))))"), 4);
 }
 
 #[test]
@@ -231,4 +237,7 @@ fn an_operand_is_needed_between_the_tokens_around_a_missing_one() {
     assert!(!needs("2*x", 2));
     assert!(!needs("", 0));
     assert!(!needs("2x", 1));
+    // The gap starts at the end of the token before it.
+    assert!(!needs("1++2", 1));
+    assert!(needs("1++2", 2));
 }

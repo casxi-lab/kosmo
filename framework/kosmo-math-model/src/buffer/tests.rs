@@ -75,6 +75,14 @@ fn replacing_a_selection_counts_the_items_that_remain() {
 }
 
 #[test]
+fn a_fragment_of_the_byte_limit_is_accepted() {
+    let snapshot = line(&"1".repeat(MAX_INSERT_BYTES)).snapshot();
+    let mut buffer = EditBuffer::new();
+    buffer.insert_fragment(&snapshot, snapshot.line()).unwrap();
+    assert_eq!(buffer.items().len(), MAX_INSERT_BYTES);
+}
+
+#[test]
 fn a_fragment_longer_than_the_byte_limit_is_rejected() {
     // A snapshot never holds more than the item limit, so this one is built
     // directly.
