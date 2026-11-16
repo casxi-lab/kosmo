@@ -1,7 +1,8 @@
 # Architecture
 
 This page states the design rules of kosmo's first release for the editing
-structure of formulas, versions, the host job layer, the keyboard event record,
+structure of formulas, versions, formula conversion with kalyx, the host job
+layer, the keyboard event record,
 the source layout, the platform boundary, the framework, and rendering, text
 and determinism. It also names the two frontends of the first release and
 lists every component with its verification level.
@@ -252,6 +253,53 @@ result:
 - A cancelled job has no result.
 - Handling a still-running job whose history entry was evicted is defined with
   the Scratchpad.
+
+## Formula conversion
+
+kosmo gives kalyx a formula as linear text and reads every result back from
+kalyx's output line. These rules hold for kalyx 0.1.0, the version that the
+first release locks. When kosmo moves to a later kalyx version, they are
+checked again against that version's grammar and output lines.
+
+- **Only complete input.** An incomplete or invalid structure produces no
+  text and submits no job; conversion returns its holes or the position that
+  makes it invalid instead. `□` is never sent.
+- **Only the locked grammar.** Conversion writes only forms that kalyx
+  0.1.0's grammar reads:
+  - no juxtaposition, and no digit directly followed by a name: kosmo treats
+    `2x` as a juxtaposition, and kalyx reads it as one invalid number literal,
+    never as a product;
+  - no unary plus and no character outside ASCII;
+  - `.5` and `1.` are written as `0.5` and `1`.
+
+  Function-call syntax and reserved names are passed on unchanged, and kalyx
+  reports them as `Unsupported`.
+- **The grammar only grows.** Text that kalyx 0.1.0 accepts reads the same in
+  every later kalyx version. Writings that it rejects, such as calls and
+  reserved names, may later get a value or a different error, so they are
+  judged again when kosmo moves to a later version.
+- **Results only through output lines.** The submitter receives a result only
+  as the output line that `kalyx::command::serialize` writes, and parses it
+  with the display model. kalyx terms and `Outcome` stay with the kalyx runner
+  on the worker thread; the runner takes the outcome kind and the error class
+  from the `Outcome`. kosmo never uses kalyx's debug output. The wording of an
+  error's message is not part of kalyx's interface, so kosmo reads the other
+  fields of the line.
+- **Spans.** The span of an error is a half-open range of bytes of the linear
+  text, and it may be empty. kosmo maps it back to a position in the editing
+  structure: a non-empty span to a block with a range of items, an empty span
+  to the position between two items, and the span `-` to the whole line.
+- **Versions.** The output line echoes the three versions of the request. The
+  job layer first checks them against the request: outside `cancel_requested`,
+  a mismatch ends the job as `failed`. Whether the result is current is then
+  judged from the three versions and the submission, as
+  [current, superseded and stale results](#current-superseded-and-stale-results)
+  describes.
+- **Reading back.** The display text of every value of kalyx 0.1.0 is input
+  of its grammar that reads back as the same term, so a result can be read
+  back into an editing structure and reused. Reading back runs under the
+  limits of a request; a term near those limits reads back only under larger
+  limits.
 
 ## Completion and cancellation
 
