@@ -133,6 +133,8 @@ fn this_repository_passes() {
         [
             format!("xtask_{LINUX}_ms"),
             format!("xtask_{DARWIN}_ms"),
+            format!("framework_{LINUX}_ms"),
+            format!("framework_{DARWIN}_ms"),
             format!("desktop_{LINUX}_ms"),
             format!("desktop_{DARWIN}_ms"),
         ]
