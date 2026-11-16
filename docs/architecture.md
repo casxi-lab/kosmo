@@ -668,7 +668,8 @@ these two types, and no component defines its own.
   packet-end and loss marks; no device identity or sequence number. Modifiers
   are ordinary usages. Repeat and long press cannot be represented.
 - After a loss the server resynchronizes through the device state query; the
-  device description and state query belong to the device ports.
+  device description and state query belong to the
+  [device ports](#device-ports).
 
 ### Delivered key event
 
@@ -680,13 +681,15 @@ these two types, and no component defines its own.
 - Focus generation, epoch and trace number are added in outer layers by the
   framework, the trusted core and the display protocol.
 - `ModSet(u16)`: the low 8 bits follow the HID modifier byte; the high 8 bits
-  are reserved for layer state, defined with the key maps. More bits are a
-  change of the event record.
+  hold the layer state that
+  [layer keys and layer state](#layer-keys-and-layer-state) defines. More bits
+  are a change of the event record.
 - `KeyMeaning` is `Char(char)` or `Named(NamedKey)`. `NamedKey` is a `u16`
   numbered table in `kosmo-types` that only grows and never renumbers; the
   framework and the display stack propose entries.
 - Only kosmo's display server produces repeat and long press, timed by an
-  injected clock; which keys and parameters is defined with the key maps. The
+  injected clock; which keys and parameters is defined with the key maps, as
+  [repeat and long press](#repeat-and-long-press) describes. The
   reserved stop key's long press belongs to krepi's driver: it is not in device
   records, and the server produces no LongPress for it. Host normalization
   drops the host's repeats and pointer events. The framework produces neither;
@@ -703,10 +706,10 @@ these two types, and no component defines its own.
   advances it, timers, timeouts) belong to the framework's [event loop and
   clock](#event-loop-and-clock).
 - Decoding from bytes is bounded and returns errors, never panics. The wire
-  format belongs to the display protocol, device service messages to krepi's
-  input device interface. `RecordBody` and `KeyAction` are
-  `#[non_exhaustive]`; pointer, touch and input methods will be new bodies,
-  added by a design change.
+  format belongs to the display protocol's [wire format](#wire-format), device
+  service messages to krepi's input device interface. `RecordBody` and
+  `KeyAction` are `#[non_exhaustive]`; pointer, touch and input methods will
+  be new bodies, added by a design change.
 - An event script holds one record per line, in one layer only: framework
   scripts use delivered events, server tests may use device records. The
   projection from delivered events to device records takes usage, press or
@@ -824,9 +827,9 @@ their limits.
   streams, arguments, exit code and the real clock, and `kosmo-jobs` for
   threads; `kosmo-types`, `kosmo-math-model`, `kosmo-math-kalyx`,
   `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui` are core libraries. Other
-  crates are registered by the change that creates them; `kosmo-server-host`,
-  `kosmo-testkit` and the crates of the host transport and process entry are
-  expected to be boundary crates.
+  crates are registered by the change that creates them; `kosmo-testkit` is
+  expected to be a boundary crate, and [host programs](#host-programs) lists the
+  boundary crates of the display stack with their categories.
 - The layout step of `cargo xtask check` will gain a static check that
   parses core libraries' `src/`, expands `use` trees and reports every
   forbidden path, macro and type with file and line, and checks that
@@ -1135,8 +1138,9 @@ Timers:
 - The focus generation and the epoch are each a `u64` newtype in the shared
   types crate, `Copy`, which the framework compares only for equality. How their
   values are produced and change, and what happens when they run out, is defined
-  with the display server's trusted core; the framework carries them in the
-  outer layer of platform events.
+  by the display server's trusted core, as
+  [epoch and focus generation](#epoch-and-focus-generation) describes; the
+  framework carries them in the outer layer of platform events.
 - A region level of focus generation is added by the first code that moves focus
   within the framework. Its rules are fixed now: a key event is dispatched only
   when its epoch, its surface's focus generation and its region's generation all
@@ -1189,8 +1193,8 @@ The minimal key map of the first release adds five `NamedKey` entries:
 - Entries get their numbers when they are written into `kosmo-types`, and other
   entries are added by the same rules.
 - `Cancel` is the application's cancel key, apart from the display server's part
-  of the stop key. The host keys that produce these meanings are defined with
-  the display server's key maps.
+  of the stop key. The host keys that produce these meanings are in the display
+  server's [host key map](#host-key-map).
 
 ### Platform interface
 
@@ -1340,8 +1344,8 @@ Scripts hold input only:
 - `kosmo-backend-display` implements the platform interface through the client
   library `kosmo-client` (layer F0) and the client transport port, and is
   generic over the transport. It is single-threaded: `wait` calls the
-  transport's wait with the same deadline, so the client transport port must
-  provide a wait with a deadline.
+  transport's wait with the same deadline, which the
+  [client transport port](#client-transport-port) provides.
 - In the first release it covers one session with its main surface; submission
   with update regions, writing a buffer again only after its release; key events
   with their focus stamps; events of an earlier epoch, which `kosmo-client`
@@ -1354,8 +1358,9 @@ Scripts hold input only:
 - It may depend on the provisional protocol crate and on `kosmo-client`, never
   on the server crates of `display/`.
 - Reconnection, frame events, clipboard, pop-ups, lifecycle and a transport on
-  krepi are not part of the first release. The path of the shell extension's
-  events is defined with the display protocol and the shell.
+  krepi are not part of the first release. The shell extension's events do not
+  pass through this backend: `kosmo-client` hands them to a receiver that the
+  shell registers, as [shell extension](#shell-extension) describes.
 
 ### Accessibility
 
@@ -1622,8 +1627,10 @@ and uses integer arithmetic only:
   trees, display lists, glyph positions, coverage or pixels. In the first
   release it is every target (`src/`, tests and examples) of `kosmo-types`,
   `kosmo-ui`, `kosmo-render`, `kosmo-text`, `kosmo-controls` and
-  `kosmo-math-controls`; a later crate is judged by the same definition. Whether
-  `display/` belongs to it is decided with the display server.
+  `kosmo-math-controls`; a later crate is judged by the same definition. In
+  `display/`, `kosmo-compositor` and later server modules that write pixels
+  belong to it. `display/` needs no transcendental functions in the first
+  release; if it needs them later, their source is a design change.
 - On the deterministic path, transcendental functions are called only through
   one wrapper module, provisionally `det_math` in `kosmo-render`, which calls
   `libm` 0.2.16, pinned exactly. Its functions have only `f32` and `f64`
@@ -3937,8 +3944,8 @@ A component is a unit with its own role, contract and level.
 
 - Every planned crate and `xtask/` appear in at least one row; crates with
   components of different roles (`kosmo-math-model`, `kosmo-math-kalyx`,
-  `kosmo-server`, and possibly the crate of the privileged shell extension,
-  chosen with the display stack design) appear in several.
+  `kosmo-proto`, `kosmo-server` and `kosmo-client`, the last three also for the
+  privileged shell extension) appear in several.
 - Evidence is `planned` until the component is delivered; the delivering
   change replaces it with a link to the feature document and the location of
   the tests. Whether a component exists is read from this column, not from
@@ -3976,10 +3983,10 @@ A component is a unit with its own role, contract and level.
 | Software compositing | `kosmo-compositor` | Presentation | A0 | `planned` |
 | Session and device ports | `kosmo-server` | Port | A1, with fuzz tests of inbound messages | `planned` |
 | Input pipeline and key maps | `kosmo-server` (module) | Server module | A0 | `planned` |
-| Headless server backend | `kosmo-server-headless` | Backend | A0, passing the session and device port suite | `planned` |
+| Headless server backend, with the server end of the host transport, the headless server program and its step mode (unsafe code only in the read-only mapping and in `copy_rows`) | `kosmo-server-headless` | Backend | A0, passing the session and device port suite | `planned` |
 | Nested backend | `kosmo-server-host` | Backend | A0 | `planned` |
-| Client library and client transport | `kosmo-client` | Port | A1 | `planned` |
+| Client library and client transport, with the client end of the host transport (hand-written system calls in one module, a platform boundary) | `kosmo-client` | Port | A1 | `planned` |
 | Display server backend (through the client library and the client transport port) | `kosmo-backend-display` | Backend | A1 | `planned` |
 | Window policy module | `kosmo-wm` | Policy | A0 | `planned` |
 | Shell (skeleton, switch and stop entries, lifecycle presentation, status area, notifications) | `kosmo-shell` | Shell | A0 | `planned` |
-| Privileged shell extension | Chosen with the display stack design | Protocol extension | A1, with fuzz tests of extension message decoding | `planned` |
+| Privileged shell extension (wire definition and codec; role checks and dispatch; client interface) | `kosmo-proto`, `kosmo-server`, `kosmo-client` | Protocol extension | A1, with fuzz tests of extension message decoding | `planned` |
