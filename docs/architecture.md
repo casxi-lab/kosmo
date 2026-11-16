@@ -2863,7 +2863,9 @@ process:
 ### Device ports
 
 The display server reaches devices, clients and krepi's supervisor only through
-ports that kosmo defines.
+ports that kosmo defines. What kosmo needs from krepi behind these ports is
+listed in [requirements on krepi: display and
+devices](requirements/display-and-devices.md).
 
 #### Port structure
 
