@@ -146,6 +146,9 @@ be checked first when kosmo runs on the device.
   each capability.
 - [Architecture](docs/architecture.md): the design rules, the source layout and
   the components.
+- [Requirements on krepi: display and
+  devices](docs/requirements/display-and-devices.md): what kosmo needs from
+  krepi for the display path on the device.
 - [Contributing](CONTRIBUTING.md) and [repository instructions](AGENTS.md).
 
 ## License
