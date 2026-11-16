@@ -104,11 +104,12 @@ that goes where no operand is missing, and a fragment without a token, are
 inserted as they are. A fragment whose brackets do not pair is put in brackets
 too, but the added brackets can then pair with brackets of the copy or of the
 line, so the copy need not stay one operand: `(1` inserted after `2*` gives
-the incomplete `2*((1)`, and `1)+(1` inserted after `(2*` in `(2*)` gives
-`(2*(1)+(1))`, which is complete, while typing the same characters gives
-`(2*1)+(1)`. The fragment must come from the snapshot it is used with, such as
-its `line()` or the range of an error about it: only a range outside the
-snapshot is detected, and such a fragment is rejected.
+the incomplete `2*((1)`, and `x)*2` inserted after `(3-` gives `(3-(x)*2)`,
+which is complete and means $3 - 2x$, while typing the same characters gives
+`(3-x)*2`, which means $(3 - x) \cdot 2$. The fragment must come from the
+snapshot it is used with, such as its `line()` or the range of an error about
+it: only a range outside the snapshot is detected, and such a fragment is
+rejected.
 
 ## Holes and completeness
 
