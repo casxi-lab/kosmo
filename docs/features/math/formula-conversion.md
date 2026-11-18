@@ -10,21 +10,23 @@ layout step of `cargo xtask check` fails when any other crate, or `xtask`,
 declares it.
 
 Submitting the text as a job and running it with kalyx are planned for the
-job layer `kosmo-jobs` and the kalyx runner of this crate. Reading the output
-lines of kalyx into results is planned for the display model of
-`kosmo-math-model` and this crate. The design rules are in
-[formula conversion](../../architecture.md#formula-conversion) and
+job layer `kosmo-jobs` and the kalyx runner of this crate. The function
+`read_output_line` of this crate reads an output line of kalyx into the
+display model of `kosmo-math-model`, which renders each result as one line
+of text; the documentation of both crates states the rules. The design rules
+are in [formula conversion](../../architecture.md#formula-conversion) and
 [holes and completeness](../../architecture.md#holes-and-completeness) in
 the architecture.
 
 ## Using it
 
-The library has three functions. `convert` takes a snapshot of a line and
-gives its linear text, or the reason why there is none. `map_span` takes the
-same snapshot and the span of a kalyx error and gives the place in the line
-that the error is about. `read_back` takes the display text of a value and
-gives a snapshot of a separate line, or the reason why the value cannot be
-reused. The crate documentation has an example, which `cargo test` runs.
+The library has three functions for formula conversion. `convert` takes a
+snapshot of a line and gives its linear text, or the reason why there is
+none. `map_span` takes the same snapshot and the span of a kalyx error and
+gives the place in the line that the error is about. `read_back` takes the
+display text of a value and gives a snapshot of a separate line, or the
+reason why the value cannot be reused. The crate documentation has an
+example, which `cargo test` runs.
 Run the library's tests from the repository root with:
 
 ```sh

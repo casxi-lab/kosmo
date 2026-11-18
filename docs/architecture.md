@@ -9,7 +9,8 @@ with its verification level.
 
 The rules are fixed before the code that follows them. So far the product code
 is the `kosmo` program, which only reports its version, the one-line editing
-structure in `kosmo-math-model` and formula conversion in `kosmo-math-kalyx`;
+structure in `kosmo-math-model`, formula conversion in `kosmo-math-kalyx`, and
+the versions and the display model of exact results in both;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of

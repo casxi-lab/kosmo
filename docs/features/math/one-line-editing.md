@@ -10,10 +10,11 @@ The library does not depend on kalyx. It reads a line with the grammar of
 kalyx 0.1.0 to find its holes and to tell whether it is complete. The kalyx
 adapter crate `kosmo-math-kalyx` turns a line into the text that kalyx reads,
 as [formula conversion](formula-conversion.md) describes; the display model
-of results is planned for this library and that crate, the result view for
-the math controls crate `kosmo-math-controls`, and two-dimensional templates
-such as fractions for this library. The design rules that it follows are in
-the [editing structure](../../architecture.md#editing-structure) and
+of exact results is in this library and that crate. The result view is
+planned for the math controls crate `kosmo-math-controls`, and
+two-dimensional templates such as fractions for this library. The design
+rules that it follows are in the
+[editing structure](../../architecture.md#editing-structure) and
 [versions](../../architecture.md#versions) sections of the architecture.
 
 ## Using it
