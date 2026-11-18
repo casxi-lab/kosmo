@@ -1,6 +1,6 @@
 [package]
 name = "kosmo-math-model"
-description = "The editing structure of formulas: one-line input, cursor, selection, holes and the source version"
+description = "The editing structure of formulas, the versions of results and the display model of exact results"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
