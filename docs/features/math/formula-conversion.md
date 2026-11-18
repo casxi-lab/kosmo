@@ -103,7 +103,7 @@ line with no number that starts or ends with a point is written as typed, so
 if its characters are given to kalyx as they are, the span of its syntax
 error maps back to the line. kalyx reports only the first error of a text,
 however many holes the line has, and the tests check only three such lines,
-whose errors map to their holes and invalid part: the empty span at the end
+whose errors map back as follows: the empty span at the end
 of `1+` to the position of the missing operand; the error of `2(x+1)` to its
 `(`, which starts at the position of the missing operator; and the error of
 `1)` to the surplus `)`.
@@ -214,8 +214,9 @@ are in `xtask/src/layout/tests.rs`.
    `span::tests::a_span_outside_the_text_is_rejected`.
 8. For three lines that are not complete and have no number that starts or
    ends with a point, the syntax error of the line given to kalyx as it is
-   maps to a hole or the invalid part. Test: `tests/error_spans.rs`:
-   `syntax_errors_of_the_line_itself_map_to_its_holes_and_invalid_part`.
+   maps back to the line: to its missing operand, to the bracket at which its
+   missing operator starts, or to its invalid part. Test: `tests/error_spans.rs`:
+   `syntax_errors_of_the_line_itself_map_back_to_the_line`.
 9. The answers of kalyx 0.1.0's answer vectors that are values and fit one
    insertion, 47 of them, read back into complete lines whose text kalyx
    reads as the same terms, and so does the display text of each of those
@@ -243,6 +244,7 @@ are in `xtask/src/layout/tests.rs`.
     `an_inherited_kalyx_is_kalyx_whatever_package_the_entry_names`,
     `an_inherited_entry_naming_kalyx_is_not_kalyx_when_its_root_declares_another`,
     `xtask_may_not_declare_kalyx`,
+    `an_optional_kalyx_is_still_kalyx`,
     `an_inherited_kalyx_that_no_root_declares_is_still_kalyx`,
     `the_kalyx_adapter_may_declare_kalyx_in_any_table`,
     `crates_may_reach_kalyx_through_the_adapter`.

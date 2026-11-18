@@ -543,7 +543,8 @@ used. kalyx 0.1.0 comes from crates.io too, and only the kalyx adapter crate
 kosmo to another kalyx version also replaces the copy of kalyx's answer
 vectors that
 [`framework/kosmo-math-kalyx/tests/data/README.md`](framework/kosmo-math-kalyx/tests/data/README.md)
-describes; no step of the check compares the copy with the package.
+describes; no step of the check compares the copy byte for byte with the
+package.
 
 The layout step checks how the manifests declare dependencies, and the deps
 step checks what Cargo resolves from them: the sources, the exact requirements,

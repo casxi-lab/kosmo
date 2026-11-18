@@ -205,7 +205,7 @@ fn an_error_without_a_span_maps_to_the_whole_line() -> Checked {
 }
 
 #[test]
-fn syntax_errors_of_the_line_itself_map_to_its_holes_and_invalid_part() -> Checked {
+fn syntax_errors_of_the_line_itself_map_back_to_the_line() -> Checked {
     // An empty span at the end of `1+`: the position of its missing operand.
     let missing_operand = line("1+")?;
     let place = check(
