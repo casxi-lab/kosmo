@@ -17,7 +17,9 @@ convert those lines and compare the terms that kalyx 0.1.0 reads from both
 texts. They read the file with `include_str!`, so the tests need no package
 other than kalyx.
 
-The tests do not check that the copy is still that of the kalyx version in
-`framework/Cargo.lock`. A change that moves kosmo to another kalyx version
-replaces the copy with the file of that version's package and updates the
-SHA-256 here.
+The tests check, by term, that each `ok` answer of the copy that fits one
+insertion is what the kalyx version in `framework/Cargo.lock` computes for
+its input, but not that the copy is byte for byte that version's file, nor
+its error cases. A change that moves kosmo to another kalyx version replaces
+the copy with the file of that version's package and updates the SHA-256
+here.

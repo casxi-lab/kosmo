@@ -98,12 +98,15 @@ In this table, the items are a half-open range of the line, like the span:
 | `x` | `x` | unknown symbol in an evaluation | `-` | the whole line |
 
 The same mapping works on a line that is not complete, with the span taken
-over the line written by the same rules. Such a line is never converted, but
-if its characters are given to kalyx as they are, its syntax errors map to
-its holes and its invalid part: the empty span at the end of `1+` to the
-position of the missing operand; the error of `2(x+1)` to its `(`, which
-starts at the position of the missing operator; and the error of `1)` to the
-surplus `)`.
+over the line written by the same rules. Such a line is never converted. A
+line with no number that starts or ends with a point is written as typed, so
+if its characters are given to kalyx as they are, the span of its syntax
+error maps back to the line. kalyx reports only the first error of a text,
+however many holes the line has, and the tests check only three such lines,
+whose errors map to their holes and invalid part: the empty span at the end
+of `1+` to the position of the missing operand; the error of `2(x+1)` to its
+`(`, which starts at the position of the missing operator; and the error of
+`1)` to the surplus `)`.
 
 ## Reading back
 
@@ -139,7 +142,9 @@ longer than the 4,096 bytes of one insertion. Nothing is inserted anywhere.
   converted when two-dimensional editing adds them.
 - The tests read a copy of kalyx 0.1.0's answer vectors in
   `framework/kosmo-math-kalyx/tests/data/`, whose README states its source and
-  checksum; they do not check that the copy matches the locked version.
+  checksum. They check, by term, that each `ok` answer of the copy that fits
+  one insertion is what the locked kalyx computes for its input, but not that
+  the copy is byte for byte that version's file, nor its error cases.
 
 ## Requirements
 
@@ -207,8 +212,9 @@ are in `xtask/src/layout/tests.rs`.
    `span::tests::an_empty_span_marks_the_position_between_pieces`,
    `span::tests::an_empty_span_inside_a_piece_marks_the_position_before_it`,
    `span::tests::a_span_outside_the_text_is_rejected`.
-8. The syntax errors of a line that is not complete, given to kalyx as it
-   is, map to its holes and its invalid part. Test: `tests/error_spans.rs`:
+8. For three lines that are not complete and have no number that starts or
+   ends with a point, the syntax error of the line given to kalyx as it is
+   maps to a hole or the invalid part. Test: `tests/error_spans.rs`:
    `syntax_errors_of_the_line_itself_map_to_its_holes_and_invalid_part`.
 9. The answers of kalyx 0.1.0's answer vectors that are values and fit one
    insertion, 47 of them, read back into complete lines whose text kalyx
