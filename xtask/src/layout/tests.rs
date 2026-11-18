@@ -2386,6 +2386,26 @@ fn no_other_crate_declares_kalyx_in_any_table() {
 }
 
 #[test]
+fn an_export_crate_may_not_declare_kalyx_either() {
+    // Two rules fail here; the kalyx rule must not lean on the rule for
+    // external dependencies of export crates.
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/kosmo-client/Cargo.toml",
+            "kalyx.workspace = true\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[
+            &declares_kalyx("framework/kosmo-client/Cargo.toml", "dependencies", "kalyx"),
+            "framework/kosmo-client/Cargo.toml: [dependencies] kalyx: the export crate kosmo-client may not have external dependencies",
+        ],
+    );
+}
+
+#[test]
 fn crates_of_other_workspaces_may_not_declare_kalyx() {
     let found = problems_with(|files| {
         declare(files, "desktop", "kalyx = \"=0.1.0\"");
@@ -2578,6 +2598,18 @@ fn xtask_may_not_declare_kalyx() {
             &declares_kalyx("xtask/Cargo.toml", "workspace.dependencies", "algebra"),
             "xtask/Cargo.toml: [workspace.dependencies] algebra: may not rename a dependency",
         ],
+    );
+}
+
+#[test]
+fn an_inherited_kalyx_that_no_root_declares_is_still_kalyx() {
+    // With no declaration to inherit from, the key names the package.
+    let found = problems_with(|files| {
+        append(files, "xtask/Cargo.toml", "kalyx.workspace = true\n");
+    });
+    assert_eq!(
+        found,
+        [declares_kalyx("xtask/Cargo.toml", "dependencies", "kalyx")]
     );
 }
 
