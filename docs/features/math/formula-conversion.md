@@ -5,9 +5,9 @@ The library `kosmo-math-kalyx` in the `framework/` workspace turns a line of
 maps the ranges of kalyx's errors back to the line, and reads the text of a
 value back into a line of its own, from which a copy can be reused. It
 follows kalyx 0.1.0 from crates.io, the version that `framework/Cargo.lock`
-locks, and it is the only crate of kosmo that depends on kalyx: the layout
-step of `cargo xtask check` fails when any other crate, or `xtask`, declares
-it.
+locks, and it is the only crate of kosmo that depends on kalyx directly: the
+layout step of `cargo xtask check` fails when any other crate, or `xtask`,
+declares it.
 
 Submitting the text as a job and running it with kalyx are planned for the
 job layer `kosmo-jobs` and the kalyx runner of this crate. Reading the output
@@ -234,6 +234,7 @@ are in `xtask/src/layout/tests.rs`.
     Tests: `xtask/src/layout/tests.rs`:
     `rejects_kalyx_in_the_dev_dependencies_of_the_math_model`,
     `no_other_crate_declares_kalyx_in_any_table`,
+    `an_export_crate_may_not_declare_kalyx_either`,
     `crates_of_other_workspaces_may_not_declare_kalyx`,
     `kalyx_is_found_by_its_package_name_when_renamed`,
     `an_entry_that_is_not_inherited_is_not_named_by_the_root`,
@@ -242,6 +243,7 @@ are in `xtask/src/layout/tests.rs`.
     `an_inherited_kalyx_is_kalyx_whatever_package_the_entry_names`,
     `an_inherited_entry_naming_kalyx_is_not_kalyx_when_its_root_declares_another`,
     `xtask_may_not_declare_kalyx`,
+    `an_inherited_kalyx_that_no_root_declares_is_still_kalyx`,
     `the_kalyx_adapter_may_declare_kalyx_in_any_table`,
     `crates_may_reach_kalyx_through_the_adapter`.
 

@@ -1,6 +1,6 @@
 //! Formula conversion between kosmo's editing structure of formulas and
 //! kalyx 0.1.0, the computer algebra library. This is the only crate of
-//! kosmo that depends on kalyx.
+//! kosmo that depends on kalyx directly.
 //!
 //! - [`convert`] writes a complete line as the linear text that the grammar
 //!   of kalyx 0.1.0 reads. For an incomplete or invalid line it writes no
