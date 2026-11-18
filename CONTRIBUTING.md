@@ -539,7 +539,11 @@ In a product workspace, each is declared once in the
 manifest. Git dependencies, other registries, `path` dependencies outside the
 repository, `[patch]` and `[replace]` sections and krepi's crates are never
 used. kalyx 0.1.0 comes from crates.io too, and only the kalyx adapter crate
-`kosmo-math-kalyx` declares it, as the layout step checks.
+`kosmo-math-kalyx` declares it, as the layout step checks. A change that moves
+kosmo to another kalyx version also replaces the copy of kalyx's answer
+vectors that
+[`framework/kosmo-math-kalyx/tests/data/README.md`](framework/kosmo-math-kalyx/tests/data/README.md)
+describes; no step of the check compares the copy with the package.
 
 The layout step checks how the manifests declare dependencies, and the deps
 step checks what Cargo resolves from them: the sources, the exact requirements,
