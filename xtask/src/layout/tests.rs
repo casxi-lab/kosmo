@@ -2358,28 +2358,30 @@ fn the_kalyx_adapter_may_declare_kalyx_in_any_table() {
 
 #[test]
 fn no_other_crate_declares_kalyx_in_any_table() {
-    for table in [
-        "dependencies",
-        "dev-dependencies",
-        "build-dependencies",
-        "target.'cfg(unix)'.dependencies",
-        "target.'cfg(windows)'.dev-dependencies",
+    // kosmo-ui is in layer F1, the layer of the kalyx adapter, and already
+    // has a [dependencies] table.
+    for manifest in [
+        "framework/kosmo-render/Cargo.toml",
+        "framework/kosmo-ui/Cargo.toml",
     ] {
-        let found = problems_with(|files| {
-            append(
-                files,
-                "framework/kosmo-render/Cargo.toml",
-                &format!("\n[{table}]\nkalyx.workspace = true\n"),
-            );
-        });
-        assert_eq!(
-            found,
-            [declares_kalyx(
-                "framework/kosmo-render/Cargo.toml",
-                table,
-                "kalyx"
-            )]
-        );
+        for table in [
+            "dependencies",
+            "dev-dependencies",
+            "build-dependencies",
+            "target.'cfg(unix)'.dependencies",
+            "target.'cfg(windows)'.dev-dependencies",
+        ] {
+            let found = problems_with(|files| {
+                let header = format!("\n[{table}]\n");
+                let declaration = format!("{header}kalyx.workspace = true\n");
+                if files[manifest].contains(&header) {
+                    edit(files, manifest, &header, &declaration);
+                } else {
+                    append(files, manifest, &declaration);
+                }
+            });
+            assert_eq!(found, [declares_kalyx(manifest, table, "kalyx")]);
+        }
     }
 }
 
@@ -2450,6 +2452,42 @@ fn kalyx_is_found_by_its_package_name_when_renamed() {
 }
 
 #[test]
+fn an_entry_that_is_not_inherited_is_not_named_by_the_root() {
+    let found = problems_with(|files| {
+        declare(
+            files,
+            "framework",
+            "calc = { version = \"=0.1.0\", package = \"kalyx\" }",
+        );
+        append(
+            files,
+            "framework/kosmo-math-model/Cargo.toml",
+            "\n[dependencies]\ncalc = \"=1.0.0\"\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[
+            "framework/Cargo.toml: [workspace.dependencies] calc: may not rename a dependency",
+            "framework/kosmo-math-model/Cargo.toml: [dependencies] calc: must be inherited with workspace = true from the workspace root",
+        ],
+    );
+}
+
+#[test]
+fn a_package_with_a_name_like_kalyx_is_not_kalyx() {
+    let found = problems_with(|files| {
+        declare(files, "framework", "kalyx-extra = \"=1.0.0\"");
+        append(
+            files,
+            "framework/kosmo-render/Cargo.toml",
+            "\n[dependencies]\nkalyx-extra.workspace = true\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
 fn a_key_named_kalyx_that_renames_another_package_is_not_kalyx() {
     let found = problems_with(|files| {
         declare(
@@ -2512,11 +2550,15 @@ fn an_inherited_entry_naming_kalyx_is_not_kalyx_when_its_root_declares_another()
 #[test]
 fn xtask_may_not_declare_kalyx() {
     let found = problems_with(|files| {
-        append(files, "xtask/Cargo.toml", "kalyx = \"=0.1.0\"\n");
         append(
             files,
             "xtask/Cargo.toml",
-            "\n[target.'cfg(unix)'.dev-dependencies]\ncalc = { version = \"=0.1.0\", package = \"kalyx\" }\n\n[workspace.dependencies]\nkalyx = \"=0.1.0\"\n",
+            "kalyx = \"=0.1.0\"\nalgebra.workspace = true\n",
+        );
+        append(
+            files,
+            "xtask/Cargo.toml",
+            "\n[target.'cfg(unix)'.dev-dependencies]\ncalc = { version = \"=0.1.0\", package = \"kalyx\" }\n\n[workspace.dependencies]\nkalyx = \"=0.1.0\"\nalgebra = { version = \"=0.1.0\", package = \"kalyx\" }\n",
         );
     });
     assert_problems(
@@ -2530,6 +2572,11 @@ fn xtask_may_not_declare_kalyx() {
             ),
             "xtask/Cargo.toml: [target.'cfg(unix)'.dev-dependencies] calc: may not rename a dependency",
             &declares_kalyx("xtask/Cargo.toml", "workspace.dependencies", "kalyx"),
+            // `algebra`, inherited from the renaming declaration in the
+            // `[workspace.dependencies]` of xtask itself.
+            &declares_kalyx("xtask/Cargo.toml", "dependencies", "algebra"),
+            &declares_kalyx("xtask/Cargo.toml", "workspace.dependencies", "algebra"),
+            "xtask/Cargo.toml: [workspace.dependencies] algebra: may not rename a dependency",
         ],
     );
 }

@@ -230,6 +230,8 @@ are in `xtask/src/layout/tests.rs`.
     `no_other_crate_declares_kalyx_in_any_table`,
     `crates_of_other_workspaces_may_not_declare_kalyx`,
     `kalyx_is_found_by_its_package_name_when_renamed`,
+    `an_entry_that_is_not_inherited_is_not_named_by_the_root`,
+    `a_package_with_a_name_like_kalyx_is_not_kalyx`,
     `a_key_named_kalyx_that_renames_another_package_is_not_kalyx`,
     `an_inherited_kalyx_is_kalyx_whatever_package_the_entry_names`,
     `an_inherited_entry_naming_kalyx_is_not_kalyx_when_its_root_declares_another`,
