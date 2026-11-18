@@ -59,7 +59,7 @@ fn incomplete_lines_give_their_holes_and_no_text() {
     assert_eq!(convert(&line), Err(NotConverted::Incomplete(holes)));
     assert_eq!(
         convert(&snapshot("")).map_err(|error| error.to_string()),
-        Err("the line is incomplete: it has a hole at 0".to_string())
+        Err("the line is incomplete: it has a hole at position 0".to_string())
     );
     assert_eq!(
         convert(&snapshot("+")).map_err(|error| error.to_string()),

@@ -24,7 +24,7 @@ impl fmt::Display for NotConverted {
             NotConverted::Incomplete(holes) => match holes.as_slice() {
                 [one] => write!(
                     f,
-                    "the line is incomplete: it has a hole at {}",
+                    "the line is incomplete: it has a hole at position {}",
                     one.position.index
                 ),
                 holes => write!(f, "the line is incomplete: it has {} holes", holes.len()),

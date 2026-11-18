@@ -86,6 +86,9 @@ fn text_that_is_not_a_complete_line_is_not_reusable() {
     }
     assert_eq!(
         read_back("").map_err(|reason| reason.to_string()),
-        Err("the value cannot be reused: the line is incomplete: it has a hole at 0".to_string())
+        Err(
+            "the value cannot be reused: the line is incomplete: it has a hole at position 0"
+                .to_string()
+        )
     );
 }
