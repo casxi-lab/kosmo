@@ -7,13 +7,13 @@ Holes are derived from the line, never stored, and the result of a
 computation never changes the line you are editing.
 
 The library does not depend on kalyx. It reads a line with the grammar of
-kalyx 0.1.0 to find its holes and to tell whether it is complete. Turning a
-line into the text that kalyx reads is planned for the kalyx adapter crate
-`kosmo-math-kalyx`; the display model of results is planned for this library
-and that crate, the result view for the math controls crate
-`kosmo-math-controls`, and two-dimensional templates such as fractions for
-this library. The design rules that it follows are in the [editing
-structure](../../architecture.md#editing-structure) and
+kalyx 0.1.0 to find its holes and to tell whether it is complete. The kalyx
+adapter crate `kosmo-math-kalyx` turns a line into the text that kalyx reads,
+as [formula conversion](formula-conversion.md) describes; the display model
+of results is planned for this library and that crate, the result view for
+the math controls crate `kosmo-math-controls`, and two-dimensional templates
+such as fractions for this library. The design rules that it follows are in
+the [editing structure](../../architecture.md#editing-structure) and
 [versions](../../architecture.md#versions) sections of the architecture.
 
 ## Using it
@@ -121,6 +121,10 @@ The tokens are numbers, names, the operators `+`, `-`, `*`, `/` and `^`, and
 brackets. A number is a run of digits and points; a name is a letter or `_`
 followed by letters, digits and `_`. A number ends where a letter or `_`
 starts, so `2x` is the number `2` followed by the name `x`.
+`Snapshot::tokens()` gives the tokens of a line in reading order, each with
+its kind, `Number`, `Name`, `Operator`, `LeftBracket` or `RightBracket`, and
+its items. Spaces belong to no token, and a run of digits and points that
+forms no number, such as `1.2.3`, is a number token of an invalid line.
 
 A hole sits at the start of the token after it, or at the end of the line
 when no token follows:
@@ -138,8 +142,8 @@ when no token follows:
 | `Incomplete` | Something is missing and no part is invalid | `1/`, `2x`, `(1+2`, `+1`, `1++2`, `f()` |
 | `Invalid` | A run of digits and points that forms no number, or a right bracket without a left one before it | `1.2.3`, `.`, `1)`, `)(` |
 
-- `.5` and `1.` are complete. kalyx 0.1.0 does not read them, so converting
-  the line for kalyx will write them as `0.5` and `1`.
+- `.5` and `1.` are complete. kalyx 0.1.0 does not read them, so
+  [formula conversion](formula-conversion.md) writes them as `0.5` and `1`.
 - A call, a name followed by a bracketed expression with spaces allowed
   before the bracket, is an operand, and so are the reserved names `pi`, `i`
   and `undefined`. They are complete here; kalyx 0.1.0 reports them as
@@ -265,10 +269,16 @@ file).
    `tests/operations.rs`: `insert_fragment_outside_the_snapshot_is_rejected`;
    `tests/random_sequences.rs`: `random_edit_sequences_keep_the_invariants`.
 6. Tokens follow the rules above: a number ends where a letter or `_` starts,
-   has at most one point and a digit, and spaces only separate. Tests:
+   has at most one point and a digit, and spaces only separate. A snapshot
+   gives its tokens in reading order with their kinds and items, also for
+   incomplete and invalid lines, and keeps them while the buffer changes.
+   Tests:
    `parse::tests::a_number_ends_where_a_letter_or_underscore_starts`,
    `parse::tests::a_number_has_at_most_one_point_and_a_digit`,
-   `parse::tests::spaces_only_separate_tokens`.
+   `parse::tests::spaces_only_separate_tokens`; `tests/tokens.rs`:
+   `a_snapshot_gives_the_tokens_of_its_line`, `spaces_belong_to_no_token`,
+   `incomplete_and_invalid_lines_have_tokens_too`,
+   `the_tokens_of_a_snapshot_stay_with_it`.
 7. Incomplete input stays representable, with the holes of the table above
    at the places it states. Tests: `tests/incomplete_inputs.rs`:
    `one_over_a_hole`, `a_hole_plus_a_hole`, `x_to_the_power_of_a_hole`,

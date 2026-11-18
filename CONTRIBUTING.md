@@ -20,9 +20,9 @@ The last two report whitespace errors in unstaged and staged changes.
 
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
-workspaces `framework/`, with the library `kosmo-math-model`, and `desktop/`,
-with the program `kosmo`, and the repository tasks in `xtask/`, run as
-`cargo xtask`. Run the program with
+workspaces `framework/`, with the libraries `kosmo-math-model` and
+`kosmo-math-kalyx`, and `desktop/`, with the program `kosmo`, and the
+repository tasks in `xtask/`, run as `cargo xtask`. Run the program with
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version`.
 `cargo xtask check` runs these steps in order and stops at the first one that
 fails:
@@ -164,6 +164,16 @@ attribute of a library root, do not. It checks:
   crate depends only on pure-core crates. Each crate that `same-layer` lists
   is a dependency, and the internal dependency graph, dev-dependencies
   included, has no cycle;
+- kalyx: no crate of the table other than the kalyx adapter
+  `kosmo-math-kalyx`, and not the tool workspace `xtask`, declares the
+  package `kalyx`, in any dependency table, `[target.*]` forms and the
+  `[workspace.dependencies]` of `xtask` included. The package is found by its
+  name, as Cargo finds it: for an entry inherited with `workspace = true`, the
+  `package` that its declaration in the root renames, or else its key,
+  whatever `package` the entry itself names; for any other entry, the
+  `package` that it renames, or else its key. So a renamed `kalyx` fails here
+  as well as being a rename. A crate that depends on `kosmo-math-kalyx`
+  reaches kalyx through it, which this rule does not check;
 - the repository boundary: no package or dependency is named `krepi` or starts
   with `krepi-` or `krepi_`; no `path` and no symbolic link leaves the
   repository (symbolic links also without a table); there is no submodule
@@ -528,8 +538,13 @@ In a product workspace, each is declared once in the
 `workspace = true`; the tool workspace `xtask` declares them in its own
 manifest. Git dependencies, other registries, `path` dependencies outside the
 repository, `[patch]` and `[replace]` sections and krepi's crates are never
-used. kalyx will also come from crates.io, and only the kalyx adapter crate
-will depend on it.
+used. kalyx 0.1.0 comes from crates.io too, and only the kalyx adapter crate
+`kosmo-math-kalyx` declares it, as the layout step checks. A change that moves
+kosmo to another kalyx version also replaces the copy of kalyx's answer
+vectors that
+[`framework/kosmo-math-kalyx/tests/data/README.md`](framework/kosmo-math-kalyx/tests/data/README.md)
+describes; no step of the check compares the copy byte for byte with the
+package.
 
 The layout step checks how the manifests declare dependencies, and the deps
 step checks what Cargo resolves from them: the sources, the exact requirements,

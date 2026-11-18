@@ -8,9 +8,10 @@ also names the two frontends of the first release and lists every component
 with its verification level.
 
 The rules are fixed before the code that follows them. So far the product code
-is the `kosmo` program, which only reports its version, and the one-line
-editing structure in `kosmo-math-model`; [Components](#components) shows which
-components are delivered, and everything else described here is planned.
+is the `kosmo` program, which only reports its version, the one-line editing
+structure in `kosmo-math-model` and formula conversion in `kosmo-math-kalyx`;
+[Components](#components) shows which components are delivered, and
+everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
 types, traits and constants (`NodeId`, `JobRunner`, `MAX_LIVE_JOBS` and the
 others) are provisional. Changing a rule is a design change, not an
@@ -116,7 +117,9 @@ contains no kalyx type.
     brackets are invalid;
   - a call (a name directly followed by `(`, whitespace allowed between) and
     reserved names are operands and complete; kalyx reports them as
-    Unsupported, and the range maps back to the name and the left bracket.
+    Unsupported, with the range of a call from its name through its left
+    bracket and the range of a reserved name as the name itself, also when a
+    bracket follows it.
 - Whether input is supported is decided by conversion against the grammar of
   the locked kalyx version.
 - `□` appears only on the screen and is never sent to kalyx.
@@ -265,7 +268,8 @@ output line. Conversion runs before submission, so a job carries only the
 linear text. These rules hold for kalyx 0.1.0, the version that the first
 release locks. When kosmo moves to a later kalyx version, they are checked
 again, and revised where needed, against that version's grammar and output
-lines.
+lines. [Formula conversion](features/math/formula-conversion.md) describes how
+`kosmo-math-kalyx` follows them.
 
 - **Only complete input.** Conversion produces no text for an incomplete or
   invalid structure, so no job is submitted; it returns the holes or the
@@ -766,6 +770,9 @@ only in these directions:
   server crates and the host backends will use only the few packages that the
   layout table allows for each of them, and a host window library only in the
   nested backend crate.
+- Only the kalyx adapter `kosmo-math-kalyx` depends on kalyx directly: no
+  other crate, and not `xtask`, declares the package `kalyx`. Other crates
+  reach kalyx only through the adapter.
 
 The layout table, `layout.toml`, states these rules for each workspace: its
 layers, the workspaces it uses, and its target platforms, for which
@@ -784,12 +791,12 @@ allowlist that the workspace's `lock-allowlist` names; the deps step of
 licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `framework/` exists,
-with the library `kosmo-math-model`, and `desktop/`, with the program `kosmo`;
-the table states the rules of `display/` and lists no crate for it. A change
-that adds a crate registers it in the table, and the first crate of a
-workspace adds the workspace root. The layout step of `cargo xtask check`
-enforces this layout on the tracked files, and the deps step on what Cargo
-resolves; Contributing describes the checks of
+with the libraries `kosmo-math-model` and `kosmo-math-kalyx`, and `desktop/`,
+with the program `kosmo`; the table states the rules of `display/` and lists
+no crate for it. A change that adds a crate registers it in the table, and
+the first crate of a workspace adds the workspace root. The layout step of
+`cargo xtask check` enforces this layout on the tracked files, and the deps
+step on what Cargo resolves; Contributing describes the checks of
 [the layout step](../CONTRIBUTING.md#the-layout-step) and of
 [the fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps) and
 their limits.
@@ -3962,7 +3969,7 @@ A component is a unit with its own role, contract and level.
 | Line-mode terminal frontend | `kosmo` | Frontend | A0 | `planned` |
 | One-line editing structure | `kosmo-math-model` | Data-structure core | A1 | [One-line editing](features/math/one-line-editing.md); tests in `framework/kosmo-math-model/src/` and `framework/kosmo-math-model/tests/` |
 | Exact display | `kosmo-math-model`, `kosmo-math-kalyx` | Presentation | A0 | `planned` |
-| Formula conversion (linear text, range mapping, read-back) | `kosmo-math-kalyx` | Cross-project format | A1 | `planned` |
+| Formula conversion (linear text, range mapping, read-back) | `kosmo-math-kalyx` | Cross-project format | A1 | [Formula conversion](features/math/formula-conversion.md); tests in `framework/kosmo-math-kalyx/src/` and `framework/kosmo-math-kalyx/tests/` |
 | Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | `planned` |
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | `planned` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | `planned` |
