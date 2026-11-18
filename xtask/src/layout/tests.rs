@@ -1194,13 +1194,19 @@ fn rejects_renamed_dependencies_and_underscore_keys() {
             "desktop",
             "other = { version = \"=1.0.0\", package = \"real\" }",
         );
-        append(files, "desktop/kosmo/Cargo.toml", "\n[dev_dependencies]\n");
+        append(
+            files,
+            "desktop/kosmo/Cargo.toml",
+            "\n[dev_dependencies]\n\n[build_dependencies]\n\n[target.'cfg(unix)'.dev_dependencies]\n",
+        );
     });
     assert_problems(
         &found,
         &[
             "desktop/Cargo.toml: [workspace.dependencies] other: may not rename a dependency",
             "desktop/kosmo/Cargo.toml: [dev_dependencies] is not allowed; write dev-dependencies",
+            "desktop/kosmo/Cargo.toml: [build_dependencies] is not allowed; write build-dependencies",
+            "desktop/kosmo/Cargo.toml: [target.'cfg(unix)'.dev_dependencies] is not allowed; write dev-dependencies",
         ],
     );
 }
@@ -2598,6 +2604,27 @@ fn xtask_may_not_declare_kalyx() {
             &declares_kalyx("xtask/Cargo.toml", "workspace.dependencies", "algebra"),
             "xtask/Cargo.toml: [workspace.dependencies] algebra: may not rename a dependency",
         ],
+    );
+}
+
+#[test]
+fn an_optional_kalyx_is_still_kalyx() {
+    let found = problems_with(|files| {
+        // kosmo-ui already has a [dependencies] table.
+        edit(
+            files,
+            "framework/kosmo-ui/Cargo.toml",
+            "\n[dependencies]\n",
+            "\n[dependencies]\nkalyx = { workspace = true, optional = true }\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[&declares_kalyx(
+            "framework/kosmo-ui/Cargo.toml",
+            "dependencies",
+            "kalyx",
+        )],
     );
 }
 
