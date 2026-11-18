@@ -93,13 +93,13 @@ kosmo has no usable application yet: of the features above, only the
 editing structure of one-line formula input and its conversion into the text
 that kalyx reads work, as libraries. The repository holds documentation, the
 kosmo logo, a commit hook, the repository checks, the layout table
-`layout.toml`, the `framework/` workspace with the library
-`kosmo-math-model`, which holds
+`layout.toml` and two product workspaces. The `framework/` workspace has
+the libraries `kosmo-math-model`, which holds
 [one-line formula input](docs/features/math/one-line-editing.md) while you
-edit it, and the library `kosmo-math-kalyx`, which
+edit it, and `kosmo-math-kalyx`, which
 [converts](docs/features/math/formula-conversion.md) it into the text that
-kalyx reads, and the `desktop/` workspace with the `kosmo` program, which so
-far only reports its version. CI runs the repository checks on every pull
+kalyx reads. The `desktop/` workspace has the `kosmo` program, which so far
+only reports its version. CI runs the repository checks on every pull
 request to `main` and every push to `main`. These commands run from the
 repository root:
 

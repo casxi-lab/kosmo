@@ -10,8 +10,8 @@ step of `cargo xtask check` fails when any other crate, or `xtask`, declares
 it.
 
 Submitting the text as a job and running it with kalyx are planned for the
-job layer `kosmo-jobs` and the kalyx runner of this crate, and reading the
-output lines of kalyx into results for the display model of
+job layer `kosmo-jobs` and the kalyx runner of this crate. Reading the output
+lines of kalyx into results is planned for the display model of
 `kosmo-math-model` and this crate. The design rules are in
 [formula conversion](../../architecture.md#formula-conversion) and
 [holes and completeness](../../architecture.md#holes-and-completeness) in
