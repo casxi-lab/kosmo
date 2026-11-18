@@ -90,26 +90,31 @@ relies on from the other parts of casξ.
 ## Status
 
 kosmo has no usable application yet: of the features above, only the
-editing structure of one-line formula input works, as a library. The
-repository holds documentation, the kosmo logo, a commit hook, the repository
-checks, the layout table `layout.toml`, the `framework/` workspace with the
-library `kosmo-math-model`, which holds
+editing structure of one-line formula input and its conversion into the text
+that kalyx reads work, as libraries. The repository holds documentation, the
+kosmo logo, a commit hook, the repository checks, the layout table
+`layout.toml`, the `framework/` workspace with the library
+`kosmo-math-model`, which holds
 [one-line formula input](docs/features/math/one-line-editing.md) while you
-edit it, and the `desktop/` workspace with the `kosmo` program, which so far
-only reports its version. CI runs the repository checks on every pull request
-to `main` and every push to `main`. These commands run from the repository
-root:
+edit it, and the library `kosmo-math-kalyx`, which
+[converts](docs/features/math/formula-conversion.md) it into the text that
+kalyx reads, and the `desktop/` workspace with the `kosmo` program, which so
+far only reports its version. CI runs the repository checks on every pull
+request to `main` and every push to `main`. These commands run from the
+repository root:
 
 ```sh
 cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-model
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo xtask check
 ```
 
-The first prints `kosmo` and its version, the second runs the tests of the
-editing structure, and the third runs the repository checks. No version has
-been released yet: a release is a tagged commit, and the version that `main`
-shows is not a release until it is tagged.
+The first prints `kosmo` and its version, the second and the third run the
+tests of the editing structure and of formula conversion, and the last runs
+the repository checks. No version has been released yet: a release is a
+tagged commit, and the version that `main` shows is not a release until it
+is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates will use only `core` and `alloc`. Its first releases will run
@@ -134,9 +139,9 @@ be checked first when kosmo runs on the device.
   enforcement of usage restrictions; and the sysroot and platform SDK. kosmo
   does not depend on krepi's crates: kosmo will define the ports, and krepi
   will implement them and build kosmo for the device.
-- **kalyx** (`casxi-lab/kalyx`): the casξ computer algebra library. kosmo will
-  take it from crates.io, turn what you type into expressions for it and show
-  the results it computes.
+- **kalyx** (`casxi-lab/kalyx`): the casξ computer algebra library. kosmo
+  takes it from crates.io and turns what you type into the text that it
+  reads, and will show the results it computes.
 - **kyto** (`casxi-lab/kyto`): the casξ hardware, including the screens and
   keyboards that kosmo's display server will reach through krepi's drivers.
 

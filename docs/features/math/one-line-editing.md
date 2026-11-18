@@ -7,12 +7,12 @@ Holes are derived from the line, never stored, and the result of a
 computation never changes the line you are editing.
 
 The library does not depend on kalyx. It reads a line with the grammar of
-kalyx 0.1.0 to find its holes and to tell whether it is complete. Turning a
-line into the text that kalyx reads is planned for the kalyx adapter crate
-`kosmo-math-kalyx`; the display model of results is planned for this library
-and that crate, the result view for the math controls crate
-`kosmo-math-controls`, and two-dimensional templates such as fractions for
-this library. The design rules that it follows are in the [editing
+kalyx 0.1.0 to find its holes and to tell whether it is complete. The kalyx
+adapter crate `kosmo-math-kalyx` turns a line into the text that kalyx reads,
+as [formula conversion](formula-conversion.md) describes; the display model
+of results is planned for this library and that crate, the result view for
+the math controls crate `kosmo-math-controls`, and two-dimensional templates
+such as fractions for this library. The design rules that it follows are in the [editing
 structure](../../architecture.md#editing-structure) and
 [versions](../../architecture.md#versions) sections of the architecture.
 
@@ -142,8 +142,8 @@ when no token follows:
 | `Incomplete` | Something is missing and no part is invalid | `1/`, `2x`, `(1+2`, `+1`, `1++2`, `f()` |
 | `Invalid` | A run of digits and points that forms no number, or a right bracket without a left one before it | `1.2.3`, `.`, `1)`, `)(` |
 
-- `.5` and `1.` are complete. kalyx 0.1.0 does not read them, so converting
-  the line for kalyx will write them as `0.5` and `1`.
+- `.5` and `1.` are complete. kalyx 0.1.0 does not read them, so
+  [formula conversion](formula-conversion.md) writes them as `0.5` and `1`.
 - A call, a name followed by a bracketed expression with spaces allowed
   before the bracket, is an operand, and so are the reserved names `pi`, `i`
   and `undefined`. They are complete here; kalyx 0.1.0 reports them as
