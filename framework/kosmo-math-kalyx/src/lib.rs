@@ -36,5 +36,6 @@ mod read_back;
 mod span;
 
 pub use conversion::{NotConverted, convert};
+pub use kosmo_math_model::Place;
 pub use read_back::{NotReusable, read_back};
-pub use span::{Place, SpanOutside, map_span};
+pub use span::{SpanOutside, map_span};

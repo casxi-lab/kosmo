@@ -48,7 +48,7 @@ mod structure;
 pub mod version;
 
 pub use buffer::{EditBuffer, Rejected, Snapshot};
-pub use structure::{Fragment, Item, NodeId, Position, Selection, TemplateKind};
+pub use structure::{Fragment, Item, NodeId, Place, Position, Selection, TemplateKind};
 
 /// The most items a line holds. Every character is one item and one byte.
 pub const MAX_ITEMS: usize = 4096;
