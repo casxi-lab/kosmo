@@ -1164,21 +1164,25 @@ pub const KREPI: &str =
 const ONLY_THE_ADAPTER: &str =
     "declares the package kalyx, which only the kalyx adapter kosmo-math-kalyx may declare";
 
-/// Whether a dependency entry names the package kalyx: by the `package`
-/// that it renames; for an entry inherited with `workspace = true`, by the
-/// `package` that its declaration in `declared`, the
-/// `[workspace.dependencies]` of its root, renames; and otherwise by its
-/// key.
+/// Whether a dependency entry names the package kalyx, as Cargo reads its
+/// package. An entry inherited with `workspace = true` names the package of
+/// its declaration in `declared`, the `[workspace.dependencies]` of its
+/// root: the `package` that the declaration renames, or else the key, and
+/// never a `package` of the entry itself, which Cargo ignores. Any other
+/// entry names the `package` that it renames, or else its key.
 fn names_kalyx(dependency: &str, entry: &Value, declared: Option<&Table>) -> bool {
     fn renamed(entry: &Value) -> Option<&str> {
         entry.get("package").and_then(Value::as_str)
     }
     let inherited = entry.get("workspace").and_then(Value::as_bool) == Some(true);
-    let from_root = declared
-        .filter(|_| inherited)
-        .and_then(|declared| declared.get(dependency))
-        .and_then(renamed);
-    renamed(entry).or(from_root).unwrap_or(dependency) == KALYX
+    let package = if inherited {
+        declared
+            .and_then(|declared| declared.get(dependency))
+            .and_then(renamed)
+    } else {
+        renamed(entry)
+    };
+    package.unwrap_or(dependency) == KALYX
 }
 
 /// The checks of a dependency entry that apply wherever it is written.

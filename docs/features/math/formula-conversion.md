@@ -231,6 +231,8 @@ are in `xtask/src/layout/tests.rs`.
     `crates_of_other_workspaces_may_not_declare_kalyx`,
     `kalyx_is_found_by_its_package_name_when_renamed`,
     `a_key_named_kalyx_that_renames_another_package_is_not_kalyx`,
+    `an_inherited_kalyx_is_kalyx_whatever_package_the_entry_names`,
+    `an_inherited_entry_naming_kalyx_is_not_kalyx_when_its_root_declares_another`,
     `xtask_may_not_declare_kalyx`,
     `the_kalyx_adapter_may_declare_kalyx_in_any_table`,
     `crates_may_reach_kalyx_through_the_adapter`.

@@ -2470,6 +2470,46 @@ fn a_key_named_kalyx_that_renames_another_package_is_not_kalyx() {
 }
 
 #[test]
+fn an_inherited_kalyx_is_kalyx_whatever_package_the_entry_names() {
+    // Cargo takes the package of an inherited entry from the root and
+    // ignores a `package` of the entry itself.
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/kosmo-math-model/Cargo.toml",
+            "\n[dependencies]\nkalyx = { workspace = true, package = \"other\" }\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[
+            "framework/kosmo-math-model/Cargo.toml: [dependencies] kalyx: may not rename a dependency",
+            &declares_kalyx(
+                "framework/kosmo-math-model/Cargo.toml",
+                "dependencies",
+                "kalyx",
+            ),
+        ],
+    );
+}
+
+#[test]
+fn an_inherited_entry_naming_kalyx_is_not_kalyx_when_its_root_declares_another() {
+    let found = problems_with(|files| {
+        declare(files, "framework", "calc = \"=1.0.0\"");
+        append(
+            files,
+            "framework/kosmo-math-model/Cargo.toml",
+            "\n[dependencies]\ncalc = { workspace = true, package = \"kalyx\" }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        ["framework/kosmo-math-model/Cargo.toml: [dependencies] calc: may not rename a dependency"]
+    );
+}
+
+#[test]
 fn xtask_may_not_declare_kalyx() {
     let found = problems_with(|files| {
         append(files, "xtask/Cargo.toml", "kalyx = \"=0.1.0\"\n");
