@@ -14,8 +14,10 @@ columns, `id`, `operation`, `variable`, `input`, `result`, `answer` and
 `limits`, with a header row. The read-back tests in `tests/read_back.rs` take
 the answers of the cases whose result is `ok`, read them back into lines,
 convert those lines and compare the terms that kalyx 0.1.0 reads from both
-texts. They read the file with `include_str!`, so the tests need no package
-other than kalyx.
+texts. The display tests in `tests/displayed_values.rs` compute the value
+lines of the same cases and compare the terms of their display texts with
+the answers. Both read the file through `tests/support/mod.rs` with
+`include_str!`, so the tests need no package other than kalyx.
 
 The tests check, by term, that each `ok` answer of the copy that fits one
 insertion is what the kalyx version in `framework/Cargo.lock` computes for
@@ -23,3 +25,16 @@ its input, but not that the copy is byte for byte that version's file, nor
 its error cases. A change that moves kosmo to another kalyx version replaces
 the copy with the file of that version's package and updates the SHA-256
 here.
+
+`long-value.txt` is the expected rendering of the long value in
+`tests/bounded_display.rs`, followed by a line feed. Under the raised limits
+of that test, kalyx 0.1.0 computes `expand x (x+1)^600` and writes a value
+line of 82,971 bytes. Its display text of 82,958 bytes is longer than the
+bound, so the rendering as the current result keeps the first 65,536 bytes
+and ends in ` ... (82958 bytes)`, 65,584 bytes in all. The file was written
+from that line by a script outside the repository, not by kosmo's code;
+without its final line feed, its SHA-256 is
+`cfb287d1b4c5e6e0c5ad47510c1ed30f141d445c43c0f3d730edadba12debe45`. The test
+compares the rendering with the whole file. A change that moves kosmo to
+another kalyx version, or changes the bound or how a cut text ends, rewrites
+the file.
