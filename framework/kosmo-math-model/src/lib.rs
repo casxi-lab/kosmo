@@ -9,7 +9,8 @@
 //! by parsing the line with the grammar of kalyx 0.1.0, so incomplete input
 //! such as `1/□` stays representable. A computation receives a
 //! [`Snapshot`], never the buffer, so its result cannot change what is being
-//! edited.
+//! edited; [`Snapshot::tokens`] gives the tokens that the parser reads,
+//! from which the line is converted for kalyx.
 //!
 //! ```
 //! use kosmo_math_model::{Completeness, EditBuffer, HoleKind, Item};
@@ -117,4 +118,32 @@ pub enum InvalidKind {
     MalformedNumber,
     /// A right bracket without a left bracket before it.
     SurplusRightBracket,
+}
+
+/// A token of a line as the parser reads it, from
+/// [`Snapshot::tokens`]. Spaces separate tokens and belong to none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Token {
+    /// What the token is.
+    pub kind: TokenKind,
+    /// Its items, never empty.
+    pub fragment: Fragment,
+}
+
+/// What a token is.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TokenKind {
+    /// A run of digits and points, such as `12`, `1.5`, `.5` or `1.`. A run
+    /// that cannot form a number, such as `1.2.3`, is a number token too,
+    /// which makes the line invalid.
+    Number,
+    /// A letter or `_`, followed by letters, digits and `_`.
+    Name,
+    /// One of `+`, `-`, `*`, `/` and `^`.
+    Operator,
+    /// `(`.
+    LeftBracket,
+    /// `)`.
+    RightBracket,
 }

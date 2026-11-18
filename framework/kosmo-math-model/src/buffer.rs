@@ -5,7 +5,7 @@ use std::fmt;
 use crate::parse::{self, Analysis};
 use crate::structure::{Fragment, Item, NodeId, Position, Selection, Structure, copy_item};
 use crate::version::SourceVersion;
-use crate::{Completeness, MAX_INSERT_BYTES, MAX_ITEMS, MAX_PARSE_DEPTH};
+use crate::{Completeness, MAX_INSERT_BYTES, MAX_ITEMS, MAX_PARSE_DEPTH, Token};
 
 /// Whether a character may be typed into a line: an ASCII letter or digit,
 /// `_`, `.`, `+`, `-`, `*`, `/`, `^`, `(`, `)` or a space.
@@ -394,6 +394,12 @@ impl Snapshot {
     /// Whether the line is complete, incomplete with its holes, or invalid.
     pub fn completeness(&self) -> Completeness {
         parse::analyse(self.root(), self.items()).completeness
+    }
+
+    /// The tokens of the line in reading order, as the parser reads them
+    /// to find holes. Spaces separate tokens and belong to none.
+    pub fn tokens(&self) -> Vec<Token> {
+        parse::tokens_of(self.root(), self.items())
     }
 
     /// The whole line as a fragment.

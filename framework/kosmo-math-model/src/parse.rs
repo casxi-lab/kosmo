@@ -23,7 +23,7 @@
 //! whole line, without recursion.
 
 use crate::structure::{Fragment, Item, NodeId, Position, character};
-use crate::{Completeness, Hole, HoleKind, Invalid, InvalidKind};
+use crate::{Completeness, Hole, HoleKind, Invalid, InvalidKind, TokenKind};
 
 /// What a token is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +98,23 @@ fn tokens(items: &[Item]) -> Vec<Token> {
         });
     }
     tokens
+}
+
+/// The tokens of the items of `block`, as the public type gives them.
+pub(crate) fn tokens_of(block: NodeId, items: &[Item]) -> Vec<crate::Token> {
+    tokens(items)
+        .iter()
+        .map(|token| crate::Token {
+            kind: match token.kind {
+                Kind::Number { .. } => TokenKind::Number,
+                Kind::Name => TokenKind::Name,
+                Kind::Operator(_) => TokenKind::Operator,
+                Kind::Open => TokenKind::LeftBracket,
+                Kind::Close => TokenKind::RightBracket,
+            },
+            fragment: Fragment::between(block, token.start, token.end),
+        })
+        .collect()
 }
 
 /// What the parser found in a block.
