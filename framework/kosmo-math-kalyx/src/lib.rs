@@ -9,6 +9,9 @@
 //! - [`map_span`] maps the span of a kalyx error, a range of bytes of that
 //!   text, back to the items of the line, to a position between them or to
 //!   the whole line.
+//! - [`read_back`] reads the display text of a kalyx value back into a
+//!   separate line, from which a copy can be inserted into the line being
+//!   edited, or says why the value cannot be reused.
 //!
 //! ```
 //! use kosmo_math_kalyx::{Place, convert, map_span};
@@ -29,7 +32,9 @@
 #![forbid(unsafe_code)]
 
 mod conversion;
+mod read_back;
 mod span;
 
 pub use conversion::{NotConverted, convert};
+pub use read_back::{NotReusable, read_back};
 pub use span::{Place, SpanOutside, map_span};
