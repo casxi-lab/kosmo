@@ -74,14 +74,16 @@ that has no range, such as an unknown symbol in an evaluation. The span maps
 back to the line:
 
 - The text is made of pieces, one for each token and each space of the line.
-  The start of a span goes to the first item of the piece that holds its
-  first byte, and its end to the end of the piece that holds its last byte.
-  A span over a number therefore covers all of the number's items, the point
+  A non-empty span maps to the items from the first item of the piece that
+  holds its first byte to the end of the piece that holds its last byte. A
+  span over a number therefore covers all of the number's items, the point
   that conversion left out or wrote a `0` before included. kalyx 0.1.0
-  reports spans that start and end at the edges of tokens; a span that starts
-  or ends inside a piece grows to the edges of that piece.
-- An empty span maps to the position between two items, `-` to the whole
-  line. A span that runs backwards or past the end of the text is rejected.
+  reports spans that start and end at the edges of tokens; only a non-empty
+  span that starts or ends inside a piece grows to the edges of that piece.
+- An empty span always maps to a position between two items: at the edge of
+  a piece, the position there, and inside a piece, the position before the
+  piece. `-` maps to the whole line. A span that runs backwards or past the
+  end of the text is rejected.
 
 In this table, the items are a half-open range of the line, like the span:
 
@@ -197,11 +199,13 @@ are in `xtask/src/layout/tests.rs`.
    `span::tests::a_span_over_a_normalized_number_covers_all_its_items`,
    `span::tests::a_span_that_starts_or_ends_inside_a_piece_grows_to_its_edges`,
    `span::tests::spaces_are_pieces_of_their_own`.
-7. An error without a span maps to the whole line, an empty span to a
-   position, and a span outside the text is rejected. Tests:
-   `tests/error_spans.rs`: `an_error_without_a_span_maps_to_the_whole_line`;
+7. An error without a span maps to the whole line, an empty span always to
+   a position, also inside a piece, and a span outside the text is rejected.
+   Tests: `tests/error_spans.rs`:
+   `an_error_without_a_span_maps_to_the_whole_line`;
    `span::tests::an_error_without_a_span_is_about_the_whole_line`,
    `span::tests::an_empty_span_marks_the_position_between_pieces`,
+   `span::tests::an_empty_span_inside_a_piece_marks_the_position_before_it`,
    `span::tests::a_span_outside_the_text_is_rejected`.
 8. The syntax errors of a line that is not complete, given to kalyx as it
    is, map to its holes and its invalid part. Test: `tests/error_spans.rs`:

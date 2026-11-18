@@ -58,8 +58,6 @@ fn a_span_that_starts_or_ends_inside_a_piece_grows_to_its_edges() {
     assert_eq!(map_span(&line, Some(4..5)), Ok(items(&line, 3..5)));
     let line = snapshot("abc+d");
     assert_eq!(map_span(&line, Some(1..2)), Ok(items(&line, 0..3)));
-    // An empty span inside a piece covers the piece.
-    assert_eq!(map_span(&line, Some(1..1)), Ok(items(&line, 0..3)));
 }
 
 #[test]
@@ -76,6 +74,18 @@ fn an_empty_span_marks_the_position_between_pieces() {
         map_span(&snapshot(""), Some(0..0)),
         Ok(at(&snapshot(""), 0))
     );
+}
+
+#[test]
+fn an_empty_span_inside_a_piece_marks_the_position_before_it() {
+    let line = snapshot("abc+d");
+    assert_eq!(map_span(&line, Some(1..1)), Ok(at(&line, 0)));
+    assert_eq!(map_span(&line, Some(2..2)), Ok(at(&line, 0)));
+    // `0.5+12` comes from `.5+12`: inside `0.5` and inside `12`.
+    let line = snapshot(".5+12");
+    assert_eq!(map_span(&line, Some(1..1)), Ok(at(&line, 0)));
+    assert_eq!(map_span(&line, Some(2..2)), Ok(at(&line, 0)));
+    assert_eq!(map_span(&line, Some(5..5)), Ok(at(&line, 3)));
 }
 
 #[test]

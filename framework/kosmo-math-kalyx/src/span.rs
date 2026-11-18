@@ -54,17 +54,20 @@ impl std::error::Error for SpanOutside {}
 /// is the line itself.
 ///
 /// The text is made of pieces, one for each token and each space of the
-/// line. A span maps by pieces: its start goes to the first item of the
-/// piece that holds its first byte, and its end to the end of the piece
-/// that holds its last byte. So a span over a number covers all its items,
-/// the point that conversion left out or wrote a `0` before included, and
-/// a span that starts or ends inside a piece grows to the edges of that
-/// piece. kalyx 0.1.0 reports spans that start and end at the edges of
-/// tokens.
+/// line. A non-empty span maps by pieces: its start goes to the first item
+/// of the piece that holds its first byte, and its end to the end of the
+/// piece that holds its last byte. So a span over a number covers all its
+/// items, the point that conversion left out or wrote a `0` before
+/// included, and a non-empty span that starts or ends inside a piece grows
+/// to the edges of that piece. kalyx 0.1.0 reports spans that start and
+/// end at the edges of tokens.
 ///
-/// `None`, an error without a span, maps to the whole line; an empty span
-/// between two pieces, or at either end, to the position there; any other
-/// span to the fragment of the items it covers.
+/// `None`, an error without a span, maps to the whole line, and a
+/// non-empty span to the fragment of the items it covers. An empty span
+/// always maps to a position: the position before the first item of the
+/// piece that holds the byte at its offset, which is the position between
+/// two pieces when the span lies between them, or the end of the line at
+/// the end of the text.
 pub fn map_span(snapshot: &Snapshot, span: Option<Range<usize>>) -> Result<Place, SpanOutside> {
     let Some(span) = span else {
         return Ok(Place::Line);
@@ -78,7 +81,8 @@ pub fn map_span(snapshot: &Snapshot, span: Option<Range<usize>>) -> Result<Place
     let end = item_to(&linear.pieces, span.end);
     let block = snapshot.root();
     Ok(match Fragment::new(block, start..end) {
-        Some(fragment) if !fragment.is_empty() => Place::Fragment(fragment),
+        // A non-empty span covers at least the piece of its first byte.
+        Some(fragment) if !span.is_empty() => Place::Fragment(fragment),
         _ => Place::Position(Position {
             block,
             index: start,
