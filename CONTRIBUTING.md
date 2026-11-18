@@ -537,8 +537,8 @@ In a product workspace, each is declared once in the
 `workspace = true`; the tool workspace `xtask` declares them in its own
 manifest. Git dependencies, other registries, `path` dependencies outside the
 repository, `[patch]` and `[replace]` sections and krepi's crates are never
-used. kalyx will also come from crates.io, and only the kalyx adapter crate
-will depend on it.
+used. kalyx 0.1.0 comes from crates.io too, and only the kalyx adapter crate
+`kosmo-math-kalyx` declares it, as the layout step checks.
 
 The layout step checks how the manifests declare dependencies, and the deps
 step checks what Cargo resolves from them: the sources, the exact requirements,

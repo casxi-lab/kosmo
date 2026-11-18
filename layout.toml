@@ -108,6 +108,20 @@ export = false
 pure-core = false
 publish = false
 
+[crates.kosmo-math-kalyx]
+path = "framework/kosmo-math-kalyx"
+layer = "F1"
+export = false
+pure-core = false
+publish = false
+
+[[crates.kosmo-math-kalyx.external]]
+name = "kalyx"
+version = "=0.1.0"
+default-features = true
+features = []
+resolved-features = []
+
 [crates.kosmo]
 path = "desktop/kosmo"
 layer = "S2"

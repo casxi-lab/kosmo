@@ -3,13 +3,17 @@
 # depends on the display workspace only through its export crates.
 [workspace]
 resolver = "3"
-members = ["kosmo-math-model"]
+members = ["kosmo-math-kalyx", "kosmo-math-model"]
 
 [workspace.package]
 version = "0.1.0-dev.1"
 edition = "2024"
 license = "MIT"
 rust-version = "1.99"
+
+[workspace.dependencies]
+kalyx = "=0.1.0"
+kosmo-math-model = { path = "kosmo-math-model", version = "=0.1.0-dev.1" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
