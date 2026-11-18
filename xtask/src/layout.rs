@@ -4,7 +4,8 @@
 //!
 //! The step reads the table, validates it, and then checks the workspace
 //! roots, the members, the form of the manifests, the direction of every
-//! declared internal dependency, the repository boundary, the Cargo
+//! declared internal dependency, the declarations of kalyx, which only the
+//! kalyx adapter makes, the repository boundary, the Cargo
 //! configuration, pure-core crates, build scripts and procedural macros,
 //! versions and publishing, provisional and export crates, the shape of the
 //! workspace roots and the workspaces that the other steps cover. It
@@ -32,6 +33,10 @@ use crate::repo::{self, Entry, Tree};
 pub const TABLE: &str = "layout.toml";
 /// The program crate; every crate has its version.
 pub const PROGRAM: &str = "kosmo";
+/// The package of the computer algebra library.
+const KALYX: &str = "kalyx";
+/// The kalyx adapter, the only crate that declares a dependency on kalyx.
+const KALYX_ADAPTER: &str = "kosmo-math-kalyx";
 /// The only Cargo configuration file.
 pub const CARGO_CONFIG: &str = ".cargo/config.toml";
 /// The only alias that the Cargo configuration defines.
@@ -1155,6 +1160,27 @@ pub fn is_krepi(name: &str) -> bool {
 pub const KREPI: &str =
     "kosmo does not depend on krepi: no package is named krepi or starts with krepi- or krepi_";
 
+/// Why a crate other than the kalyx adapter may not declare kalyx.
+const ONLY_THE_ADAPTER: &str =
+    "declares the package kalyx, which only the kalyx adapter kosmo-math-kalyx may declare";
+
+/// Whether a dependency entry names the package kalyx: by the `package`
+/// that it renames; for an entry inherited with `workspace = true`, by the
+/// `package` that its declaration in `declared`, the
+/// `[workspace.dependencies]` of its root, renames; and otherwise by its
+/// key.
+fn names_kalyx(dependency: &str, entry: &Value, declared: Option<&Table>) -> bool {
+    fn renamed(entry: &Value) -> Option<&str> {
+        entry.get("package").and_then(Value::as_str)
+    }
+    let inherited = entry.get("workspace").and_then(Value::as_bool) == Some(true);
+    let from_root = declared
+        .filter(|_| inherited)
+        .and_then(|declared| declared.get(dependency))
+        .and_then(renamed);
+    renamed(entry).or(from_root).unwrap_or(dependency) == KALYX
+}
+
 /// The checks of a dependency entry that apply wherever it is written.
 fn check_entry(manifest: &str, kind: &str, name: &str, entry: &Value, problems: &mut Problems) {
     let Some(entry) = entry.as_table() else {
@@ -1425,7 +1451,8 @@ fn dependency_tables(table: &Table) -> Vec<(String, &Table)> {
 }
 
 /// The checks of one crate whose manifest and root are usable: its
-/// dependencies, which add edges, and what its marks require.
+/// dependencies, which add edges and name kalyx only in the kalyx adapter,
+/// and what its marks require.
 fn check_crate<'a>(
     tree: &Tree,
     place: Place<'a>,
@@ -1447,9 +1474,15 @@ fn check_crate<'a>(
         problems.insert(format!("{manifest}: must set [lints] workspace = true"));
     }
     let mut externals = Vec::new();
+    let declared = root.workspace.get("dependencies").and_then(Value::as_table);
     for (kind, entries) in dependency_tables(table) {
         for (dependency, entry) in entries {
             check_entry(manifest, &kind, dependency, entry, problems);
+            if name != KALYX_ADAPTER && names_kalyx(dependency, entry, declared) {
+                problems.insert(format!(
+                    "{manifest}: {kind} {dependency}: {ONLY_THE_ADAPTER}"
+                ));
+            }
             if entry.get("workspace").and_then(Value::as_bool) != Some(true) {
                 problems.insert(format!(
                     "{manifest}: {kind} {dependency}: must be inherited with workspace = true from the workspace root"
@@ -1880,10 +1913,11 @@ pub fn cycles<'a>(graph: &BTreeMap<&'a str, BTreeSet<&'a str>>) -> BTreeSet<Vec<
 }
 
 /// A tool workspace: no build script, no procedural-macro library, and
-/// external dependencies with exact versions, without a path dependency or
-/// a crate of the table, in its dependency tables and its
+/// external dependencies with exact versions, without a path dependency, a
+/// crate of the table or kalyx, in its dependency tables and its
 /// `[workspace.dependencies]`. An inherited dependency is checked where
-/// `[workspace.dependencies]` declares it.
+/// `[workspace.dependencies]` declares it, except that it may not name
+/// kalyx either.
 fn check_tool(
     tree: &Tree,
     index: &Index,
@@ -1916,11 +1950,16 @@ fn check_tool(
     let declared = table
         .get("workspace")
         .and_then(|workspace| workspace.get("dependencies"))
-        .and_then(Value::as_table)
-        .map(|entries| ("[workspace.dependencies]".to_string(), entries));
-    for (kind, entries) in dependency_tables(table).into_iter().chain(declared) {
+        .and_then(Value::as_table);
+    let declared_table = declared.map(|entries| ("[workspace.dependencies]".to_string(), entries));
+    for (kind, entries) in dependency_tables(table).into_iter().chain(declared_table) {
         for (dependency, entry) in entries {
             check_entry(&manifest, &kind, dependency, entry, problems);
+            if names_kalyx(dependency, entry, declared) {
+                problems.insert(format!(
+                    "{manifest}: {kind} {dependency}: {ONLY_THE_ADAPTER}"
+                ));
+            }
             if entry.get("workspace").and_then(Value::as_bool) == Some(true) {
                 continue;
             }

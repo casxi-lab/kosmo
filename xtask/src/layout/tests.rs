@@ -65,8 +65,9 @@ type Spec = (
     &'static [&'static str],
 );
 
-/// The crates of the valid layout.
-const CRATES: [Spec; 13] = [
+/// The crates of the valid layout. The kalyx adapter `kosmo-math-kalyx`
+/// also depends on kalyx, which the root of `framework/` declares.
+const CRATES: [Spec; 14] = [
     (
         "kosmo-types",
         "display",
@@ -117,6 +118,13 @@ const CRATES: [Spec; 13] = [
         "F1",
         "",
         &["kosmo-render", "kosmo-types"],
+    ),
+    (
+        "kosmo-math-kalyx",
+        "framework",
+        "F1",
+        "",
+        &["kosmo-math-model", "kalyx"],
     ),
     (
         "kosmo-sdk",
@@ -289,6 +297,7 @@ fn layout_of(crates: &[Spec], declared: &[(&str, &[(&str, &str)])]) -> Files {
 /// The valid layout with crates in every product workspace.
 fn valid() -> Files {
     let mut files = layout_of(&CRATES, &DECLARED);
+    declare(&mut files, "framework", "kalyx = \"=0.1.0\"");
     // A pure-core crate may use the standard library in its tests.
     edit(
         &mut files,
@@ -387,11 +396,12 @@ fn this_repository_passes() {
     assert_eq!(check(&tree, &check::WORKSPACES), Vec::<String>::new());
 }
 
-// The five cases below are the main failures that the layout step exists
+// The six cases below are the main failures that the layout step exists
 // to catch: a dependency against the layer order, a dependency against the
 // workspace direction, interior mutability in a pure-core crate, a
-// pure-core crate that depends on a provisional crate, and a crate that the
-// layout table does not list.
+// pure-core crate that depends on a provisional crate, a crate that the
+// layout table does not list, and a crate other than the kalyx adapter
+// that declares kalyx.
 
 #[test]
 fn rejects_a_dependency_on_a_higher_layer() {
@@ -478,6 +488,23 @@ fn rejects_a_crate_missing_from_the_layout_table() {
     assert_eq!(
         found,
         ["desktop/kosmo-extra/Cargo.toml: kosmo-extra is not a crate of the layout table"]
+    );
+}
+
+#[test]
+fn rejects_kalyx_in_the_dev_dependencies_of_the_math_model() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/kosmo-math-model/Cargo.toml",
+            "\n[dev-dependencies]\nkalyx.workspace = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/kosmo-math-model/Cargo.toml: [dev-dependencies] kalyx: declares the package kalyx, which only the kalyx adapter kosmo-math-kalyx may declare"
+        ]
     );
 }
 
@@ -2305,4 +2332,181 @@ fn an_export_crate_has_no_external_dependencies() {
             "framework/kosmo-client/Cargo.toml: [dependencies] foo: the export crate kosmo-client may not have external dependencies"
         ]
     );
+}
+
+// kalyx.
+
+/// The problem of a crate or tool other than the kalyx adapter whose
+/// manifest declares kalyx in `table` under the key `key`.
+fn declares_kalyx(manifest: &str, table: &str, key: &str) -> String {
+    format!(
+        "{manifest}: [{table}] {key}: declares the package kalyx, which only the kalyx adapter kosmo-math-kalyx may declare"
+    )
+}
+
+#[test]
+fn the_kalyx_adapter_may_declare_kalyx_in_any_table() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/kosmo-math-kalyx/Cargo.toml",
+            "\n[dev-dependencies]\nkalyx.workspace = true\n\n[target.'cfg(unix)'.build-dependencies]\nkalyx.workspace = true\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn no_other_crate_declares_kalyx_in_any_table() {
+    for table in [
+        "dependencies",
+        "dev-dependencies",
+        "build-dependencies",
+        "target.'cfg(unix)'.dependencies",
+        "target.'cfg(windows)'.dev-dependencies",
+    ] {
+        let found = problems_with(|files| {
+            append(
+                files,
+                "framework/kosmo-render/Cargo.toml",
+                &format!("\n[{table}]\nkalyx.workspace = true\n"),
+            );
+        });
+        assert_eq!(
+            found,
+            [declares_kalyx(
+                "framework/kosmo-render/Cargo.toml",
+                table,
+                "kalyx"
+            )]
+        );
+    }
+}
+
+#[test]
+fn crates_of_other_workspaces_may_not_declare_kalyx() {
+    let found = problems_with(|files| {
+        declare(files, "desktop", "kalyx = \"=0.1.0\"");
+        append(
+            files,
+            "desktop/kosmo-shell/Cargo.toml",
+            "kalyx.workspace = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [declares_kalyx(
+            "desktop/kosmo-shell/Cargo.toml",
+            "dependencies",
+            "kalyx"
+        )]
+    );
+}
+
+#[test]
+fn kalyx_is_found_by_its_package_name_when_renamed() {
+    let in_the_root = problems_with(|files| {
+        declare(
+            files,
+            "framework",
+            "calc = { version = \"=0.1.0\", package = \"kalyx\" }",
+        );
+        append(
+            files,
+            "framework/kosmo-math-model/Cargo.toml",
+            "\n[dependencies]\ncalc.workspace = true\n",
+        );
+    });
+    assert_problems(
+        &in_the_root,
+        &[
+            "framework/Cargo.toml: [workspace.dependencies] calc: may not rename a dependency",
+            &declares_kalyx(
+                "framework/kosmo-math-model/Cargo.toml",
+                "dependencies",
+                "calc",
+            ),
+        ],
+    );
+    let in_the_crate = problems_with(|files| {
+        append(
+            files,
+            "framework/kosmo-math-model/Cargo.toml",
+            "\n[dependencies]\ncalc = { version = \"=0.1.0\", package = \"kalyx\" }\n",
+        );
+    });
+    assert_problems(
+        &in_the_crate,
+        &[
+            "framework/kosmo-math-model/Cargo.toml: [dependencies] calc: may not rename a dependency",
+            "framework/kosmo-math-model/Cargo.toml: [dependencies] calc: must be inherited with workspace = true from the workspace root",
+            &declares_kalyx(
+                "framework/kosmo-math-model/Cargo.toml",
+                "dependencies",
+                "calc",
+            ),
+        ],
+    );
+}
+
+#[test]
+fn a_key_named_kalyx_that_renames_another_package_is_not_kalyx() {
+    let found = problems_with(|files| {
+        declare(
+            files,
+            "desktop",
+            "kalyx = { version = \"=1.0.0\", package = \"other\" }",
+        );
+        append(
+            files,
+            "desktop/kosmo-shell/Cargo.toml",
+            "kalyx.workspace = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        ["desktop/Cargo.toml: [workspace.dependencies] kalyx: may not rename a dependency"]
+    );
+}
+
+#[test]
+fn xtask_may_not_declare_kalyx() {
+    let found = problems_with(|files| {
+        append(files, "xtask/Cargo.toml", "kalyx = \"=0.1.0\"\n");
+        append(
+            files,
+            "xtask/Cargo.toml",
+            "\n[target.'cfg(unix)'.dev-dependencies]\ncalc = { version = \"=0.1.0\", package = \"kalyx\" }\n\n[workspace.dependencies]\nkalyx = \"=0.1.0\"\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[
+            &declares_kalyx("xtask/Cargo.toml", "dependencies", "kalyx"),
+            &declares_kalyx(
+                "xtask/Cargo.toml",
+                "target.'cfg(unix)'.dev-dependencies",
+                "calc",
+            ),
+            "xtask/Cargo.toml: [target.'cfg(unix)'.dev-dependencies] calc: may not rename a dependency",
+            &declares_kalyx("xtask/Cargo.toml", "workspace.dependencies", "kalyx"),
+        ],
+    );
+}
+
+#[test]
+fn crates_may_reach_kalyx_through_the_adapter() {
+    let found = problems_with(|files| {
+        declare(
+            files,
+            "framework",
+            "kosmo-math-kalyx = { path = \"kosmo-math-kalyx\", version = \"=0.1.0-dev.1\" }",
+        );
+        append(
+            files,
+            "framework/kosmo-sdk/Cargo.toml",
+            "kosmo-math-kalyx.workspace = true\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
 }

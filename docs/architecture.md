@@ -766,6 +766,9 @@ only in these directions:
   server crates and the host backends will use only the few packages that the
   layout table allows for each of them, and a host window library only in the
   nested backend crate.
+- Only the kalyx adapter `kosmo-math-kalyx` depends on kalyx directly: no
+  other crate, and not `xtask`, declares the package `kalyx`. Other crates
+  reach kalyx only through the adapter.
 
 The layout table, `layout.toml`, states these rules for each workspace: its
 layers, the workspaces it uses, and its target platforms, for which

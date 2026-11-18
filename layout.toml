@@ -19,7 +19,9 @@
 # tests), `facade-only` on layer S1 (first-party applications) and the crate
 # kosmo in layer S2 (the program) state rules of the source layout, and the
 # layout step requires them as they are written here: changing them
-# changes those rules. Every path is relative to the repository root and
+# changes those rules. The layout step also lets no crate other than the
+# kalyx adapter kosmo-math-kalyx, and not the tool workspace xtask, declare
+# the package kalyx. Every path is relative to the repository root and
 # written without `.`, `..` or a trailing `/`.
 #
 # `targets` are the target platforms, at least one and each once, for which

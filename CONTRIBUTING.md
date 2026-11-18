@@ -164,6 +164,15 @@ attribute of a library root, do not. It checks:
   crate depends only on pure-core crates. Each crate that `same-layer` lists
   is a dependency, and the internal dependency graph, dev-dependencies
   included, has no cycle;
+- kalyx: no crate of the table other than the kalyx adapter
+  `kosmo-math-kalyx`, and not the tool workspace `xtask`, declares the
+  package `kalyx`, in any dependency table, `[target.*]` forms and the
+  `[workspace.dependencies]` of `xtask` included. The package is found by its
+  name: the `package` that the entry renames, or for an entry inherited with
+  `workspace = true` the `package` that its declaration in the root renames,
+  and otherwise the key of the entry, so a renamed `kalyx` fails here as well
+  as being a rename. A crate that depends on `kosmo-math-kalyx` reaches kalyx
+  through it, which this rule does not check;
 - the repository boundary: no package or dependency is named `krepi` or starts
   with `krepi-` or `krepi_`; no `path` and no symbolic link leaves the
   repository (symbolic links also without a table); there is no submodule
