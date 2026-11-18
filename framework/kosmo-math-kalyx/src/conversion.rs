@@ -8,6 +8,7 @@ use kosmo_math_model::{Completeness, Hole, Invalid, Item, Snapshot, TokenKind};
 
 /// Why a line was not converted: it is not complete, so no text is
 /// written for it and nothing is computed from it.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotConverted {
     /// The line misses something: its holes in reading order, as the
