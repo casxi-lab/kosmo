@@ -1,6 +1,7 @@
-//! Bounds: text longer than the display bound is cut on a UTF-8 character
-//! boundary and states its length, and an output line with the wrong
-//! number of fields is shown as an internal error instead of panicking.
+//! Bounds: the display bound is the default output limit of kalyx 0.1.0,
+//! text longer than the bound is cut on a UTF-8 character boundary and
+//! states its length, and an output line with the wrong number of fields is
+//! shown as an internal error instead of panicking.
 //!
 //! No value line under kalyx 0.1.0's default limits is longer than the
 //! bound, so the long value is computed under raised limits. The test checks
@@ -39,6 +40,15 @@ const RENDERED_BYTES: usize = 65_584;
 /// The expected rendering, followed by a line feed; `data/README.md` gives
 /// its source.
 const RENDERED: &str = include_str!("data/long-value.txt");
+
+#[test]
+fn the_bound_is_the_default_output_limit_of_kalyx() -> Checked {
+    assert_eq!(
+        u64::try_from(MAX_DISPLAY_BYTES)?,
+        Limits::new().max_output_bytes
+    );
+    Ok(())
+}
 
 #[test]
 fn under_the_default_limits_the_long_value_reaches_the_work_limit() {

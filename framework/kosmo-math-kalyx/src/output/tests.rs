@@ -106,6 +106,52 @@ fn an_error_line_gives_its_kind_and_place() {
     );
 }
 
+/// The kinds of kalyx 0.1.0 other than `ResourceLimit`, which have no
+/// limit, by their names.
+fn kinds_without_a_limit() -> [(&'static str, ErrorKind); 9] {
+    [
+        ("Cancelled", ErrorKind::Cancelled),
+        ("DeadlineExceeded", ErrorKind::DeadlineExceeded),
+        ("Syntax", ErrorKind::Syntax),
+        ("UnknownSymbol", ErrorKind::UnknownSymbol),
+        ("DivisionByZero", ErrorKind::DivisionByZero),
+        ("NonIntegerExponent", ErrorKind::NonIntegerExponent),
+        ("NotPolynomial", ErrorKind::NotPolynomial),
+        ("Unsupported", ErrorKind::Unsupported),
+        ("Internal", ErrorKind::Internal),
+    ]
+}
+
+#[test]
+fn each_kind_without_a_limit_is_read_as_its_own_not_as_a_later_kind() {
+    for (name, kind) in kinds_without_a_limit() {
+        let line = format!("error\t1\t2\t3\t{name}\t-\t-\t-\t-\t-\tm\n");
+        assert_eq!(
+            read(&line),
+            Content::Error {
+                kind,
+                place: Place::Line,
+            },
+            "{line:?}"
+        );
+    }
+}
+
+#[test]
+fn a_limit_field_of_a_kind_without_a_limit_is_unreadable() {
+    for (name, _) in kinds_without_a_limit() {
+        for fields in [
+            "Field(max_work)\t-\t-\t-",
+            "-\tValue\t-\t-",
+            "-\t-\t1\t-",
+            "-\t-\t-\tUsed(2)",
+        ] {
+            let line = format!("error\t1\t2\t3\t{name}\t-\t{fields}\tm\n");
+            assert_eq!(unreadable(&line), Unreadable::Malformed, "{line:?}");
+        }
+    }
+}
+
 #[test]
 fn a_resource_limit_gives_its_limit_scope_allowed_value_and_amount() {
     let cases = [
