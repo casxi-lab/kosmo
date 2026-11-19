@@ -163,8 +163,8 @@ fn a_resource_limit_gives_its_limit_scope_allowed_value_and_amount() {
             LimitAmount::Used(0),
         ),
         (
-            "Parameter(a\\tb\\nc\\\\d\\re\\x01\\x7f\u{e9})\t-\t0\tRequired(1)",
-            LimitId::Parameter("a\\tb\\nc\\\\d\\re\\x01\\x7f\u{e9}".to_string()),
+            "Parameter(a\\tb\\nc\\\\d\\re\\x01\\x7f\u{e9}\u{85})\t-\t0\tRequired(1)",
+            LimitId::Parameter("a\\tb\\nc\\\\d\\re\\x01\\x7f\u{e9}\u{85}".to_string()),
             None,
             0,
             LimitAmount::Required(1),
