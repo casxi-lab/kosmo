@@ -31,9 +31,19 @@ here.
 of that test, kalyx 0.1.0 computes `expand x (x+1)^600` and writes a value
 line of 82,971 bytes. Its display text of 82,958 bytes is longer than the
 bound, so the rendering as the current result keeps the first 65,536 bytes
-and ends in ` ... (82958 bytes)`, 65,584 bytes in all. The file was written
-from that line by a script outside the repository, not by kosmo's code;
-without its final line feed, its SHA-256 is
+and ends in ` ... (82958 bytes)`, 65,584 bytes in all. The file is written
+from the line that kalyx's own program writes, not by kosmo's code. With
+`kalyx` the command-line program of the package `kalyx` 0.1.0 on crates.io,
+these commands write it under the limits of the test:
+
+```sh
+kalyx --limits 'max_output_bytes=1000000;max_work=1000000000;max_storage_bytes=100000000;max_nodes=10000000' \
+  expand x '(x+1)^600' | cut -f5 | tr -d '\n' > text
+{ printf 'value (source 0, settings 0): '; head -c 65536 text
+  printf ' ... (%d bytes)\n' "$(wc -c < text)"; } > long-value.txt
+```
+
+Without its final line feed, the file's SHA-256 is
 `cfb287d1b4c5e6e0c5ad47510c1ed30f141d445c43c0f3d730edadba12debe45`. The test
 compares the rendering with the whole file. A change that moves kosmo to
 another kalyx version, or changes the bound or how a cut text ends, rewrites
