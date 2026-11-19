@@ -1,6 +1,9 @@
 //! The editing structure of formulas, apart from the expressions of the
 //! computer algebra library: one line of input with its cursor, selection,
-//! holes and source version.
+//! holes and source version. Beside it, the [`version`] module holds the
+//! three versions of a computation request, and the [`display`] module the
+//! display model of exact results, which renders each result as one line of
+//! text against the versions it was computed from.
 //!
 //! An [`EditBuffer`] holds one line as a root block of characters. Editing
 //! operations insert and delete characters, move the cursor, select and copy
@@ -43,12 +46,13 @@
 #![forbid(unsafe_code)]
 
 mod buffer;
+pub mod display;
 mod parse;
 mod structure;
 pub mod version;
 
 pub use buffer::{EditBuffer, Rejected, Snapshot};
-pub use structure::{Fragment, Item, NodeId, Position, Selection, TemplateKind};
+pub use structure::{Fragment, Item, NodeId, Place, Position, Selection, TemplateKind};
 
 /// The most items a line holds. Every character is one item and one byte.
 pub const MAX_ITEMS: usize = 4096;

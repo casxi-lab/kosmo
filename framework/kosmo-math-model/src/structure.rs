@@ -112,6 +112,19 @@ impl Fragment {
     }
 }
 
+/// Where in a line something lies that is about a part of it, such as an
+/// error of a computation.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Place {
+    /// The whole line, for an error about no single part of it.
+    Line,
+    /// The items of a fragment.
+    Fragment(Fragment),
+    /// The place between two items, such as the end of the line.
+    Position(Position),
+}
+
 /// A selection: an anchor and an active end in the same block, which are
 /// never equal. The cursor is the active end.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

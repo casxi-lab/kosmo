@@ -10,54 +10,7 @@ use kalyx::command::serialize;
 use kalyx::{Limits, Request, execute};
 use kosmo_math_kalyx::{NotReusable, convert, read_back};
 use kosmo_math_model::{Completeness, MAX_INSERT_BYTES, Rejected};
-use support::{Checked, context, equal_terms, line, text, wide};
-
-/// The answer vectors of kalyx 0.1.0; `data/README.md` gives their source.
-const VECTORS: &str = include_str!("data/r02.tsv");
-
-/// The answers that are longer than one insertion may be.
-const TOO_LONG: [&str; 2] = ["dense_rational_128", "derivative_128"];
-
-/// A case of the answer vectors whose result is `ok`.
-struct Answer<'a> {
-    id: &'a str,
-    operation: &'a str,
-    variable: &'a str,
-    input: &'a str,
-    answer: &'a str,
-}
-
-/// The cases of the answer vectors whose result is `ok`, in order. Every
-/// line has the seven columns of the header.
-fn answers() -> Checked<Vec<Answer<'static>>> {
-    let mut lines = VECTORS.lines();
-    assert_eq!(
-        lines.next(),
-        Some("id\toperation\tvariable\tinput\tresult\tanswer\tlimits")
-    );
-    let mut cases = 0;
-    let mut answers = Vec::new();
-    for line in lines {
-        cases += 1;
-        let columns: Vec<&str> = line.split('\t').collect();
-        let &[id, operation, variable, input, result, answer, limits] = columns.as_slice() else {
-            return Err(format!("not seven columns: {line:?}").into());
-        };
-        if result == "ok" {
-            // Every `ok` case uses the default limits.
-            assert_eq!(limits, "-", "{id}");
-            answers.push(Answer {
-                id,
-                operation,
-                variable,
-                input,
-                answer,
-            });
-        }
-    }
-    assert_eq!(cases, 58);
-    Ok(answers)
-}
+use support::{Checked, TOO_LONG, answers, context, equal_terms, line, text, wide};
 
 #[test]
 fn the_answer_vectors_hold_forty_nine_ok_answers() -> Checked {

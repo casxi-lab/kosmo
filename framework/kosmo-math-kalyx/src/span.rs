@@ -4,23 +4,9 @@
 use std::fmt;
 use std::ops::Range;
 
-use kosmo_math_model::{Fragment, Position, Snapshot};
+use kosmo_math_model::{Fragment, Place, Position, Snapshot};
 
 use crate::conversion::{Linear, Piece};
-
-/// Where in a line an error of kalyx lies.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Place {
-    /// The whole line: the error has no span, which an error line writes
-    /// as `-`.
-    Line,
-    /// The items that a non-empty span covers.
-    Fragment(Fragment),
-    /// The place between two items that an empty span marks, such as the
-    /// end of the line.
-    Position(Position),
-}
 
 /// A span that does not lie in the linear text of the line: it runs
 /// backwards or ends past the end of the text.

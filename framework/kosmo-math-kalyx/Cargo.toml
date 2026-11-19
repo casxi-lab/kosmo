@@ -1,6 +1,6 @@
 [package]
 name = "kosmo-math-kalyx"
-description = "Formula conversion between the editing structure and kalyx 0.1.0: linear text, error ranges and read-back"
+description = "Formula conversion between the editing structure and kalyx 0.1.0: linear text, error ranges, read-back and output lines"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

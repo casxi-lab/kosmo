@@ -1,5 +1,6 @@
-//! Helpers shared by the integration tests: building lines, and reading
-//! text with kalyx 0.1.0 as its command-line program does.
+//! Helpers shared by the integration tests: building lines, reading text
+//! with kalyx 0.1.0 as its command-line program does, and the answer
+//! vectors of kalyx 0.1.0.
 
 #![allow(dead_code, reason = "each test file uses some of the helpers")]
 
@@ -90,4 +91,51 @@ pub fn span_field(line: &str) -> Checked<Option<Range<usize>>> {
         }
         None => Err("an error line has a span".into()),
     }
+}
+
+/// The answer vectors of kalyx 0.1.0; `data/README.md` gives their source.
+const VECTORS: &str = include_str!("../data/r02.tsv");
+
+/// The answers that are longer than one insertion may be.
+pub const TOO_LONG: [&str; 2] = ["dense_rational_128", "derivative_128"];
+
+/// A case of the answer vectors whose result is `ok`.
+pub struct Answer<'a> {
+    pub id: &'a str,
+    pub operation: &'a str,
+    pub variable: &'a str,
+    pub input: &'a str,
+    pub answer: &'a str,
+}
+
+/// The cases of the answer vectors whose result is `ok`, in order. Every
+/// line has the seven columns of the header.
+pub fn answers() -> Checked<Vec<Answer<'static>>> {
+    let mut lines = VECTORS.lines();
+    assert_eq!(
+        lines.next(),
+        Some("id\toperation\tvariable\tinput\tresult\tanswer\tlimits")
+    );
+    let mut cases = 0;
+    let mut answers = Vec::new();
+    for line in lines {
+        cases += 1;
+        let columns: Vec<&str> = line.split('\t').collect();
+        let &[id, operation, variable, input, result, answer, limits] = columns.as_slice() else {
+            return Err(format!("not seven columns: {line:?}").into());
+        };
+        if result == "ok" {
+            // Every `ok` case uses the default limits.
+            assert_eq!(limits, "-", "{id}");
+            answers.push(Answer {
+                id,
+                operation,
+                variable,
+                input,
+                answer,
+            });
+        }
+    }
+    assert_eq!(cases, 58);
+    Ok(answers)
 }
