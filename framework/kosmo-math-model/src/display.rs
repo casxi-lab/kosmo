@@ -41,7 +41,9 @@ use std::ops::Range;
 use crate::Place;
 use crate::version::Versions;
 
-/// The most bytes of text that a rendering shows after its colon: the
+/// The most bytes of an item's text that a rendering shows after its
+/// colon. A longer text is cut and followed by ` ... (L bytes)` with its
+/// length `L`, as [`DisplayItem::render`] describes. The bound is the
 /// default `max_output_bytes` of kalyx 0.1.0, so that the display text of
 /// every value computed under the default limits is shown whole.
 pub const MAX_DISPLAY_BYTES: usize = 65_536;
@@ -155,7 +157,9 @@ pub enum LimitId {
     /// A field of kalyx's `Limits`, by its name, such as `max_work`.
     Field(String),
     /// A parameter of the request, by its name as the output line writes
-    /// it: escaped, so that it holds no control character.
+    /// it: escaped, so that it holds no ASCII control character. kalyx
+    /// 0.1.0 escapes the bytes `0x00` to `0x1F` and `0x7F` and writes every
+    /// other byte as it is.
     Parameter(String),
 }
 
@@ -269,7 +273,9 @@ impl LineKind {
 }
 
 impl DisplayItem {
-    /// The item rendered as one line of text, without a line feed:
+    /// The item rendered as text without a line feed. When the item is read
+    /// from an output line, its strings hold no ASCII control character, so
+    /// the rendering is one line:
     ///
     /// ```text
     /// <head> (source S, settings T[, stale]): <text>
