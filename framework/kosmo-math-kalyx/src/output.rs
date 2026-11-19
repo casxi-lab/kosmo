@@ -23,9 +23,9 @@ const ERROR_FIELDS: usize = 11;
 /// carried. The item always carries `versions`, whatever the line holds.
 ///
 /// The line is read as the output lines of kalyx 0.1.0 are written: UTF-8,
-/// fields separated by tabs and one final line feed, with no other control
-/// character; decimal numbers without a sign or leading zeros; and the
-/// versions of the request echoed in the second to fourth fields.
+/// fields separated by tabs and one final line feed, with no other ASCII
+/// control character; decimal numbers without a sign or leading zeros; and
+/// the versions of the request echoed in the second to fourth fields.
 ///
 /// - A value line gives its display text, which is printable ASCII, and a
 ///   state line the name of its state, which may be a state that kalyx
@@ -213,8 +213,8 @@ fn is_field_name(name: &str) -> bool {
 
 /// Whether `name` is escaped as kalyx escapes the name of a parameter:
 /// every backslash starts `\\`, `\t`, `\n`, `\r` or `\x` with two lowercase
-/// hexadecimal digits. The line holds no control character, which the
-/// escapes stand for.
+/// hexadecimal digits. The line holds no ASCII control character; the
+/// escapes stand for those bytes and for the backslash.
 fn is_escaped(name: &str) -> bool {
     let mut bytes = name.bytes();
     while let Some(byte) = bytes.next() {

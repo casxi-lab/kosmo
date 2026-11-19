@@ -158,8 +158,8 @@ pub enum LimitId {
     Field(String),
     /// A parameter of the request, by its name as the output line writes
     /// it: escaped, so that it holds no ASCII control character. kalyx
-    /// 0.1.0 escapes the bytes `0x00` to `0x1F` and `0x7F` and writes every
-    /// other byte as it is.
+    /// 0.1.0 writes a backslash as `\\`, the other bytes from `0x00` to
+    /// `0x1F` and `0x7F` as escapes, and every other byte as it is.
     Parameter(String),
 }
 
@@ -183,8 +183,9 @@ pub enum Unreadable {
     NotUtf8,
     /// The line does not end with a line feed.
     Unterminated,
-    /// The line holds a control character other than the tabs between its
-    /// fields and the final line feed.
+    /// The line holds an ASCII control character, a byte from `0x00` to
+    /// `0x1F` or `0x7F`, other than the tabs between its fields and the
+    /// final line feed.
     ControlCharacter,
     /// The first field names no kind of line.
     UnknownKind,
@@ -273,9 +274,9 @@ impl LineKind {
 }
 
 impl DisplayItem {
-    /// The item rendered as text without a line feed. When the item is read
-    /// from an output line, its strings hold no ASCII control character, so
-    /// the rendering is one line:
+    /// The item rendered as text, with no line feed at its end. When the
+    /// item is read from an output line, its strings hold no ASCII control
+    /// character, so the rendering holds no line feed or carriage return:
     ///
     /// ```text
     /// <head> (source S, settings T[, stale]): <text>
