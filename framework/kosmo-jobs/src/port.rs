@@ -6,7 +6,6 @@
 //! and the traits only gain methods with defaults, so a backend that krepi
 //! provides later implements the same ports.
 
-use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
@@ -64,11 +63,9 @@ pub trait JobClock: Send {
     fn fork(&self) -> Box<dyn JobClock>;
 }
 
-/// What a [`CancelHandle`] sets: in the kalyx runner, a job's cancel flag.
-///
-/// The runner that makes a handle chooses the target, and gets it back
-/// from the handle in the work item with [`CancelHandle::target`].
-pub trait CancelTarget: Any + Send + Sync {
+/// What a [`CancelHandle`] sets: the cancellation that a runner keeps for
+/// one job, such as the job's cancel flag in a runner that uses kalyx.
+pub trait CancelTarget: Send + Sync {
     /// Sets the cancellation. Setting it again changes nothing.
     fn set(&self);
 }
@@ -76,11 +73,12 @@ pub trait CancelTarget: Any + Send + Sync {
 /// The opaque cancel handle of one job of the host stub.
 ///
 /// A handle is `Send` and can be cloned, and setting it is its only
-/// operation: it cannot be read or cleared. The runner's preparing half
-/// makes it, on the job-layer thread, from a [`CancelTarget`] that it
-/// chooses; the host stub sets it after the job layer accepted a cancel
-/// request; and the runner's running half finds its target again on the
-/// worker thread through [`CancelHandle::target`].
+/// operation: nothing can read or clear a cancellation through it. The
+/// runner's preparing half makes it on the job-layer thread from a
+/// [`CancelTarget`] of its choice, and the host stub sets it after the job
+/// layer accepted a cancel request. The runner reads the cancellation only
+/// from its own value for the job, the [`JobPreparer::Token`] that the
+/// preparing half made with the handle.
 #[derive(Clone)]
 pub struct CancelHandle {
     target: Arc<dyn CancelTarget>,
@@ -88,7 +86,7 @@ pub struct CancelHandle {
 
 impl CancelHandle {
     /// A handle that sets `target`.
-    pub fn new<T: CancelTarget>(target: T) -> CancelHandle {
+    pub fn new<T: CancelTarget + 'static>(target: T) -> CancelHandle {
         CancelHandle {
             target: Arc::new(target),
         }
@@ -97,13 +95,6 @@ impl CancelHandle {
     /// Sets the cancellation of the job.
     pub fn set(&self) {
         self.target.set();
-    }
-
-    /// The target of the handle, if it is a `T`: the runner that made the
-    /// handle gets back what it made it from.
-    pub fn target<T: CancelTarget>(&self) -> Option<&T> {
-        let target: &dyn Any = &*self.target;
-        target.downcast_ref::<T>()
     }
 }
 
@@ -114,6 +105,9 @@ impl fmt::Debug for CancelHandle {
 }
 
 /// What the host stub hands to its runner: the job and its cancel handle.
+///
+/// The runner's own value for the job, its [`JobPreparer::Token`], comes
+/// beside the work item, as the second argument of [`JobRunner::run`].
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct WorkItem {
@@ -146,25 +140,38 @@ impl WorkItem {
 /// job-layer thread.
 ///
 /// The host stub calls [`prepare`](JobPreparer::prepare) when it receives a
-/// job, before it hands the job to its worker thread.
+/// job, before it hands the job to its worker thread. The preparing half
+/// keeps nothing for the job: the host stub keeps the cancel handle until
+/// the job's `Finished` arrives and then drops it, and moves the token,
+/// untouched, to the running half with the job. A runner that uses kalyx,
+/// for example, makes the job's cancel flag here, puts one clone of it in
+/// the handle's target and gives another as the token.
 pub trait JobPreparer {
-    /// Prepares job `id` and gives its cancel handle. The kalyx runner
-    /// makes the job's cancel flag here.
-    fn prepare(&mut self, id: JobId) -> CancelHandle;
+    /// The runner's own value for one job, which only its running half
+    /// reads: the job's cancellation that the handle sets, and anything
+    /// else the runner prepares for the job.
+    type Token: Send + 'static;
+
+    /// Prepares job `id`: its cancel handle, which the host stub keeps and
+    /// sets, and the token that the running half gets with the job.
+    fn prepare(&mut self, id: JobId) -> (CancelHandle, Self::Token);
 }
 
 /// The running half of a runner of the host stub, which the stub moves to
-/// its worker thread.
+/// its worker thread; `T` is the [`JobPreparer::Token`] of the preparing
+/// half.
 ///
 /// The worker reports `Started` for a job, then calls
 /// [`run`](JobRunner::run) and reports `Finished` with what it returns. A
 /// runner runs one job at a time. Before each request, the first included,
-/// it checks the job's cancellation and then its deadline, a deadline
-/// having passed when a reading of its clock is at least the deadline; it
-/// runs no further request after either, and returns the stop.
-pub trait JobRunner: Send + 'static {
-    /// Runs the job of `item`.
-    fn run(&mut self, item: WorkItem) -> RunReport;
+/// it checks the job's cancellation, through the token, and then its
+/// deadline, a deadline having passed when a reading of its clock is at
+/// least the deadline; it runs no further request after either, and returns
+/// the stop.
+pub trait JobRunner<T>: Send + 'static {
+    /// Runs the job of `item` with `token`, the value that the preparing
+    /// half made for the job.
+    fn run(&mut self, item: WorkItem, token: T) -> RunReport;
 }
 
 /// What a runner returns for a job: the reports of the requests that ran
@@ -213,21 +220,17 @@ mod tests {
         }
     }
 
-    struct Other;
-
-    impl CancelTarget for Other {
-        fn set(&self) {}
-    }
-
     #[test]
-    fn a_handle_sets_its_target_and_gives_it_back_to_its_maker() {
+    fn every_clone_of_a_handle_sets_the_same_target() {
         let seen = Arc::new(AtomicBool::new(false));
         let handle = CancelHandle::new(Flag(Arc::clone(&seen)));
         let copy = handle.clone();
         assert!(!seen.load(Ordering::SeqCst));
         copy.set();
         assert!(seen.load(Ordering::SeqCst));
-        assert!(handle.target::<Flag>().is_some());
-        assert!(handle.target::<Other>().is_none());
+        handle.set();
+        assert!(seen.load(Ordering::SeqCst));
+        drop((handle, copy));
+        assert_eq!(Arc::strong_count(&seen), 1, "the handles held the target");
     }
 }

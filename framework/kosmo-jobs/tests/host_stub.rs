@@ -14,8 +14,8 @@ use kosmo_jobs::{
 };
 use support::{Checked, Still, eval, value, versions};
 
-/// The cancel target of the test runner.
-struct Flag(AtomicBool);
+/// The cancel target of the test runner: the job's flag.
+struct Flag(Arc<AtomicBool>);
 
 impl CancelTarget for Flag {
     fn set(&self) {
@@ -23,12 +23,16 @@ impl CancelTarget for Flag {
     }
 }
 
-/// The preparing half of the test runner.
+/// The preparing half of the test runner: a new flag for each job, set
+/// through the handle and read through the token.
 struct Prepare;
 
 impl JobPreparer for Prepare {
-    fn prepare(&mut self, _id: JobId) -> CancelHandle {
-        CancelHandle::new(Flag(AtomicBool::new(false)))
+    type Token = Arc<AtomicBool>;
+
+    fn prepare(&mut self, _id: JobId) -> (CancelHandle, Arc<AtomicBool>) {
+        let flag = Arc::new(AtomicBool::new(false));
+        (CancelHandle::new(Flag(Arc::clone(&flag))), flag)
     }
 }
 
@@ -40,21 +44,17 @@ struct Run {
     threads: Arc<Mutex<Vec<Option<String>>>>,
 }
 
-impl JobRunner for Run {
+impl JobRunner<Arc<AtomicBool>> for Run {
     #[allow(
         clippy::panic,
         reason = "the runner panics on purpose to end the worker thread"
     )]
-    fn run(&mut self, item: WorkItem) -> RunReport {
+    fn run(&mut self, item: WorkItem, flag: Arc<AtomicBool>) -> RunReport {
         let name = std::thread::current().name().map(String::from);
         if let Ok(mut threads) = self.threads.lock() {
             threads.push(name);
         }
-        let set = item
-            .cancel_handle()
-            .target::<Flag>()
-            .is_none_or(|flag| flag.0.load(Ordering::SeqCst));
-        if set {
+        if flag.load(Ordering::SeqCst) {
             return RunReport::new(Vec::new(), Some(StopReason::Cancellation));
         }
         let request = item.request();

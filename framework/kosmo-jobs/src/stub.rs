@@ -29,11 +29,14 @@
 //! the runner; a panic of the worker is not raised again. Afterwards
 //! [`HostStub::live_threads`] is 0.
 //!
-//! A runner has two halves. The preparing half makes each job's cancel
-//! handle on the job-layer thread, from a target of its choice; the running
-//! half gets the target back from the work item on the worker thread:
+//! A runner has two halves. On the job-layer thread, the preparing half
+//! makes each job's cancel handle from a target of its choice, and a token,
+//! its own value for the job. The stub keeps the handle, which it can only
+//! set, and moves the token with the job to the running half on the worker
+//! thread, which reads the cancellation from it:
 //!
 //! ```
+//! use std::sync::Arc;
 //! use std::sync::atomic::{AtomicBool, Ordering};
 //!
 //! use kosmo_jobs::stub::HostStub;
@@ -43,25 +46,26 @@
 //! };
 //! use kosmo_math_model::version::Versions;
 //!
-//! struct Flag(AtomicBool);
+//! struct Flag(Arc<AtomicBool>);
 //! impl CancelTarget for Flag {
 //!     fn set(&self) { self.0.store(true, Ordering::SeqCst) }
 //! }
 //!
 //! struct Prepare;
 //! impl JobPreparer for Prepare {
-//!     fn prepare(&mut self, _id: JobId) -> CancelHandle {
-//!         CancelHandle::new(Flag(AtomicBool::new(false)))
+//!     type Token = Arc<AtomicBool>;
+//!     fn prepare(&mut self, _id: JobId) -> (CancelHandle, Arc<AtomicBool>) {
+//!         let flag = Arc::new(AtomicBool::new(false));
+//!         (CancelHandle::new(Flag(Arc::clone(&flag))), flag)
 //!     }
 //! }
 //!
 //! // A runner that runs no request: it stops each job for its
 //! // cancellation, or reports that the job's deadline passed.
 //! struct Run;
-//! impl JobRunner for Run {
-//!     fn run(&mut self, item: WorkItem) -> RunReport {
-//!         let flag = item.cancel_handle().target::<Flag>();
-//!         let stop = if flag.is_some_and(|f| f.0.load(Ordering::SeqCst)) {
+//! impl JobRunner<Arc<AtomicBool>> for Run {
+//!     fn run(&mut self, _item: WorkItem, flag: Arc<AtomicBool>) -> RunReport {
+//!         let stop = if flag.load(Ordering::SeqCst) {
 //!             StopReason::Cancellation
 //!         } else {
 //!             StopReason::Deadline
@@ -122,9 +126,10 @@ impl std::error::Error for WorkerNotStarted {}
 
 /// The host stub, generic over the runner port: the preparing half `P`
 /// stays with the stub, and the running half moves to the worker thread.
-pub struct HostStub<P> {
+pub struct HostStub<P: JobPreparer> {
     preparer: P,
-    dispatch: Option<SyncSender<WorkItem>>,
+    /// Each job with the token that the preparing half made for it.
+    dispatch: Option<SyncSender<(WorkItem, P::Token)>>,
     reports: Receiver<Report>,
     worker: Option<JoinHandle<()>>,
     /// The cancel handles of the jobs handed to the worker whose `Finished`
@@ -140,8 +145,11 @@ pub struct HostStub<P> {
 impl<P: JobPreparer> HostStub<P> {
     /// A stub with the runner halves `preparer` and `runner`, whose worker
     /// thread runs from now on.
-    pub fn new<R: JobRunner>(preparer: P, runner: R) -> Result<HostStub<P>, WorkerNotStarted> {
-        let (dispatch, jobs) = sync_channel::<WorkItem>(MAX_LIVE_JOBS);
+    pub fn new<R: JobRunner<P::Token>>(
+        preparer: P,
+        runner: R,
+    ) -> Result<HostStub<P>, WorkerNotStarted> {
+        let (dispatch, jobs) = sync_channel::<(WorkItem, P::Token)>(MAX_LIVE_JOBS);
         let (sender, reports) = sync_channel::<Report>(2 * MAX_LIVE_JOBS);
         let worker = Builder::new()
             .name(WORKER_NAME.to_string())
@@ -160,7 +168,7 @@ impl<P: JobPreparer> HostStub<P> {
     }
 }
 
-impl<P> HostStub<P> {
+impl<P: JobPreparer> HostStub<P> {
     /// The number of worker threads that are running: 1 from construction
     /// until the worker ends, and 0 after shutdown.
     pub fn live_threads(&self) -> usize {
@@ -191,10 +199,10 @@ impl<P> HostStub<P> {
 impl<P: JobPreparer> JobBackend for HostStub<P> {
     fn submit(&mut self, request: JobRequest) {
         let id = request.id();
-        let handle = self.preparer.prepare(id);
+        let (handle, token) = self.preparer.prepare(id);
         let sent = match (&self.dispatch, self.stopped) {
             (Some(dispatch), false) => dispatch
-                .try_send(WorkItem::new(request, handle.clone()))
+                .try_send((WorkItem::new(request, handle.clone()), token))
                 .is_ok(),
             _ => false,
         };
@@ -251,7 +259,7 @@ impl<P: JobPreparer> JobBackend for HostStub<P> {
     }
 }
 
-impl<P> Drop for HostStub<P> {
+impl<P: JobPreparer> Drop for HostStub<P> {
     fn drop(&mut self) {
         self.dispatch = None;
         if let Some(worker) = self.worker.take() {
@@ -269,10 +277,14 @@ fn internal_error(id: JobId) -> Report {
     ))
 }
 
-/// The worker thread: runs each job it receives, until the dispatch
-/// channel closes.
-fn work<R: JobRunner>(mut runner: R, jobs: &Receiver<WorkItem>, reports: &SyncSender<Report>) {
-    while let Ok(item) = jobs.recv() {
+/// The worker thread: runs each job it receives, with its token, until the
+/// dispatch channel closes.
+fn work<T, R: JobRunner<T>>(
+    mut runner: R,
+    jobs: &Receiver<(WorkItem, T)>,
+    reports: &SyncSender<Report>,
+) {
+    while let Ok((item, token)) = jobs.recv() {
         let id = item.request().id();
         let guard = ReportGuard {
             id,
@@ -283,7 +295,7 @@ fn work<R: JobRunner>(mut runner: R, jobs: &Receiver<WorkItem>, reports: &SyncSe
             // The stub is gone, so no report can arrive anywhere.
             return;
         }
-        let (requests, stop) = runner.run(item).into_parts();
+        let (requests, stop) = runner.run(item, token).into_parts();
         guard.finish(Finished::new(id, requests, stop));
     }
 }
