@@ -108,6 +108,14 @@ export = false
 pure-core = false
 publish = false
 
+[crates.kosmo-jobs]
+path = "framework/kosmo-jobs"
+layer = "F0"
+export = false
+pure-core = false
+publish = false
+same-layer = ["kosmo-math-model"]
+
 [crates.kosmo-math-kalyx]
 path = "framework/kosmo-math-kalyx"
 layer = "F1"

@@ -20,6 +20,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kosmo-jobs"
+version = "0.1.0-dev.1"
+dependencies = [
+ "kosmo-math-model",
+]
+
+[[package]]
 name = "kosmo-math-kalyx"
 version = "0.1.0-dev.1"
 dependencies = [
