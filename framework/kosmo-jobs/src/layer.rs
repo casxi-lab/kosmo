@@ -1,5 +1,6 @@
 //! The shell of the job layer: its API on the job-layer thread.
 
+use crate::controllable::ControllableBackend;
 use crate::machine::{CancelAnswer, CancelCount, Command, JobState, Machine, Terminal};
 use crate::{JobBackend, JobClock, JobId, Rejected, SessionCancel, SessionId, Submission};
 
@@ -140,15 +141,11 @@ impl<B: JobBackend> JobLayer<B> {
         self.machine.live()
     }
 
-    /// The backend.
+    /// The backend, to read it, such as the live threads of the host stub.
+    /// Only the job layer submits jobs to its backend, cancels them there,
+    /// takes their reports and shuts the backend down.
     pub const fn backend(&self) -> &B {
         &self.backend
-    }
-
-    /// The backend, to arrange it in tests. The job layer expects that only
-    /// it submits and cancels jobs there.
-    pub const fn backend_mut(&mut self) -> &mut B {
-        &mut self.backend
     }
 
     /// Carries out the core's commands.
@@ -159,6 +156,16 @@ impl<B: JobBackend> JobLayer<B> {
                 Command::SetCancel(id) => self.backend.cancel(id),
             }
         }
+    }
+}
+
+impl JobLayer<ControllableBackend> {
+    /// The controllable backend, to give its jobs their plans and release
+    /// their gates. Submitting, cancelling, taking reports and shutting down
+    /// stay with the job layer: a report taken here never reaches it, and
+    /// its job stays live.
+    pub const fn controllable(&mut self) -> &mut ControllableBackend {
+        &mut self.backend
     }
 }
 

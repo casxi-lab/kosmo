@@ -69,7 +69,7 @@ fn cancelling_a_session_cancels_its_queued_and_running_jobs_once() -> Checked {
     // The queued job stops before its first request; the running ones end.
     for order in 0..3 {
         let gate = layer.backend().waiting_at(order).ok_or("no gate")?;
-        layer.backend_mut().release(order, gate);
+        layer.controllable().release(order, gate);
     }
     assert_eq!(layer.poll(), vec![a_running, a_queued, b_running]);
     let ends: Vec<_> = [a_running, a_queued, b_running]

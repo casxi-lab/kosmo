@@ -87,6 +87,7 @@ pub enum Input {
 
 /// What one step of the core gives back: the answer to its input and the
 /// commands that the shell carries out, in order.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
     /// The answer to the input.

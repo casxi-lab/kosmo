@@ -113,6 +113,7 @@ pub const WORKER_NAME: &str = "kosmo-jobs-worker";
 pub const WORKER_STACK_SIZE: usize = 2 * 1024 * 1024;
 
 /// The worker thread of a host stub could not be created.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WorkerNotStarted;
 

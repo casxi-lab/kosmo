@@ -90,7 +90,7 @@ fn a_cancel_accepted_before_the_finished_report_is_handled_discards_the_result()
 
     // The backend's end of the job with its value line is waiting, and the
     // core has not handled it yet.
-    layer.backend_mut().release(0, Gate::Finished);
+    layer.controllable().release(0, Gate::Finished);
     assert!(matches!(
         layer.backend().sent().last(),
         Some(Report::Finished(finished)) if finished.requests().len() == 1
@@ -123,7 +123,7 @@ fn stopped(stop: StopReason, cancel: bool) -> Checked<Terminal> {
     if cancel {
         assert_eq!(layer.cancel(id), CancelAnswer::Requested);
     }
-    layer.backend_mut().release(0, Gate::Finished);
+    layer.controllable().release(0, Gate::Finished);
     assert_eq!(layer.poll(), vec![id]);
     Ok(layer.take(id).ok_or("no terminal state")?)
 }
@@ -223,7 +223,7 @@ fn an_echo_of_other_versions_fails_the_job_unless_it_was_cancelled() -> Checked 
     let cancelled = layer.submit(eval(session, tagged, "1/3+1/6"))?;
     layer.poll();
     assert_eq!(layer.cancel(cancelled), CancelAnswer::Requested);
-    layer.backend_mut().release(1, Gate::Finished);
+    layer.controllable().release(1, Gate::Finished);
     let terminal = layer.wait(cancelled).ok_or("no terminal state")?;
     assert_eq!(terminal.record().state(), TerminalState::Cancelled);
     assert!(!terminal.record().internal_error());
@@ -257,7 +257,7 @@ fn a_cancellation_seen_between_two_requests_runs_no_second_request() -> Checked 
     assert!(layer.poll().is_empty());
     assert_eq!(layer.state(id), Some(JobState::Running));
     assert_eq!(layer.cancel(id), CancelAnswer::Requested);
-    layer.backend_mut().release(0, Gate::Between(1));
+    layer.controllable().release(0, Gate::Between(1));
 
     let Some(Report::Finished(finished)) = layer.backend().sent().last() else {
         return Err("no Finished report".into());

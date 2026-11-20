@@ -47,7 +47,7 @@ fn finish(
     order: usize,
     id: JobId,
 ) -> Checked<Option<Judgement>> {
-    layer.backend_mut().release(order, Gate::Finished);
+    layer.controllable().release(order, Gate::Finished);
     assert_eq!(layer.poll(), vec![id]);
     let terminal = layer.take(id).ok_or("no terminal state")?;
     Ok(region.deliver(&terminal))

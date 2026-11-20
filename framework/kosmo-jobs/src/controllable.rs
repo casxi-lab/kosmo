@@ -39,7 +39,7 @@
 //! assert_eq!(layer.cancel(id), CancelAnswer::Requested);
 //!
 //! // Released, the backend sees the cancellation before the request.
-//! layer.backend_mut().release(0, Gate::Between(0));
+//! layer.controllable().release(0, Gate::Between(0));
 //! assert_eq!(layer.poll(), vec![id]);
 //! let terminal = layer.take(id).ok_or("not terminal")?;
 //! assert_eq!(terminal.record().state(), TerminalState::Cancelled);
