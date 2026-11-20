@@ -123,7 +123,7 @@ struct Probe {
 
 /// A host stub with the test runner, and what the test keeps of the
 /// runner. A test binds the probe after the job layer, as in
-/// `let (layer, probe) = layered()?`, so that a failing test drops the gate
+/// `let (layer, probe) = recorded()?`, so that a failing test drops the gate
 /// before the job layer joins a worker that waits at it.
 fn probed() -> Checked<(HostStub<Prepare>, Probe)> {
     let (entered_by_runner, entered) = channel();
@@ -166,13 +166,6 @@ fn stubbed() -> Checked<Stubbed> {
         probe.token,
         probe.threads,
     ))
-}
-
-/// A job layer on a host stub with the test runner, and what the test
-/// keeps of the runner.
-fn layered() -> Checked<(JobLayer<HostStub<Prepare>>, Probe)> {
-    let (stub, probe) = probed()?;
-    Ok((JobLayer::new(stub, Box::new(Still)), probe))
 }
 
 /// A backend that passes everything on to a host stub and notes each report
@@ -444,7 +437,7 @@ fn a_panic_fails_the_held_job_and_the_jobs_in_the_dispatch_channel_once_each() -
 
 #[test]
 fn the_runner_sees_each_cancellation_and_the_stub_lets_go_of_each_handle() -> Checked {
-    let (mut layer, probe) = layered()?;
+    let (mut layer, probe) = recorded()?;
     let tagged = versions(1, 0, 0)?;
     let session = layer.open_session()?;
     let no_handle = Arc::strong_count(&probe.targets);
@@ -478,6 +471,9 @@ fn the_runner_sees_each_cancellation_and_the_stub_lets_go_of_each_handle() -> Ch
         no_handle,
         "the stub and the worker let go of every cancel handle"
     );
+    layer
+        .backend()
+        .assert_finished_once(&[first, second, third]);
     assert_eq!(layer.live_jobs(), 0);
     Ok(())
 }
