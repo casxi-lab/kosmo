@@ -274,6 +274,36 @@ fn reports_that_do_not_fit_the_job_fail_it() {
 }
 
 #[test]
+fn the_core_checks_reports_against_the_requests_of_the_job() {
+    let mut core = Machine::new();
+    let session = core.open_session().unwrap();
+    let requests = vec![Request::new(Operation::Eval, "", "1"); 2];
+    let several = || Submission::several(session, versions(), requests.clone()).unwrap();
+    let mut run = |reports: Vec<RequestReport>| {
+        let id = core.submit(several(), None).0.unwrap();
+        core.report(Report::Started(id));
+        core.report(Report::Finished(Finished::new(id, reports, None)));
+        core.take(id).unwrap().into_record()
+    };
+
+    // Both requests ran: the job completes with both lines.
+    let fits = run(vec![value(), value()]);
+    assert_eq!(fits.state(), TerminalState::Completed);
+    assert_eq!(lines(&fits), ["value", "value"]);
+
+    // One request ran and no stop came: the reports do not fit the job.
+    let short = run(vec![value()]);
+    assert_eq!(short.state(), TerminalState::Failed);
+    assert!(short.internal_error());
+    assert!(short.lines().is_empty());
+
+    // Three reports for two requests do not fit either.
+    let long = run(vec![value(), value(), value()]);
+    assert_eq!(long.state(), TerminalState::Failed);
+    assert!(long.internal_error());
+}
+
+#[test]
 fn the_record_keeps_the_echo_of_the_requests_that_ran() {
     let record = terminal(false, versions(), 1, end(vec![value()], None));
     assert_eq!(record.echoed(), Some(versions()));
@@ -385,6 +415,7 @@ fn reports_of_a_job_cancelled_while_queued_are_discarded() {
     assert_eq!(core.ready(), vec![id]);
     assert!(core.take(id).is_some());
     assert_eq!(core.live(), 1, "live until the backend finishes it");
+    assert_eq!(core.take(id), None, "taken once, also while still live");
     assert_eq!(core.report(Report::Started(id)), ReportEffect::Discarded);
     assert_eq!(
         core.report(Report::Finished(Finished::new(id, vec![value()], None))),

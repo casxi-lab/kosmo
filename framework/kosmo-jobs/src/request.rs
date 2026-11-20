@@ -396,15 +396,16 @@ mod tests {
 
     #[test]
     fn a_job_holds_one_to_four_requests() {
+        assert_eq!(MAX_REQUESTS_PER_JOB, 4);
         let session = SessionId::new(1);
         let versions = Versions::default();
         assert_eq!(Submission::several(session, versions, Vec::new()), None);
-        for count in 1..=MAX_REQUESTS_PER_JOB {
+        for count in 1..=4 {
             let requests = vec![request(); count];
             let submission = Submission::several(session, versions, requests).unwrap();
             assert_eq!(submission.requests().len(), count);
         }
-        let five = vec![request(); MAX_REQUESTS_PER_JOB + 1];
+        let five = vec![request(); 5];
         assert_eq!(Submission::several(session, versions, five), None);
     }
 

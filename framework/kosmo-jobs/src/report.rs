@@ -342,6 +342,18 @@ mod tests {
     }
 
     #[test]
+    fn the_kind_of_an_outcome_stops_the_job_whose_line_was_written() {
+        assert_eq!(
+            report(OutcomeKind::DeadlineExceeded, ErrorClass::Outcome).effect(),
+            RequestEffect::Stops(StopReason::Deadline)
+        );
+        assert_eq!(
+            report(OutcomeKind::Cancelled, ErrorClass::Outcome).effect(),
+            RequestEffect::Stops(StopReason::Cancellation)
+        );
+    }
+
+    #[test]
     fn only_forced_stops_and_cpu_budgets_are_forced() {
         let forced = [
             StopReason::Cancellation,

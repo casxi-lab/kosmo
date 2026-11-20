@@ -20,8 +20,10 @@
 //!
 //! After every event the region takes every terminal state and judges its
 //! result. The test prints the numbers of orders and cases, of each
-//! judgement and of each terminal state with `--nocapture`, and checks them
-//! against the constants.
+//! judgement and of each terminal state with `--nocapture`, and checks each
+//! of them against a constant. The inputs of the version-change part end
+//! every job completed, and those of the race part end every job completed
+//! or cancelled, so the other terminal states count 0.
 
 mod support;
 
@@ -54,6 +56,17 @@ const RACE_ORDERS: [usize; RACE_JOBS] = [23, 4_175];
 /// The cases of the race part, orders times the two kinds of a `Finished`
 /// after a cancel request, for 1 and 2 jobs.
 const RACE_CASES: [usize; RACE_JOBS] = [35, 10_405];
+
+/// The judgements of the version-change part: current, superseded, stale.
+const VERSION_JUDGEMENTS: [usize; 3] = [10_231, 4_185, 18_816];
+/// The terminal states of the version-change part: completed, failed,
+/// cancelled, resource exhausted.
+const VERSION_TERMINALS: [usize; 4] = [33_232, 0, 0, 0];
+/// The judgements of the race part: current, superseded, stale.
+const RACE_JUDGEMENTS: [usize; 3] = [2_159, 1_256, 2_146];
+/// The terminal states of the race part: completed, failed, cancelled,
+/// resource exhausted.
+const RACE_TERMINALS: [usize; 4] = [5_561, 0, 15_284, 0];
 
 /// What the enumeration counted.
 #[derive(Debug, Default)]
@@ -494,9 +507,11 @@ fn no_bounded_order_lets_an_older_result_replace_a_newer_one() -> Checked {
     assert_eq!(versions.cases, VERSION_ORDERS);
     assert_eq!(race.orders, RACE_ORDERS);
     assert_eq!(race.cases, RACE_CASES);
+    assert_eq!(versions.judgements, VERSION_JUDGEMENTS);
+    assert_eq!(race.judgements, RACE_JUDGEMENTS);
     // Only completions reach the version-change part; the race part ends
     // jobs completed or cancelled.
-    assert!(versions.terminals[0] > 0);
-    assert!(race.terminals[0] > 0 && race.terminals[2] > 0);
+    assert_eq!(versions.terminals, VERSION_TERMINALS);
+    assert_eq!(race.terminals, RACE_TERMINALS);
     Ok(())
 }

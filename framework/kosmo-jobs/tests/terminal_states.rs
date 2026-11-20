@@ -98,6 +98,8 @@ fn a_cancel_accepted_before_the_finished_report_is_handled_discards_the_result()
     assert_eq!(layer.state(id), Some(JobState::Running));
 
     assert_eq!(layer.cancel(id), CancelAnswer::Requested);
+    assert_eq!(layer.state(id), Some(JobState::CancelRequested));
+    assert_eq!(layer.backend().cancels(), &[id]);
     assert_eq!(layer.poll(), vec![id]);
     let terminal = layer.take(id).ok_or("no terminal state")?;
     assert_eq!(terminal.record().state(), TerminalState::Cancelled);
