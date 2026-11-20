@@ -25,16 +25,48 @@
 //!   [`JobRunner`] for the two halves of a runner of the host stub,
 //!   [`JobClock`] for the clock and [`SessionCancel`] for cancelling a
 //!   session;
-//! - a backend, [`stub::HostStub`], which runs jobs on one worker thread
-//!   with a runner.
+//! - two backends: [`stub::HostStub`], which runs jobs on one worker
+//!   thread with a runner, and [`controllable::ControllableBackend`],
+//!   whose reports tests arrange.
 //!
 //! The crate depends on no computation library: a runner that executes
 //! requests with kalyx implements the runner port in another crate. On
 //! krepi, a backend for krepi's job service replaces the host stub, and the
 //! rest stays the same.
+//!
+//! ```
+//! use kosmo_jobs::controllable::{ControllableBackend, Plan};
+//! use kosmo_jobs::{
+//!     ErrorClass, JobClock, JobLayer, Operation, OutcomeKind, Request, RequestReport,
+//!     Submission, TerminalState,
+//! };
+//! use kosmo_math_model::version::Versions;
+//!
+//! struct Still;
+//! impl JobClock for Still {
+//!     fn now(&mut self) -> u64 { 0 }
+//!     fn fork(&self) -> Box<dyn JobClock> { Box::new(Still) }
+//! }
+//!
+//! let versions = Versions::default();
+//! let line = b"value\t0\t0\t0\t1/2".to_vec();
+//! let report = RequestReport::new(OutcomeKind::Value, ErrorClass::NoError, Some(line.clone()), versions);
+//! let mut backend = ControllableBackend::new();
+//! backend.plan(0, Plan::new().request(report));
+//!
+//! let mut layer = JobLayer::new(backend, Box::new(Still));
+//! let session = layer.open_session()?;
+//! let request = Request::new(Operation::Eval, "", "1/3+1/6");
+//! let id = layer.submit(Submission::new(session, versions, request))?;
+//! let terminal = layer.wait(id).ok_or("no terminal state")?;
+//! assert_eq!(terminal.record().state(), TerminalState::Completed);
+//! assert_eq!(terminal.record().lines(), &[line]);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 #![forbid(unsafe_code)]
 
+pub mod controllable;
 mod layer;
 pub mod machine;
 mod port;

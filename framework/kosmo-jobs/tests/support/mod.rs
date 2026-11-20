@@ -7,9 +7,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 
+use kosmo_jobs::controllable::ControllableBackend;
 use kosmo_jobs::{
-    ErrorClass, JobClock, JobId, Operation, OutcomeKind, Request, RequestReport, SessionId,
-    Submission, Terminal, TerminalState,
+    ErrorClass, JobClock, JobId, JobLayer, Operation, OutcomeKind, Request, RequestReport,
+    SessionId, Submission, Terminal, TerminalState,
 };
 use kosmo_math_model::EditBuffer;
 use kosmo_math_model::version::{
@@ -76,6 +77,11 @@ pub fn value(versions: Versions, text: &str) -> RequestReport {
         Some(line("value", versions, text)),
         versions,
     )
+}
+
+/// A job layer on a controllable backend that has received no job.
+pub fn controllable(backend: ControllableBackend) -> JobLayer<ControllableBackend> {
+    JobLayer::new(backend, Box::new(Still))
 }
 
 /// The lines of a terminal state as text.

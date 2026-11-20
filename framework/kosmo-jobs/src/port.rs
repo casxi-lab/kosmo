@@ -20,8 +20,10 @@ use crate::{JobId, JobRequest, Report, RequestReport, SessionId, StopReason};
 /// [`Report::Started`] for every job that starts and exactly one
 /// [`Report::Finished`] for every job it receives, in any order across
 /// jobs; the job layer assumes neither an order nor a degree of
-/// parallelism. [`HostStub`](crate::stub::HostStub) implements it and runs
-/// jobs on one worker thread.
+/// parallelism. Implementations: [`HostStub`](crate::stub::HostStub), which
+/// runs jobs on one worker thread, and
+/// [`ControllableBackend`](crate::controllable::ControllableBackend), whose
+/// reports tests arrange.
 pub trait JobBackend {
     /// Receives a job that the job layer accepted.
     fn submit(&mut self, request: JobRequest);
