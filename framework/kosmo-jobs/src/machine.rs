@@ -218,7 +218,8 @@ impl TerminalRecord {
     }
 
     /// The output lines that the job delivers, one for each request that
-    /// has a line, in order. A `cancelled` job delivers none.
+    /// has a line, in order, each with the bytes of its request report, its
+    /// final line feed included. A `cancelled` job delivers none.
     pub fn lines(&self) -> &[Vec<u8>] {
         &self.lines
     }

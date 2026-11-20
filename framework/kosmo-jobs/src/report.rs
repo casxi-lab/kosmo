@@ -78,8 +78,10 @@ impl Finished {
 ///
 /// It holds the kind of the outcome, the class of its error, the bytes of
 /// its output line, if it has one, and the three versions that the outcome
-/// echoed. The job layer does not parse the line: the submitter reads the
-/// value, state or error from it with the display model.
+/// echoed. The line is the bytes that kalyx's `serialize` wrote for the
+/// request, its final line feed included. The job layer neither parses nor
+/// changes the line: the submitter reads the value, state or error from it
+/// with the display model.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestReport {
@@ -116,8 +118,8 @@ impl RequestReport {
         self.error
     }
 
-    /// The bytes of the output line, without a line end, if the request
-    /// has a line.
+    /// The bytes of the output line as kalyx's `serialize` wrote them, its
+    /// final line feed included, if the request has a line.
     pub fn line(&self) -> Option<&[u8]> {
         self.line.as_deref()
     }

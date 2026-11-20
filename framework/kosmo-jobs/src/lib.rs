@@ -49,7 +49,7 @@
 //! }
 //!
 //! let versions = Versions::default();
-//! let line = b"value\t0\t0\t0\t1/2".to_vec();
+//! let line = b"value\t0\t0\t0\t1/2\n".to_vec();
 //! let report = RequestReport::new(OutcomeKind::Value, ErrorClass::NoError, Some(line.clone()), versions);
 //! let mut backend = ControllableBackend::new();
 //! backend.plan(0, Plan::new().request(report));

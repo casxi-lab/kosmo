@@ -30,7 +30,7 @@ fn a_state_line_completes_the_job_and_is_delivered() -> Checked {
     let terminal = layer.wait(id).ok_or("no terminal state")?;
     assert_eq!(terminal.record().state(), TerminalState::Completed);
     assert_eq!(terminal.record().lines(), &[state]);
-    assert_eq!(texts(&terminal), ["state\t1\t2\t3\tIterationLimit"]);
+    assert_eq!(texts(&terminal), ["state\t1\t2\t3\tIterationLimit\n"]);
     assert_eq!(terminal.record().echoed(), Some(tagged));
     Ok(())
 }
@@ -186,7 +186,7 @@ fn a_forced_stop_in_the_second_request_delivers_the_line_of_the_first() -> Check
     assert_eq!(record.state(), TerminalState::ResourceExhausted);
     assert_eq!(record.stop(), Some(StopReason::ForcedStop));
     assert!(record.forced());
-    assert_eq!(texts(&terminal), ["value\t1\t0\t0\t1/2"]);
+    assert_eq!(texts(&terminal), ["value\t1\t0\t0\t1/2\n"]);
     assert!(matches!(
         layer.backend().sent().last(),
         Some(Report::Finished(finished)) if finished.requests() == [first]

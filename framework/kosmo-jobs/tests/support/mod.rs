@@ -58,10 +58,10 @@ pub fn eval(session: SessionId, versions: Versions, text: &str) -> Submission {
 }
 
 /// An output line of the tag `tag` with the echoed `versions` and the
-/// fields `rest`.
+/// fields `rest`, ended by a line feed.
 pub fn line(tag: &str, versions: Versions, rest: &str) -> Vec<u8> {
     format!(
-        "{tag}\t{}\t{}\t{}\t{rest}",
+        "{tag}\t{}\t{}\t{}\t{rest}\n",
         versions.source.get(),
         versions.context.get(),
         versions.settings.get()
