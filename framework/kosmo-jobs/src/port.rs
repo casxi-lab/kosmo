@@ -195,8 +195,9 @@ impl RunReport {
 }
 
 /// The port that cancels every job of a session, called only on the
-/// job-layer thread: on the host by a stand-in for the system's
-/// stop-request port, on the device by krepi's job service.
+/// job-layer thread. [`JobLayer`](crate::JobLayer) implements it. Its
+/// planned callers are a stand-in for the system's stop-request port on
+/// the host and krepi's job service on the device.
 pub trait SessionCancel {
     /// Cancels every job of `session` that has not reached its terminal
     /// state: queued jobs end `cancelled`, running jobs move to

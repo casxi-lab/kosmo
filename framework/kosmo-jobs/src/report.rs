@@ -227,7 +227,10 @@ pub enum ErrorClass {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SerializeFailure {
-    /// The line needed more work or output bytes than were left.
+    /// Writing the line exceeded a limit of the request: the line did not
+    /// fit the `max_output_bytes` or the `max_work` that the request had
+    /// left, or the display of a term exceeded a limit such as
+    /// `max_integer_bits`.
     ResourceLimit,
     /// A charge point of the writing saw the cancellation.
     Cancelled,
@@ -238,8 +241,9 @@ pub enum SerializeFailure {
 /// Why a job stopped before all its requests ran.
 ///
 /// A forced stop and an exhausted CPU budget come only from a backend that
-/// can stop a computation by force, such as krepi's job service; the host
-/// stub produces neither. Both mark the terminal record as forced.
+/// can stop a computation by force, such as the planned backend for krepi's
+/// job service; the host stub produces neither. Both mark the terminal
+/// record as forced.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StopReason {
