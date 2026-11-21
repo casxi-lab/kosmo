@@ -36,9 +36,10 @@ impl Report {
 /// that the backend saw: between requests, a cancellation or a passed
 /// deadline, before the request that would have run next; in a request,
 /// a forced stop or an exhausted CPU budget, after which that request has
-/// no report; or a backend internal error. A request whose own error stops
-/// the job, a `Cancelled` or `DeadlineExceeded` outcome, is the last report
-/// and needs no separate stop.
+/// no report; or a backend internal error. A request that stops the job
+/// itself, with a `Cancelled` or `DeadlineExceeded` outcome or with a line
+/// whose writing saw the cancellation or the deadline pass, is the last
+/// report and needs no separate stop.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Finished {
@@ -296,7 +297,13 @@ pub enum SerializeFailure {
     DeadlineExceeded,
 }
 
-/// Why a job stopped before all its requests ran.
+/// Why a job stopped, or why the job layer counts it as stopped.
+///
+/// A backend reports it when the job stopped before all its requests ran, or
+/// a request gives it through its own outcome or line. A job cancelled while
+/// queued, or after its cancellation was accepted, keeps
+/// [`Cancellation`](Self::Cancellation) in its terminal record even when all
+/// its requests ran.
 ///
 /// A forced stop and an exhausted CPU budget come only from a backend that
 /// can stop a computation by force, such as the planned backend for krepi's
