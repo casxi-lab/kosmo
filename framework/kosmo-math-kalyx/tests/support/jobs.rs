@@ -6,17 +6,18 @@
 //! The tests order events only through the gate and the handshakes of the
 //! job layer: a test waits until the worker thread waits at the gate, acts
 //! on the job layer, and opens the gate. Nothing sleeps or reads the wall
-//! clock.
+//! clock. A job that ends without reaching the gate makes the wait fail
+//! instead of hang.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use kosmo_jobs::stub::HostStub;
 use kosmo_jobs::{
-    Finished, JobBackend, JobClock, JobId, JobLayer, JobRequest, Operation, Report, Request,
-    SessionId, Submission,
+    Finished, JobBackend, JobClock, JobId, JobLayer, JobRequest, JobRunner, Operation, Report,
+    Request, RunReport, SessionId, Submission, WorkItem,
 };
-use kosmo_math_kalyx::{KalyxPreparer, KalyxRunner, convert};
+use kosmo_math_kalyx::{JobFlag, KalyxPreparer, KalyxRunner, convert};
 use kosmo_math_model::Snapshot;
 use kosmo_math_model::version::Versions;
 
@@ -40,6 +41,10 @@ struct State {
     waiting: bool,
     /// The gate is open.
     open: bool,
+    /// Runs of the runner that ended, by returning or unwinding.
+    ended: usize,
+    /// `ended` when the gate was set.
+    ended_at_gate: usize,
 }
 
 /// The state of a fake clock with the condition that signals its changes.
@@ -139,19 +144,27 @@ impl ClockControl {
     /// Makes reading `reading` of the forks, counting from 1, wait at the
     /// gate until [`open`](ClockControl::open).
     pub fn gate_at(&self, reading: usize) {
-        self.shared.lock().gate = Some(reading);
+        let mut state = self.shared.lock();
+        state.gate = Some(reading);
+        state.ended_at_gate = state.ended;
     }
 
-    /// Waits until a reading of the worker thread waits at the gate.
-    pub fn wait_at_gate(&self) {
+    /// Waits until a reading of the worker thread waits at the gate. Fails
+    /// once a run of the runner has ended since the gate was set while no
+    /// reading waits there: that job will not reach the gate.
+    pub fn wait_at_gate(&self) -> Checked {
         let mut state = self.shared.lock();
         while !state.waiting {
+            if state.ended > state.ended_at_gate {
+                return Err("the worker ended a job without reaching the gate".into());
+            }
             state = self
                 .shared
                 .changed
                 .wait(state)
                 .unwrap_or_else(PoisonError::into_inner);
         }
+        Ok(())
     }
 
     /// Opens the gate: the reading that waits there, if any, goes on.
@@ -250,6 +263,7 @@ pub type KalyxStub = Recording<HostStub<KalyxPreparer>>;
 
 /// A job layer on the host stub with the kalyx runner, whose runner reads a
 /// fork of the fake clock of the job layer, and the control of that clock.
+/// The fake clock also counts the runs of the runner that end.
 ///
 /// Dropping it opens the gate before the job layer shuts down and joins the
 /// worker thread, so a test that fails while the worker waits at the gate
@@ -265,7 +279,11 @@ impl KalyxJobs {
     /// A job layer whose clock reads 0.
     pub fn new() -> Checked<KalyxJobs> {
         let (clock, control) = FakeClock::new();
-        let stub = HostStub::new(KalyxPreparer::new(), KalyxRunner::new(clock.fork()))?;
+        let runner = Counted {
+            inner: KalyxRunner::new(clock.fork()),
+            shared: Arc::clone(&control.shared),
+        };
+        let stub = HostStub::new(KalyxPreparer::new(), runner)?;
         Ok(KalyxJobs {
             layer: JobLayer::new(Recording::new(stub), Box::new(clock)),
             clock: control,
@@ -282,6 +300,31 @@ impl KalyxJobs {
 impl Drop for KalyxJobs {
     fn drop(&mut self) {
         self.clock.open();
+    }
+}
+
+/// The kalyx runner, which passes each work item and token on unchanged,
+/// counting in the fake clock's state the runs that end.
+struct Counted {
+    inner: KalyxRunner,
+    shared: Arc<Shared>,
+}
+
+/// Counts one ended run when it is dropped, on return or unwinding, and
+/// wakes a test that waits at the gate.
+struct Ended(Arc<Shared>);
+
+impl Drop for Ended {
+    fn drop(&mut self) {
+        self.0.lock().ended += 1;
+        self.0.changed.notify_all();
+    }
+}
+
+impl JobRunner<JobFlag> for Counted {
+    fn run(&mut self, item: WorkItem, token: JobFlag) -> RunReport {
+        let _ended = Ended(Arc::clone(&self.shared));
+        self.inner.run(item, token)
     }
 }
 

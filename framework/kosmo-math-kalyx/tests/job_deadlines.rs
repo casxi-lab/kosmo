@@ -20,7 +20,7 @@ fn a_deadline_that_passed_while_the_job_was_queued_runs_no_request() -> Checked 
     // The first job waits at its first reading, before its first request.
     jobs.clock.gate_at(1);
     let first = jobs.layer.submit(line.eval(session).with_time_limit(FAR))?;
-    jobs.clock.wait_at_gate();
+    jobs.clock.wait_at_gate()?;
 
     let (start, limit) = (1_000, 500);
     jobs.clock.set(start);

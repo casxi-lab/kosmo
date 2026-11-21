@@ -205,7 +205,7 @@ fn a_deadline_that_kalyx_sees_after_a_cancel_request_ends_the_job_cancelled() ->
     let id = jobs
         .layer
         .submit(line.eval(session).with_time_limit(limit))?;
-    jobs.clock.wait_at_gate();
+    jobs.clock.wait_at_gate()?;
     assert!(jobs.layer.poll().is_empty());
     assert_eq!(jobs.layer.state(id), Some(JobState::Running));
     assert_eq!(jobs.layer.cancel(id), CancelAnswer::Requested);

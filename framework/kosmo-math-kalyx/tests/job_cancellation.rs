@@ -30,7 +30,7 @@ fn a_job_cancelled_before_it_starts_runs_no_request() -> Checked {
     // so the second stays in the dispatch channel.
     jobs.clock.gate_at(1);
     let first = jobs.layer.submit(line.eval(session).with_time_limit(FAR))?;
-    jobs.clock.wait_at_gate();
+    jobs.clock.wait_at_gate()?;
     let second = jobs.layer.submit(line.eval(session))?;
     assert!(jobs.layer.poll().is_empty());
     assert_eq!(jobs.layer.state(first), Some(JobState::Running));
@@ -74,7 +74,7 @@ fn a_running_job_stops_at_the_next_charge_point_after_its_cancellation() -> Chec
     let expand = Request::new(Operation::Expand, "x", "(x+1)^5");
     let submission = Submission::new(session, line.versions, expand).with_time_limit(FAR);
     let id = jobs.layer.submit(submission)?;
-    jobs.clock.wait_at_gate();
+    jobs.clock.wait_at_gate()?;
     assert!(jobs.layer.poll().is_empty());
     assert_eq!(jobs.layer.state(id), Some(JobState::Running));
     assert_eq!(jobs.layer.cancel(id), CancelAnswer::Requested);
@@ -125,7 +125,7 @@ fn a_cancellation_seen_between_two_requests_runs_no_second_request() -> Checked 
     // error line, after the last check for cancellation in the request.
     jobs.clock.gate_at(2);
     let id = jobs.layer.submit(submission)?;
-    jobs.clock.wait_at_gate();
+    jobs.clock.wait_at_gate()?;
     assert!(jobs.layer.poll().is_empty());
     assert_eq!(jobs.layer.state(id), Some(JobState::Running));
     assert_eq!(jobs.layer.cancel(id), CancelAnswer::Requested);
