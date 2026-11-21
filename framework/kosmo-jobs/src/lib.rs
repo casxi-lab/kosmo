@@ -29,10 +29,11 @@
 //!   thread with a runner, and [`controllable::ControllableBackend`],
 //!   whose reports tests arrange.
 //!
-//! The crate depends on no computation library: a runner that executes
-//! requests with kalyx, planned in `kosmo-math-kalyx`, will implement the
-//! runner port there. On krepi, a planned backend for krepi's job service
-//! will take the place of the host stub, and the rest stays the same.
+//! The crate depends on no computation library: the kalyx runner of
+//! `kosmo-math-kalyx` implements the runner port there, and runs each job's
+//! requests with kalyx on the host stub's worker thread. On krepi, a
+//! planned backend for krepi's job service will take the place of the host
+//! stub, and the rest stays the same.
 //!
 //! ```
 //! use kosmo_jobs::controllable::{ControllableBackend, Plan};
