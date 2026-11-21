@@ -605,7 +605,7 @@ produces those lines, and the core discards them. Outside `cancel_requested`,
 echoed versions that differ from the request's give `failed`, marked as an
 internal error, and no line is delivered as a result. Forced stops and CPU
 budgets do not occur in the host stub; only the controllable backend produces
-them, in unit tests.
+them, in tests.
 
 | Request outcome | Delivered line | Without `cancel_requested` | After `cancel_requested` | Stops the job |
 | --- | --- | --- | --- | --- |

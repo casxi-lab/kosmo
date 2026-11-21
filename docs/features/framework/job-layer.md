@@ -328,6 +328,9 @@ The tests are in `framework/kosmo-jobs` and `framework/kosmo-math-kalyx`: the
 unit tests in the `tests` modules under each crate's `src/` (named here with
 their crate and module, such as `kosmo-jobs` `machine::tests::…`) and the
 integration tests in each crate's `tests/` (named with their crate and file).
+The tests of whether a result is current are the unit tests
+`kosmo-math-model` `version::tests::…` in `framework/kosmo-math-model`, and
+the tests of the layout step are in `xtask/src/layout/tests.rs`.
 The integration tests of `kosmo-math-kalyx` run jobs on the host stub with
 the kalyx runner; those of `kosmo-jobs` use the controllable backend or the
 host stub with a runner of their own. No test sleeps or reads the wall clock:
@@ -349,12 +352,15 @@ test runner, or by a gate at a reading of a fake clock.
    `request::tests::an_accepted_job_keeps_the_submission_and_its_deadline`;
    `kosmo-jobs` `tests/shell.rs`:
    `an_accepted_job_carries_its_limits_and_a_deadline_read_once_from_the_clock`.
-3. The default limits are those of kalyx 0.1.0, field by field, and each
-   limit of a job reaches its own field of kalyx's limits. Tests:
+3. The default limits are those of kalyx 0.1.0, field by field; each limit
+   of a job reaches its own field of kalyx's limits, and each request of a
+   job gets its own copy of them. Tests:
    `kosmo-jobs` `request::tests::the_default_limits_are_those_of_kalyx`;
    `kosmo-math-kalyx`
    `runner::tests::the_default_limits_of_a_job_are_those_of_kalyx_field_by_field`,
-   `runner::tests::each_limit_of_a_job_goes_into_its_own_kalyx_field`.
+   `runner::tests::each_limit_of_a_job_goes_into_its_own_kalyx_field`;
+   `kosmo-math-kalyx` `tests/job_requests.rs`:
+   `each_request_of_a_job_gets_its_own_copy_of_the_limits`.
 4. The kalyx runner gives kalyx the operation by its name, the variable, the
    linear text, the job's three versions and the default settings. Tests:
    `kosmo-jobs` `request::tests::the_operations_have_the_names_of_the_command_entry`;
@@ -394,10 +400,14 @@ test runner, or by a gate at a reading of a fake clock.
    `machine::tests::a_started_report_does_not_withdraw_a_cancellation`;
    `kosmo-jobs` `tests/bounded_orders.rs`:
    `no_bounded_order_lets_an_older_result_replace_a_newer_one`.
-8. A job of several requests stops at a cancellation or a deadline and goes
-   on after a fault or a limit; a stop takes precedence over earlier faults,
-   and a forced stop in the second request still delivers the line of the
-   first. Tests: `kosmo-jobs`
+8. A job of several requests runs them in order, stops at a cancellation or
+   a deadline and goes on after a fault or a limit; a stop takes precedence
+   over earlier faults, and a deadline seen before the second request or a
+   forced stop in it still delivers the line of the first. Tests:
+   `kosmo-math-kalyx` `tests/job_requests.rs`:
+   `a_fault_in_the_first_request_does_not_stop_the_second`,
+   `a_deadline_seen_between_two_requests_delivers_the_line_of_the_first`;
+   `kosmo-jobs`
    `machine::tests::stops_between_requests_and_forced_stops_end_the_job`,
    `machine::tests::a_stop_takes_precedence_over_earlier_faults`,
    `machine::tests::faults_and_limits_do_not_stop_a_job_of_several_requests`;
