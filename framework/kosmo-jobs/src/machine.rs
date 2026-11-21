@@ -22,11 +22,35 @@
 //!   A cancellation cannot be withdrawn.
 //! - A job in `cancel_requested` that receives its `Finished` report ends
 //!   `cancelled`, whatever the report holds; its lines are discarded.
-//! - A job whose `Finished` report is handled first ends as
-//!   [`terminal`] gives; a later cancel request is answered
+//! - A job whose `Finished` report is handled first ends as the terminal
+//!   function below gives; a later cancel request is answered
 //!   [`CancelAnswer::AlreadyTerminal`].
 //! - Every job has exactly one terminal state, which is absorbing and is
 //!   taken exactly once.
+//!
+//! The terminal function computes a job's [`TerminalRecord`] from its
+//! backend's `Finished` report, the versions and the number of the job's
+//! requests, and whether the core had accepted a cancel request while the
+//! job ran. Its rules, in order:
+//!
+//! 1. In `cancel_requested` the job is `cancelled`, whatever the report
+//!    holds, and delivers no line. The record keeps the reported stop, or
+//!    cancellation when there is none.
+//! 2. Otherwise a backend internal error, an echo whose number for any of
+//!    the three versions differs from that of the job's versions, or
+//!    reports that do not fit the job (more reports than requests, a report
+//!    after one whose error stopped the job, or fewer reports without a
+//!    stop) give `failed`, marked as an internal error, without lines.
+//! 3. Otherwise the first stop decides: a request whose errors include
+//!    `Cancelled` or `DeadlineExceeded`, or else the reported stop.
+//!    Cancellation gives `cancelled` without lines; a passed deadline, a
+//!    forced stop or an exhausted CPU budget gives `resource_exhausted`
+//!    with the lines of the requests that ran.
+//! 4. Without a stop, a request that failed with a fault or a limit, also
+//!    while writing its line, gives `failed`, and otherwise the job is
+//!    `completed`; both deliver the lines of all requests.
+//!
+//! A stop thus takes precedence over earlier faults and limits.
 //!
 //! ```
 //! use kosmo_jobs::machine::{CancelAnswer, Machine};
@@ -292,31 +316,13 @@ impl Terminal {
 }
 
 /// Computes the terminal record of a job from its backend's `Finished`
-/// report.
+/// report, by the rules of the terminal function in the module
+/// documentation.
 ///
 /// `cancel_requested` tells whether the core had accepted a cancel request
 /// while the job ran; `versions` and `requests` are the job's versions and
-/// its number of requests. The rules, in order:
-///
-/// 1. In `cancel_requested` the job is `cancelled`, whatever the report
-///    holds, and delivers no line. The record keeps the reported stop, or
-///    cancellation when there is none.
-/// 2. Otherwise a backend internal error, an echo whose number for any of
-///    the three versions differs from that of `versions`, or reports that
-///    do not fit the job (more reports than requests, a report after one
-///    whose error stopped the job, or fewer reports without a stop) give
-///    `failed`, marked as an internal error, without lines.
-/// 3. Otherwise the first stop decides: a request whose errors include
-///    `Cancelled` or `DeadlineExceeded`, or else the reported stop.
-///    Cancellation gives `cancelled` without lines; a passed deadline, a
-///    forced stop or an exhausted CPU budget gives `resource_exhausted`
-///    with the lines of the requests that ran.
-/// 4. Without a stop, a request that failed with a fault or a limit, also
-///    while writing its line, gives `failed`, and otherwise the job is
-///    `completed`; both deliver the lines of all requests.
-///
-/// A stop thus takes precedence over earlier faults and limits.
-pub fn terminal(
+/// its number of requests.
+pub(crate) fn terminal(
     cancel_requested: bool,
     versions: Versions,
     requests: usize,
@@ -472,7 +478,7 @@ impl Machine {
     /// Whether a submission would be accepted now: `Ok` unless
     /// [`MAX_LIVE_JOBS`] jobs are live or every job identity has been
     /// used. The shell asks before it reads the clock for the deadline.
-    pub fn admits(&self) -> Result<(), Rejected> {
+    pub(crate) fn admits(&self) -> Result<(), Rejected> {
         let live = self.jobs.len();
         if live >= MAX_LIVE_JOBS {
             return Err(Rejected::Full { live });
@@ -657,7 +663,7 @@ impl Machine {
 
     /// The jobs that have not reached their terminal states, in order of
     /// identity.
-    pub fn unfinished(&self) -> Vec<JobId> {
+    pub(crate) fn unfinished(&self) -> Vec<JobId> {
         self.jobs
             .iter()
             .filter(|(_, entry)| !matches!(entry.phase, Phase::Terminal(_)))
