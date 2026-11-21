@@ -131,6 +131,16 @@ fn every_row_of_the_outcome_table_maps_to_its_terminal_state() {
             Some(StopReason::Deadline),
             vec![],
         ),
+        (
+            report(
+                OutcomeKind::Value,
+                ErrorClass::Serialize(SerializeFailure::Fault),
+                None,
+            ),
+            TerminalState::Failed,
+            None,
+            vec![],
+        ),
     ];
     for (row, state, stop, expected) in rows {
         let ((outside, outside_stop, outside_lines), (inside, inside_lines)) =

@@ -202,7 +202,9 @@ impl RequestReport {
         };
         let from_line = match self.error {
             ErrorClass::NoError | ErrorClass::Outcome => None,
-            ErrorClass::Serialize(SerializeFailure::ResourceLimit) => Some(RequestEffect::Fails),
+            ErrorClass::Serialize(SerializeFailure::ResourceLimit | SerializeFailure::Fault) => {
+                Some(RequestEffect::Fails)
+            }
             ErrorClass::Serialize(SerializeFailure::Cancelled) => {
                 Some(RequestEffect::Stops(StopReason::Cancellation))
             }
@@ -295,6 +297,10 @@ pub enum SerializeFailure {
     Cancelled,
     /// A charge point of the writing saw the deadline pass.
     DeadlineExceeded,
+    /// Writing the line failed with a fault, such as an internal error in
+    /// the display of a term, or with an error of a kind that is none of the
+    /// others. Like a limit, it fails the request, and the job goes on.
+    Fault,
 }
 
 /// Why a job stopped, or why the job layer counts it as stopped.
@@ -394,6 +400,24 @@ mod tests {
                 RequestEffect::Stops(StopReason::Deadline)
             );
         }
+    }
+
+    #[test]
+    fn a_fault_in_writing_a_line_fails_the_request_and_does_not_stop_the_job() {
+        for kind in [OutcomeKind::Value, OutcomeKind::State, OutcomeKind::Fault] {
+            assert_eq!(
+                report(kind, ErrorClass::Serialize(SerializeFailure::Fault)).effect(),
+                RequestEffect::Fails
+            );
+        }
+        assert_eq!(
+            report(
+                OutcomeKind::DeadlineExceeded,
+                ErrorClass::Serialize(SerializeFailure::Fault)
+            )
+            .effect(),
+            RequestEffect::Stops(StopReason::Deadline)
+        );
     }
 
     #[test]
