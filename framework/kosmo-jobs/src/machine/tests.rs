@@ -1,3 +1,4 @@
+use kosmo_math_model::EditBuffer;
 use kosmo_math_model::version::{ContextVersion, SettingsVersion};
 
 use super::*;
@@ -80,6 +81,16 @@ fn every_row_of_the_outcome_table_maps_to_its_terminal_state() {
             vec!["state"],
         ),
         (fault(), TerminalState::Failed, None, vec!["fault"]),
+        (
+            report(
+                OutcomeKind::ResourceLimit,
+                ErrorClass::Outcome,
+                Some("limit"),
+            ),
+            TerminalState::Failed,
+            None,
+            vec!["limit"],
+        ),
         (
             report(
                 OutcomeKind::ResourceLimit,
@@ -251,11 +262,13 @@ fn an_echo_of_other_versions_fails_the_job_outside_cancel_requested() {
 
 #[test]
 fn an_echo_that_differs_in_any_one_version_fails_the_job() {
-    // The request's versions are 0, 2 and 3.
+    // The request's versions are 0, 2 and 3; an echo may be newer or older.
     for echo in [
         EchoedVersions::new(1, 2, 3),
         EchoedVersions::new(0, 5, 3),
         EchoedVersions::new(0, 2, 7),
+        EchoedVersions::new(0, 1, 3),
+        EchoedVersions::new(0, 2, 2),
     ] {
         let record = terminal(false, versions(), 1, end(vec![echoing(echo)], None));
         assert_eq!(record.state(), TerminalState::Failed, "{echo:?}");
@@ -269,6 +282,49 @@ fn an_echo_that_differs_in_any_one_version_fails_the_job() {
     assert!(!record.internal_error());
     assert_eq!(lines(&record), ["value"]);
     assert_eq!(record.echoed(), Some(same));
+}
+
+#[test]
+fn an_echo_of_an_older_source_version_fails_the_job() {
+    // One edit gives the request the source version 1; the echo gives the
+    // source version 0 with the request's other two versions.
+    let mut buffer = EditBuffer::new();
+    buffer.insert_char('1').unwrap();
+    let edited = Versions {
+        source: buffer.version(),
+        ..versions()
+    };
+    assert_eq!(edited.source.get(), 1);
+    let echo = EchoedVersions::new(0, 2, 3);
+    let record = terminal(false, edited, 1, end(vec![echoing(echo)], None));
+    assert_eq!(record.state(), TerminalState::Failed);
+    assert!(record.internal_error());
+    assert!(record.lines().is_empty());
+    assert_eq!(record.echoed(), Some(echo));
+}
+
+#[test]
+fn a_cancelled_record_keeps_the_stop_that_the_terminal_function_found() {
+    // In cancel_requested a request stopped at the passed deadline, and the
+    // backend reported no stop beside it: the request's own stop is kept.
+    let deadline = report(
+        OutcomeKind::DeadlineExceeded,
+        ErrorClass::Serialize(SerializeFailure::DeadlineExceeded),
+        Some("fallback"),
+    );
+    let record = terminal(true, versions(), 1, end(vec![deadline], None));
+    assert_eq!(
+        (record.state(), record.stop()),
+        (TerminalState::Cancelled, Some(StopReason::Deadline))
+    );
+
+    // Every request ran and nothing stopped the job, but the cancel request
+    // was accepted before its Finished report was handled: cancellation.
+    let record = terminal(true, versions(), 1, end(vec![value()], None));
+    assert_eq!(
+        (record.state(), record.stop()),
+        (TerminalState::Cancelled, Some(StopReason::Cancellation))
+    );
 }
 
 #[test]
@@ -389,6 +445,37 @@ fn identities_count_up_and_a_refused_submission_uses_none() {
 }
 
 #[test]
+fn taken_jobs_that_the_backend_has_not_finished_still_count_as_live() {
+    let mut core = Machine::new();
+    let session = core.open_session().unwrap();
+    let ids: Vec<JobId> = (0..MAX_LIVE_JOBS)
+        .map(|_| accept(&mut core, session))
+        .collect();
+    for id in &ids {
+        assert_eq!(core.cancel(*id).0, CancelAnswer::Cancelled);
+        assert!(core.take(*id).is_some());
+    }
+    assert!(core.ready().is_empty());
+    assert_eq!(core.live(), MAX_LIVE_JOBS);
+    let (refused, commands) = core.submit(submission(session), None);
+    assert_eq!(
+        refused,
+        Err(Rejected::Full {
+            live: MAX_LIVE_JOBS
+        })
+    );
+    assert!(commands.is_empty());
+
+    // Once the backend finishes one of them, it is no longer live.
+    assert_eq!(
+        core.report(Report::Finished(Finished::new(ids[0], vec![], None))),
+        ReportEffect::Discarded
+    );
+    assert_eq!(core.live(), MAX_LIVE_JOBS - 1);
+    assert_eq!(accept(&mut core, session).get(), 9);
+}
+
+#[test]
 fn identities_never_wrap() {
     let mut core = Machine::new();
     let session = core.open_session().unwrap();
@@ -477,6 +564,7 @@ fn a_terminal_state_is_absorbing_and_taken_once() {
     assert_eq!(core.report(Report::Started(id)), ReportEffect::Discarded);
     assert_eq!(core.cancel(id).0, CancelAnswer::AlreadyTerminal);
     let taken = core.take(id).unwrap();
+    assert_eq!((taken.id(), taken.session()), (id, session));
     assert_eq!(taken.record().state(), TerminalState::Completed);
     assert_eq!(taken.versions(), versions());
     assert_eq!(core.take(id), None);

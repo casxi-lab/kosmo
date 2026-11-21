@@ -438,14 +438,20 @@ mod tests {
 
     #[test]
     fn an_accepted_job_keeps_the_submission_and_its_deadline() {
-        let submission =
-            Submission::new(SessionId::new(2), Versions::default(), request()).with_time_limit(10);
+        let diff = Request::new(Operation::Diff, "t", "t^3");
+        let submission = Submission::new(SessionId::new(2), Versions::default(), diff.clone())
+            .with_time_limit(10);
         let job = JobRequest::accepted(JobId::new(5), submission, Some(17));
         assert_eq!(
             (job.id().get(), job.session().get(), job.deadline()),
             (5, 2, Some(17))
         );
-        assert_eq!(job.requests(), &[request()]);
+        assert_eq!(job.requests(), &[diff]);
+        let one = &job.requests()[0];
+        assert_eq!(
+            (one.operation(), one.variable(), one.input()),
+            (Operation::Diff, "t", "t^3")
+        );
         assert_eq!(job.limits(), Limits::DEFAULT);
     }
 }

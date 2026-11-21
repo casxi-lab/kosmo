@@ -349,6 +349,22 @@ mod tests {
     }
 
     #[test]
+    fn a_report_gives_back_its_line_bytes_unchanged() {
+        let bytes = b"value\t1\t2\t3\t1/2\n".to_vec();
+        let echo = EchoedVersions::new(1, 2, 3);
+        let written = RequestReport::new(
+            OutcomeKind::Value,
+            ErrorClass::NoError,
+            Some(bytes.clone()),
+            echo,
+        );
+        assert_eq!(written.line(), Some(bytes.as_slice()));
+        assert_eq!(written.echoed(), echo);
+        assert_eq!(written.into_line(), Some(bytes));
+        assert_eq!(report(OutcomeKind::Value, ErrorClass::NoError).line(), None);
+    }
+
+    #[test]
     fn values_and_states_have_no_error_unless_their_line_failed() {
         for kind in [OutcomeKind::Value, OutcomeKind::State] {
             assert_eq!(
@@ -374,6 +390,10 @@ mod tests {
     fn faults_and_limits_fail_and_cancellation_comes_before_the_deadline() {
         assert_eq!(
             report(OutcomeKind::Fault, ErrorClass::Outcome).effect(),
+            RequestEffect::Fails
+        );
+        assert_eq!(
+            report(OutcomeKind::ResourceLimit, ErrorClass::Outcome).effect(),
             RequestEffect::Fails
         );
         assert_eq!(
