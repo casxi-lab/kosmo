@@ -114,9 +114,9 @@ cargo xtask check
 
 The first prints `kosmo` and its version, the next three run the tests of the
 editing structure, of the job layer and of formula conversion with the kalyx
-runner, and the last runs the repository checks. No version has been released yet: a release is a
-tagged commit, and the version that `main` shows is not a release until it
-is tagged.
+runner, and the last runs the repository checks. No version has been
+released yet: a release is a tagged commit, and the version that `main`
+shows is not a release until it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates will use only `core` and `alloc`. Its first releases will run

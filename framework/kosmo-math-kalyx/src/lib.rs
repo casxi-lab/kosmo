@@ -65,9 +65,11 @@
 //! A job of the job layer runs the text of a snapshot with kalyx on the
 //! host stub's worker thread, and its output line reads back into the
 //! display item of its result. The runner reads a fork of the clock that
-//! the job layer was built with:
+//! the job layer was built with. The example starts the host stub's worker
+//! thread, so it is compiled but not run; the tests in `tests/` run jobs
+//! this way:
 //!
-//! ```
+//! ```no_run
 //! use kosmo_jobs::stub::HostStub;
 //! use kosmo_jobs::{JobClock, JobLayer, Operation, Request, Submission, TerminalState};
 //! use kosmo_math_kalyx::{KalyxPreparer, KalyxRunner, convert, read_output_line};
