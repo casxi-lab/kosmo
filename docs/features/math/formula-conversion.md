@@ -9,8 +9,9 @@ locks, and it is the only crate of kosmo that depends on kalyx directly: the
 layout step of `cargo xtask check` fails when any other crate, or `xtask`,
 declares it.
 
-Submitting the text as a job and running it with kalyx are planned for the
-job layer `kosmo-jobs` and the kalyx runner of this crate. The function
+The text runs with kalyx as a job of the job layer `kosmo-jobs`, on the kalyx
+runner of this crate, as the [job layer](../framework/job-layer.md)
+describes. The function
 `read_output_line` of this crate reads an output line of kalyx into the
 display model of `kosmo-math-model`, which renders each result as one line
 of text; the documentation of both crates states the rules. The design rules

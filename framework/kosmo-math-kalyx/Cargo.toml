@@ -1,6 +1,6 @@
 [package]
 name = "kosmo-math-kalyx"
-description = "Formula conversion between the editing structure and kalyx 0.1.0: linear text, error ranges, read-back and output lines"
+description = "Formula conversion between the editing structure and kalyx 0.1.0: linear text, error ranges, read-back, output lines and the kalyx runner of the job layer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 kalyx.workspace = true
+kosmo-jobs.workspace = true
 kosmo-math-model.workspace = true
 
 [lints]

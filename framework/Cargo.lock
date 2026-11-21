@@ -31,6 +31,7 @@ name = "kosmo-math-kalyx"
 version = "0.1.0-dev.1"
 dependencies = [
  "kalyx",
+ "kosmo-jobs",
  "kosmo-math-model",
 ]
 

@@ -1,8 +1,10 @@
 //! Helpers shared by the integration tests: building lines, reading text
-//! with kalyx 0.1.0 as its command-line program does, and the answer
-//! vectors of kalyx 0.1.0.
+//! with kalyx 0.1.0 as its command-line program does, the answer vectors
+//! of kalyx 0.1.0, and in [`jobs`] running jobs with the kalyx runner.
 
 #![allow(dead_code, reason = "each test file uses some of the helpers")]
+
+pub mod jobs;
 
 use std::error::Error;
 use std::ops::Range;

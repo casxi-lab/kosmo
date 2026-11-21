@@ -9,9 +9,11 @@ with its verification level.
 
 The rules are fixed before the code that follows them. So far the product code
 is the `kosmo` program, which only reports its version, the one-line editing
-structure in `kosmo-math-model`, formula conversion in `kosmo-math-kalyx`, and
-the versions and the display model of exact results in `kosmo-math-model`,
-which `kosmo-math-kalyx` fills from kalyx's output lines;
+structure in `kosmo-math-model`, formula conversion in `kosmo-math-kalyx`, the
+job layer in `kosmo-jobs` with its host stub and its controllable backend,
+the kalyx runner in `kosmo-math-kalyx`, and the versions and the display
+model of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills
+from kalyx's output lines;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -332,14 +334,17 @@ report to the job service. kosmo's job layer decides it by seven rules:
    ends; a job of several requests when all have run or it stopped by kalyx's
    rule for a job of several requests. One request's result is not the job's
    completion.
-2. On an accepted cancel request, a queued job goes directly to `cancelled`
-   and never runs; a running job goes to `cancel_requested`, and only then is
-   its `CancelFlag` set, so kalyx's `Cancelled` always follows
+2. On an accepted cancel request, a queued job, which has not started as far
+   as the job layer knows, goes directly to `cancelled`: a backend that has
+   not started it stops it before its first request, and whatever it reports
+   for the job is discarded. A running job goes to `cancel_requested`, and
+   only then is its `CancelFlag` set, so kalyx's `Cancelled` always follows
    `cancel_requested`. Acceptance and terminal state are reported separately.
    A cancellation cannot be withdrawn.
 3. A job in `cancel_requested` that receives any completion or stop report
-   becomes `cancelled`; the report's lines and results are discarded and the
-   record holds only `cancelled`.
+   becomes `cancelled`; the report's lines and results are discarded. Its
+   terminal record still holds the stop reason, and with it the mark of a
+   forced stop; the mark belongs to the record and is not a delivered line.
 4. A job whose completion is accepted first ends as Table 1 of kalyx's
    command contract and its rule for a job of several requests give; a later
    cancel request is answered "already terminal".
@@ -383,8 +388,8 @@ generic over the runner port and has a single worker thread, which runs one
 job at a time in the order it receives them.
 
 - **Worker thread.** The stub creates the worker when it is constructed, with
-  `std::thread::Builder`, a fixed name and an explicit stack size whose value
-  is fixed with the implementation. If the worker cannot be created,
+  `std::thread::Builder`, a fixed name and an explicit stack size, given in
+  the [job layer](features/framework/job-layer.md#host-stub). If the worker cannot be created,
   constructing the job layer returns an error; nothing panics.
 - **Channels.** Jobs reach the worker through a dispatch channel,
   `sync_channel(MAX_LIVE_JOBS)`. Every job in it is live, and live jobs never
@@ -393,12 +398,13 @@ job at a time in the order it receives them.
   keeps its slot until `Finished`, so no report blocks either.
 - **Reports.** The backend reports `Started` for every job that starts and
   exactly one `Finished` for every job it receives, carrying each request's
-  report and the stop seen between requests. A job that never starts (see
-  worker death below) gets only `Finished`, and the core handles it the same
-  way.
+  report and the stop that the backend saw, as
+  [protocol stub types](#protocol-stub-types) describes. A job that never
+  starts (see worker death below) gets only `Finished`, and the core handles
+  it the same way.
 - **Runner calls.** The runner's `prepare` is called on the job-layer thread
-  and its run call only on the worker thread; the port's exact shape is fixed
-  with the implementation.
+  and its run call only on the worker thread; the port's shape is in the
+  [job layer](features/framework/job-layer.md#ports).
 - **Order.** Jobs complete one at a time, in submission order. A test with
   several jobs that only submits them and then waits for each to reach its
   terminal state in turn has a determined result without gates. Events
@@ -414,10 +420,11 @@ job at a time in the order it receives them.
   it to the runner; the runner finds the flag before the first request and
   reports a `Finished` with no request reports and the stop reason
   "cancelled", without running a request. A job that the worker has already
-  taken, but whose `Started` the core has not handled, stops before its first
-  request in the same way. For the core these jobs were still queued, so it
-  ended them `cancelled` when it accepted the cancellation, and it discards
-  these reports.
+  taken, but whose `Started` the core has not handled, stops at the runner's
+  next check of the flag: before its first request when the flag was set
+  before that check. These jobs had not started as far as the core knows, so
+  it ended them `cancelled` when it accepted the cancellation, and it
+  discards whatever their backend reports for them.
 - **Deadline while queued.** A job's absolute deadline is fixed when `submit`
   accepts it; time keeps passing while the job waits in the dispatch channel.
   A job already past its deadline when the worker takes it is found by the
@@ -450,8 +457,8 @@ job at a time in the order it receives them.
   shared. kalyx terms, `Outcome` and `Context` stay on the worker thread and
   are freed when a request ends; delivered lines belong to the submitter. On
   the host the stub bounds neither real memory nor CPU time, a limit that the
-  job layer's planned feature document will state. The representative
-  workload is the derivative example of the
+  [job layer](features/framework/job-layer.md#limits) states. The
+  representative workload is the derivative example of the
   [first integration target](scope.md#first-integration-target). kalyx
   0.1.0's resource profile measured a stack of at most 9,728 bytes and a
   largest heap peak of 901,176 bytes among its cases, as measurements, not
@@ -481,8 +488,9 @@ job at a time in the order it receives them.
     checks the flag and then the deadline.
   - How handles map to flags, and the shapes of `prepare` on the job-layer
     thread and of the run call on the worker thread (for example whether the
-    runner is `Sync`, or is split per job), are fixed with the
-    implementation. The runner need not support two runs at once. This
+    runner is `Sync`, or is split per job), are given in the
+    [job layer](features/framework/job-layer.md#ports). The runner need not
+    support two runs at once. This
     division stays.
 - The job layer is built with an injected monotonic clock port: `u64`
   nanoseconds, the unit of kalyx's `Clock`, `Send` and forkable. The stub and
@@ -533,10 +541,14 @@ job at a time in the order it receives them.
   text, `Versions { source, context, settings }` from `kosmo-math-model`,
   nine-field limits defaulting to kalyx 0.1.0's `Limits::new()`, and the job
   deadline. The cancel flag is not in it; the work item carries the handle.
-- Reports are `Started(id)` and `Finished(id, request reports, stop seen
-  between requests)`. A request report holds the outcome kind (Value, State,
-  Fault, ResourceLimit, Cancelled, DeadlineExceeded), an error class from a
-  kosmo enum that includes a failed `serialize`, and the output line's bytes.
+- Reports are `Started(id)` and `Finished(id, request reports, stop)`. The
+  stop is the one the backend saw: a cancellation or a passed deadline
+  between requests, a forced stop or an exhausted CPU budget within a
+  request, which leaves that request without a report, or a backend internal
+  error. A request report holds the outcome kind (Value, State, Fault,
+  ResourceLimit, Cancelled, DeadlineExceeded), an error class from a kosmo
+  enum that includes a failed `serialize`, the output line's bytes, and the
+  three version numbers that the outcome echoed.
 - Results return only as output lines, which the submitter parses with the
   display model.
 - There is no settings field; the kalyx runner always passes `Settings::new()`.
@@ -564,14 +576,23 @@ A job is `queued` (handed to the backend, not yet started, including waiting
 in the stub's dispatch channel), `running` or `cancel_requested`, and ends
 `completed`, `failed`, `cancelled` or `resource_exhausted`. Its terminal
 record holds the state, the stop reason, the delivered lines and the echoed
-versions. A stop reason is one of:
+versions. A stop reason is one of five:
 
 - cancellation;
 - deadline;
-- forced stop or CPU budget, reported only by a backend;
+- forced stop, reported only by a backend: it stopped the job by force after
+  the grace period that followed its cancellation or its passed deadline;
+- CPU budget, reported only by a backend: it stopped the job by force because
+  its CPU budget ran out;
 - backend internal error: in the host stub, the worker thread ended before
   reporting the job's `Finished`, or the job was submitted after the worker
   thread ended.
+
+A record is marked as forced when its stop reason is a forced stop or a CPU
+budget; the mark follows from the stop reason and is no separate flag. A
+forced stop stands for no other exhaustion of a job's resource scope; the
+first release has no input for those, and krepi's job contract will define
+them.
 
 One pure core function with a finite, exhaustively enumerable domain
 computes the terminal state: the seven rows of kalyx's Table 1 below, the
@@ -585,7 +606,7 @@ produces those lines, and the core discards them. Outside `cancel_requested`,
 echoed versions that differ from the request's give `failed`, marked as an
 internal error, and no line is delivered as a result. Forced stops and CPU
 budgets do not occur in the host stub; only the controllable backend produces
-them, in unit tests.
+them, in tests.
 
 | Request outcome | Delivered line | Without `cancel_requested` | After `cancel_requested` | Stops the job |
 | --- | --- | --- | --- | --- |
@@ -607,8 +628,11 @@ Outside the table:
   discarded;
 - a cancel request accepted after all requests ran but before their report is
   handled: `cancelled`, results discarded;
-- a forced stop reported by a backend: `cancelled` in `cancel_requested`,
-  otherwise `resource_exhausted`, both marked as forced;
+- a forced stop or an exhausted CPU budget reported by a backend:
+  `cancelled` in `cancel_requested`, otherwise `resource_exhausted`, both
+  marked as forced; a `resource_exhausted` job delivers the lines of the
+  requests that ran, as for a passed deadline, and the interrupted request
+  has none;
 - a backend internal error: `cancelled` in `cancel_requested`, otherwise
   `failed` marked as an internal error, both without lines;
 - no stop: `failed` if any request has a fault or ResourceLimit, otherwise
@@ -793,11 +817,11 @@ allowlist that the workspace's `lock-allowlist` names; the deps step of
 licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `framework/` exists,
-with the libraries `kosmo-math-model` and `kosmo-math-kalyx`, and `desktop/`,
-with the program `kosmo`; the table states the rules of `display/` and lists
-no crate for it. A change that adds a crate registers it in the table, and
-the first crate of a workspace adds the workspace root. The layout step of
-`cargo xtask check` enforces this layout on the tracked files, and the deps
+with the libraries `kosmo-math-model`, `kosmo-jobs` and `kosmo-math-kalyx`, and
+`desktop/`, with the program `kosmo`; the table states the rules of `display/`
+and lists no crate for it. A change that adds a crate registers it in the
+table, and the first crate of a workspace adds the workspace root. The layout
+step of `cargo xtask check` enforces this layout on the tracked files, and the deps
 step on what Cargo resolves; Contributing describes the checks of
 [the layout step](../CONTRIBUTING.md#the-layout-step) and of
 [the fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps) and
@@ -3972,7 +3996,7 @@ A component is a unit with its own role, contract and level.
 | One-line editing structure | `kosmo-math-model` | Data-structure core | A1 | [One-line editing](features/math/one-line-editing.md); tests in `framework/kosmo-math-model/src/` and `framework/kosmo-math-model/tests/` |
 | Exact display | `kosmo-math-model`, `kosmo-math-kalyx` | Presentation | A0 | `planned` |
 | Formula conversion (linear text, range mapping, read-back) | `kosmo-math-kalyx` | Cross-project format | A1 | [Formula conversion](features/math/formula-conversion.md); tests in `framework/kosmo-math-kalyx/src/` and `framework/kosmo-math-kalyx/tests/` |
-| Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | `planned` |
+| Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | [Job layer](features/framework/job-layer.md); tests in `framework/kosmo-jobs/src/`, `framework/kosmo-jobs/tests/`, `framework/kosmo-math-kalyx/src/runner/` and `framework/kosmo-math-kalyx/tests/` |
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | `planned` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | `planned` |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |

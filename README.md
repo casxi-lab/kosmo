@@ -89,32 +89,34 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo has no usable application yet: of the features above, only the
-editing structure of one-line formula input and its conversion into the text
-that kalyx reads work, as libraries. The repository holds documentation, the
-kosmo logo, a commit hook, the repository checks, the layout table
-`layout.toml` and two product workspaces. The `framework/` workspace has
-the libraries `kosmo-math-model`, which holds
-[one-line formula input](docs/features/math/one-line-editing.md) while you
-edit it, and `kosmo-math-kalyx`, which
-[converts](docs/features/math/formula-conversion.md) it into the text that
-kalyx reads. The `desktop/` workspace has the `kosmo` program, which so far
-only reports its version. CI runs the repository checks on every pull
-request to `main` and every push to `main`. These commands run from the
-repository root:
+kosmo has no usable application yet. Of the features above, three parts work,
+as libraries: the editing structure of one-line formula input, its conversion
+into the text that kalyx reads, and the job layer that runs that text with
+kalyx. The repository holds documentation, the kosmo logo, a commit hook, the
+repository checks, the layout table `layout.toml` and two product
+workspaces. The `framework/` workspace has the libraries `kosmo-math-model`,
+which holds [one-line formula input](docs/features/math/one-line-editing.md)
+while you edit it, `kosmo-jobs`, which runs computations as
+[versioned jobs](docs/features/framework/job-layer.md), and
+`kosmo-math-kalyx`, which [converts](docs/features/math/formula-conversion.md)
+the input into the text that kalyx reads and runs the jobs with kalyx. The
+`desktop/` workspace has the `kosmo` program, which so far only reports its
+version. CI runs the repository checks on every pull request to `main` and
+every push to `main`. These commands run from the repository root:
 
 ```sh
 cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-model
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-jobs
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo xtask check
 ```
 
-The first prints `kosmo` and its version, the second and the third run the
-tests of the editing structure and of formula conversion, and the last runs
-the repository checks. No version has been released yet: a release is a
-tagged commit, and the version that `main` shows is not a release until it
-is tagged.
+The first prints `kosmo` and its version, the next three run the tests of the
+editing structure, of the job layer and of formula conversion with the kalyx
+runner, and the last runs the repository checks. No version has been
+released yet: a release is a tagged commit, and the version that `main`
+shows is not a release until it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates will use only `core` and `alloc`. Its first releases will run

@@ -16,6 +16,9 @@
 //! - [`read_output_line`] reads an output line of kalyx into the display
 //!   item of a result, with the versions of its request and its error
 //!   placed in the submitted snapshot.
+//! - [`KalyxPreparer`] and [`KalyxRunner`] are the two halves of the kalyx
+//!   runner, which the host stub of the job layer `kosmo-jobs` uses to
+//!   execute the requests of each job with kalyx.
 //!
 //! ```
 //! use kosmo_math_kalyx::{Place, convert, map_span};
@@ -58,15 +61,62 @@
 //! # Ok::<(), kosmo_math_model::Rejected>(())
 //! ```
 
+//!
+//! A job of the job layer runs the text of a snapshot with kalyx on the
+//! host stub's worker thread, and its output line reads back into the
+//! display item of its result. The runner reads a fork of the clock that
+//! the job layer was built with. The example starts the host stub's worker
+//! thread, so it is compiled but not run; the tests in `tests/` run jobs
+//! this way:
+//!
+//! ```no_run
+//! use kosmo_jobs::stub::HostStub;
+//! use kosmo_jobs::{JobClock, JobLayer, Operation, Request, Submission, TerminalState};
+//! use kosmo_math_kalyx::{KalyxPreparer, KalyxRunner, convert, read_output_line};
+//! use kosmo_math_model::EditBuffer;
+//! use kosmo_math_model::display::Content;
+//! use kosmo_math_model::version::Versions;
+//!
+//! struct Still;
+//! impl JobClock for Still {
+//!     fn now(&mut self) -> u64 { 0 }
+//!     fn fork(&self) -> Box<dyn JobClock> { Box::new(Still) }
+//! }
+//!
+//! let clock = Still;
+//! let stub = HostStub::new(KalyxPreparer::new(), KalyxRunner::new(clock.fork()))?;
+//! let mut layer = JobLayer::new(stub, Box::new(clock));
+//! let session = layer.open_session()?;
+//!
+//! let mut line = EditBuffer::new();
+//! line.insert_text("1/3+1/6")?;
+//! let snapshot = line.snapshot();
+//! let versions = Versions {
+//!     source: snapshot.version(),
+//!     ..Versions::default()
+//! };
+//! let request = Request::new(Operation::Eval, "", convert(&snapshot)?);
+//! let id = layer.submit(Submission::new(session, versions, request))?;
+//! let terminal = layer.wait(id).ok_or("no terminal state")?;
+//! assert_eq!(terminal.record().state(), TerminalState::Completed);
+//! let output = terminal.record().lines().first().ok_or("no line")?;
+//! let item = read_output_line(output, versions, &snapshot);
+//! assert_eq!(item.content, Content::Value("1/2".to_string()));
+//! layer.shutdown();
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+
 #![forbid(unsafe_code)]
 
 mod conversion;
 mod output;
 mod read_back;
+mod runner;
 mod span;
 
 pub use conversion::{NotConverted, convert};
 pub use kosmo_math_model::Place;
 pub use output::read_output_line;
 pub use read_back::{NotReusable, read_back};
+pub use runner::{JobFlag, KalyxPreparer, KalyxRunner};
 pub use span::{SpanOutside, map_span};
