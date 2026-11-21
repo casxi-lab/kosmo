@@ -130,7 +130,9 @@ pub enum Command {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CancelAnswer {
-    /// Accepted: the job was queued and is now `cancelled`; it never runs.
+    /// Accepted: the job had not started as far as the job layer knows, and
+    /// is now `cancelled`. A backend that has not started it stops it before
+    /// its first request; whatever it reports for the job is discarded.
     Cancelled,
     /// Accepted: the job was running and is now in `cancel_requested`; its
     /// terminal state, `cancelled`, follows its `Finished` report.
