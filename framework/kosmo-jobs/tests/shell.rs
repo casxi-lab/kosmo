@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use kosmo_jobs::controllable::{ControllableBackend, Gate, Plan, Release};
 use kosmo_jobs::{
     CancelAnswer, JobClock, JobLayer, JobRequest, JobState, Limits, MAX_LIVE_JOBS, Rejected,
-    StopReason, TerminalState,
+    Report, StopReason, TerminalState,
 };
 use support::{Checked, controllable, eval, value, versions};
 
@@ -132,6 +132,18 @@ fn a_shutdown_finishes_the_jobs_that_have_no_plan() -> Checked {
     assert!(layer.poll().is_empty());
     assert_eq!(layer.state(queued), Some(JobState::Queued));
     layer.shutdown();
+
+    // The shutdown set the job's cancellation before it stopped the
+    // backend, so the backend stopped the job before its first request.
+    let stop = layer
+        .backend()
+        .sent()
+        .iter()
+        .find_map(|report| match report {
+            Report::Finished(finished) if finished.id() == queued => Some(finished.stop()),
+            _ => None,
+        });
+    assert_eq!(stop, Some(Some(StopReason::Cancellation)));
     let terminal = layer.take(queued).ok_or("no terminal state")?;
     assert_eq!(terminal.record().state(), TerminalState::Cancelled);
     assert_eq!(terminal.record().stop(), Some(StopReason::Cancellation));

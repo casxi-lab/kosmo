@@ -1,5 +1,6 @@
 //! Cancelling a session: one step cancels every job of the session that
-//! has not ended, and leaves the jobs of other sessions alone.
+//! has not ended, and leaves the jobs of other sessions alone. The port
+//! works through a trait object too.
 
 mod support;
 
@@ -92,5 +93,24 @@ fn cancelling_a_session_cancels_its_queued_and_running_jobs_once() -> Checked {
                 && finished.requests().is_empty())
     });
     assert!(queued_end, "the queued job ran no request");
+    Ok(())
+}
+
+#[test]
+fn the_session_cancel_port_can_be_used_as_a_trait_object() -> Checked {
+    let tagged = versions(1, 0, 0)?;
+    let mut layer = controllable(ControllableBackend::new());
+    let session = layer.open_session()?;
+    // A job without a plan waits before it starts, so it is still queued.
+    let queued = layer.submit(eval(session, tagged, "1"))?;
+
+    let port: &mut dyn SessionCancel = &mut layer;
+    let count = port.cancel_session(session);
+    assert_eq!((count.queued, count.requested), (1, 0));
+    assert_eq!(port.cancel_session(session), CancelCount::default());
+    assert_eq!(
+        layer.state(queued),
+        Some(JobState::Terminal(TerminalState::Cancelled))
+    );
     Ok(())
 }
