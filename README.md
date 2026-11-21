@@ -89,11 +89,11 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo has no usable application yet: of the features above, only the
-editing structure of one-line formula input, its conversion into the text
-that kalyx reads and the job layer that runs that text with kalyx work, as
-libraries. The repository holds documentation, the kosmo logo, a commit hook,
-the repository checks, the layout table `layout.toml` and two product
+kosmo has no usable application yet. Of the features above, three parts work,
+as libraries: the editing structure of one-line formula input, its conversion
+into the text that kalyx reads, and the job layer that runs that text with
+kalyx. The repository holds documentation, the kosmo logo, a commit hook, the
+repository checks, the layout table `layout.toml` and two product
 workspaces. The `framework/` workspace has the libraries `kosmo-math-model`,
 which holds [one-line formula input](docs/features/math/one-line-editing.md)
 while you edit it, `kosmo-jobs`, which runs computations as

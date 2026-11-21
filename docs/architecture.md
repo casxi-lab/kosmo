@@ -398,9 +398,10 @@ job at a time in the order it receives them.
   keeps its slot until `Finished`, so no report blocks either.
 - **Reports.** The backend reports `Started` for every job that starts and
   exactly one `Finished` for every job it receives, carrying each request's
-  report and the stop seen between requests. A job that never starts (see
-  worker death below) gets only `Finished`, and the core handles it the same
-  way.
+  report and the stop that the backend saw, as
+  [protocol stub types](#protocol-stub-types) describes. A job that never
+  starts (see worker death below) gets only `Finished`, and the core handles
+  it the same way.
 - **Runner calls.** The runner's `prepare` is called on the job-layer thread
   and its run call only on the worker thread; the port's exact shape is fixed
   with the implementation.

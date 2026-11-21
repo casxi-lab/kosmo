@@ -28,8 +28,9 @@ architecture.
 A submitter opens a session with `JobLayer::open_session` and submits a
 `Submission`: the session, one request or up to four requests in order, each
 an operation (`Eval`, `Expand` or `Diff`) with its variable and its linear
-text, the three versions that the text was converted from, the limits of each
-request and an optional time limit in nanoseconds. `submit` accepts the job
+text, the three versions that the text was converted from, one set of limits,
+of which each request gets its own copy, and an optional time limit in
+nanoseconds. `submit` accepts the job
 and returns its identity, or refuses it. `poll` applies the reports that have
 arrived and returns the jobs whose terminal states wait to be taken; `take`
 takes one, and `wait` waits for one job and takes its terminal state. `cancel`
@@ -53,10 +54,12 @@ fn host_layer(
 }
 ```
 
-The crate documentation of both libraries has complete examples, which
-`cargo test` runs: one job on the controllable backend, a job on the host
-stub with a runner of its own, and a line converted, run with kalyx and read
-back into the display model. Run the tests from the repository root with:
+The crate documentation of both libraries has complete examples. `cargo test`
+runs one job on the controllable backend and a job on the host stub with a
+runner of its own. The example of a line converted, run with kalyx and read
+back into the display model is only compiled; the tests in
+`framework/kosmo-math-kalyx/tests/` run the same steps. Run the tests from
+the repository root with:
 
 ```sh
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-jobs
@@ -80,17 +83,20 @@ state has been taken and its backend has finished it.
   its own copy of the job's limits; nothing scales them by the number of
   requests.
 - Job and session identities count up from 1, are never reused and never
-  wrap; after the last one, submissions are refused as `Rejected::Exhausted`.
+  wrap. After the last job identity, `submit` refuses with
+  `Rejected::Exhausted`; after the last session identity, `open_session`
+  does.
 - The nine limits default to `Limits::new()` of kalyx 0.1.0.
 
 ## Ports
 
 The job layer reaches its backend only through the port `JobBackend`:
 `submit` hands it an accepted job as a `JobRequest`, `cancel(id)` sets the
-cancellation of a job after the job layer accepted a cancel request, and
-`try_report` and `wait_report` give its reports. A backend reports
-`Started(id)` for every job that starts and exactly one `Finished` for every
-job it receives, in any order across jobs.
+cancellation of a job after the job layer accepted a cancel request,
+`try_report` and `wait_report` give its reports, and `shutdown` stops it
+once the job layer has cancelled every job that has not ended. A backend
+reports `Started(id)` for every job that starts and exactly one `Finished`
+for every job it receives, in any order across jobs.
 
 The host stub is generic over a runner of two halves:
 
@@ -131,17 +137,19 @@ checks it. Tests inject a fake clock that they set themselves.
 
 - A cancel request for a job that has not started, as far as the job layer
   knows, is answered `CancelAnswer::Cancelled`: the job is `cancelled` at
-  once and delivers nothing. Its backend stops it before its first request,
-  and whatever it reports for the job is discarded.
+  once and delivers nothing. A backend that has not started it stops it
+  before its first request; whatever it reports for the job is discarded.
 - A cancel request for a running job is answered `CancelAnswer::Requested`:
   the job moves to `cancel_requested`, only then is its cancellation set, and
   it ends `cancelled` once its backend reports its end, whatever that report
   holds.
 - Before each request, the first included, the kalyx runner checks the job's
   flag and then its deadline, and stops the job there without running the
-  request. Within a request, kalyx checks the flag and then the deadline at
-  each charge point, so a running request stops at the next charge point
-  after the cancellation becomes visible.
+  request. Within a request, kalyx checks the flag at each charge point,
+  before it observes the deadline on its context's schedule, so a running
+  request stops at the next charge point after the cancellation becomes
+  visible. A passed deadline stops it within the bound that
+  [Limits](#limits) states.
 - `cancel_session` cancels every job of the session that has not reached its
   terminal state, queued ones included, and returns how many queued jobs it
   ended and how many running jobs it moved to `cancel_requested`. A second
@@ -284,10 +292,12 @@ request, and joins the worker; `HostStub::live_threads` is 0 afterwards.
 ## Limits
 
 - On the host, nothing bounds the real memory or the CPU time of a job. kalyx
-  bounds each request by its nine logical limits, and the deadline and
-  cancellation stop it at its next charge point; a primitive that runs long
-  between two charge points is not interrupted. Bounds of real memory and CPU
-  time are planned with the backend for krepi's job service.
+  bounds each request by its nine logical limits. A cancellation stops the
+  request at its next charge point, and a passed deadline stops it within
+  the overrun bound that kalyx's context contract states; a primitive
+  operation that runs long between two charge points is not interrupted.
+  Bounds of real memory and CPU time are planned with the backend for
+  krepi's job service.
 - Exhaustions of a job's resource scope other than its CPU budget have no
   input in the first release: there is no resource scope, the terminal
   function has no stop for them, and a forced stop does not stand in for
