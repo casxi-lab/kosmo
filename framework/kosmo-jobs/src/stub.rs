@@ -60,17 +60,23 @@
 //!     }
 //! }
 //!
-//! // A runner that runs no request: it stops each job for its
-//! // cancellation, or reports that the job's deadline passed.
-//! struct Run;
+//! // A runner that runs no request. Before the first one it stops a job
+//! // for its cancellation, or for its deadline when the job has one and a
+//! // reading of the runner's clock is at least the deadline. A job that
+//! // neither stops gets no report for its request, and the job layer fails
+//! // it.
+//! struct Run(Box<dyn JobClock>);
 //! impl JobRunner<Arc<AtomicBool>> for Run {
-//!     fn run(&mut self, _item: WorkItem, flag: Arc<AtomicBool>) -> RunReport {
+//!     fn run(&mut self, item: WorkItem, flag: Arc<AtomicBool>) -> RunReport {
+//!         let deadline = item.request().deadline();
 //!         let stop = if flag.load(Ordering::SeqCst) {
-//!             StopReason::Cancellation
+//!             Some(StopReason::Cancellation)
+//!         } else if deadline.is_some_and(|deadline| self.0.now() >= deadline) {
+//!             Some(StopReason::Deadline)
 //!         } else {
-//!             StopReason::Deadline
+//!             None
 //!         };
-//!         RunReport::new(Vec::new(), Some(stop))
+//!         RunReport::new(Vec::new(), stop)
 //!     }
 //! }
 //!
@@ -80,10 +86,15 @@
 //!     fn fork(&self) -> Box<dyn JobClock> { Box::new(Still) }
 //! }
 //!
-//! let mut layer = JobLayer::new(HostStub::new(Prepare, Run)?, Box::new(Still));
+//! let clock = Box::new(Still);
+//! let stub = HostStub::new(Prepare, Run(clock.fork()))?;
+//! let mut layer = JobLayer::new(stub, clock);
 //! let session = layer.open_session()?;
 //! let request = Request::new(Operation::Eval, "", "1/3");
-//! let id = layer.submit(Submission::new(session, Versions::default(), request))?;
+//! // With a time limit of 0 the deadline is the reading at acceptance, so
+//! // it has passed when the runner reads the same clock.
+//! let submission = Submission::new(session, Versions::default(), request).with_time_limit(0);
+//! let id = layer.submit(submission)?;
 //! let terminal = layer.wait(id).ok_or("no terminal state")?;
 //! assert_eq!(terminal.record().state(), TerminalState::ResourceExhausted);
 //! layer.shutdown();

@@ -118,8 +118,11 @@ impl EchoedVersions {
 }
 
 impl From<Versions> for EchoedVersions {
-    /// The echo of `versions` unchanged, as a backend gives it for a
-    /// request computed from them.
+    /// The echo that a request computed from `versions` would give. The job
+    /// layer records it when every echo matched, and tests plan it for a
+    /// backend; a backend builds its echo from the numbers that its
+    /// computation gave back, with [`EchoedVersions::new`], never from the
+    /// request's versions.
     fn from(versions: Versions) -> EchoedVersions {
         EchoedVersions::new(
             versions.source.get(),

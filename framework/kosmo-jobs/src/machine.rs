@@ -34,7 +34,8 @@
 //! job ran. Its rules, in order:
 //!
 //! 1. In `cancel_requested` the job is `cancelled`, whatever the report
-//!    holds, and delivers no line. The record keeps the reported stop, or
+//!    holds, and delivers no line. The record keeps the stop that rule 3
+//!    would find (a request's own stop first, else the reported stop), or
 //!    cancellation when there is none.
 //! 2. Otherwise a backend internal error, an echo whose number for any of
 //!    the three versions differs from that of the job's versions, or
@@ -239,8 +240,11 @@ impl TerminalRecord {
         self.state
     }
 
-    /// The reason why the job stopped before all its requests ran, if it
-    /// did.
+    /// The stop of the job as the terminal function found it: a request's
+    /// own `Cancelled` or `DeadlineExceeded` first, else the stop that the
+    /// backend reported; for a job cancelled while queued or in
+    /// `cancel_requested` without either, cancellation. `None` when nothing
+    /// stopped the job.
     pub const fn stop(&self) -> Option<StopReason> {
         self.stop
     }

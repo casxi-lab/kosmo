@@ -167,7 +167,10 @@ pub trait JobPreparer {
 /// it checks the job's cancellation, through the token, and then its
 /// deadline, a deadline having passed when a reading of its clock is at
 /// least the deadline; it runs no further request after either, and returns
-/// the stop.
+/// the stop. Nor does it run a further request after one whose outcome or
+/// line stopped the job with a `Cancelled` or `DeadlineExceeded` error:
+/// that request's report is the last, as [`Finished`](crate::Finished)
+/// describes.
 pub trait JobRunner<T>: Send + 'static {
     /// Runs the job of `item` with `token`, the value that the preparing
     /// half made for the job.
