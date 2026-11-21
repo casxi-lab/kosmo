@@ -65,13 +65,21 @@ fn contract<B: JobBackend>(layer: &mut JobLayer<B>, line: &Typed) -> Checked<See
 }
 
 /// The crates that the manifest `manifest` names in any table of
-/// dependencies.
+/// dependencies: the keys of a table such as `[dependencies]`, and the name
+/// in the header of a table of one dependency, such as
+/// `[dependencies.<name>]` or `[dev-dependencies.<name>]`.
 fn dependencies(manifest: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut in_dependencies = false;
     for line in manifest.lines().map(str::trim) {
         if let Some(table) = line.strip_prefix('[') {
-            in_dependencies = table.trim_end_matches(']').ends_with("dependencies");
+            let table = table.trim_end_matches(']').trim();
+            in_dependencies = table.ends_with("dependencies");
+            if let Some((parent, name)) = table.rsplit_once('.')
+                && parent.trim_end().ends_with("dependencies")
+            {
+                names.push(name.trim().trim_matches(['"', '\'']).to_string());
+            }
         } else if in_dependencies && let Some((key, _)) = line.split_once('=') {
             let name = key.trim().split('.').next().unwrap_or_default();
             names.push(name.to_string());
@@ -121,4 +129,28 @@ fn the_job_layer_runs_alike_on_the_kalyx_runner_and_the_controllable_backend() -
     // The job layer depends on neither kalyx nor this crate.
     assert_eq!(dependencies(JOBS_MANIFEST), ["kosmo-math-model"]);
     Ok(())
+}
+
+#[test]
+fn the_manifest_reader_finds_dependencies_in_every_form_of_table() {
+    let manifest = "\
+[package]
+name = \"example\"
+
+[dependencies]
+kosmo-math-model.workspace = true
+
+[dependencies.kalyx]
+workspace = true
+
+[dev-dependencies.\"kosmo-math-kalyx\"]
+workspace = true
+
+[target.'cfg(unix)'.build-dependencies]
+cc = \"=1.0.0\"
+";
+    assert_eq!(
+        dependencies(manifest),
+        ["kosmo-math-model", "kalyx", "kosmo-math-kalyx", "cc"]
+    );
 }

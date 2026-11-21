@@ -152,6 +152,30 @@ fn a_kalyx_request_carries_the_operation_text_and_versions_of_the_job() {
 }
 
 #[test]
+fn the_report_echoes_each_version_of_the_outcome_in_its_own_field() {
+    let mut buffer = EditBuffer::new();
+    buffer.insert_char('1').unwrap();
+    buffer.insert_char('2').unwrap();
+    let versions = Versions {
+        source: buffer.version(),
+        context: ContextVersion::new(3),
+        settings: SettingsVersion::new(4),
+    };
+    let (clock, _) = clock(0);
+    let request = Request::new(Operation::Eval, "", "1/3+1/6");
+    let ran = run_request(
+        &request,
+        versions,
+        kalyx::Limits::new(),
+        None,
+        &clock,
+        &CancelFlag::new(),
+    );
+    assert_eq!(ran.report.echoed(), EchoedVersions::new(2, 3, 4));
+    assert_eq!(line(&ran), "value\t2\t3\t4\t1/2\n");
+}
+
+#[test]
 fn the_handle_of_a_job_sets_the_flag_that_only_its_own_token_reads() {
     let (fork, _) = clock(0);
     let mut layer = JobLayer::new(ControllableBackend::new(), fork.0);
