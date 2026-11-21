@@ -1,6 +1,7 @@
 //! The shell of the job layer on a controllable backend: what an accepted
-//! submission hands to the backend, when the job layer reads its clock, and
-//! a shutdown while a job runs.
+//! submission hands to the backend, when the job layer reads its clock, a
+//! shutdown while a job runs, a shutdown with jobs that have no plan, and
+//! the cancellation of one job among several.
 
 mod support;
 
@@ -9,7 +10,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use kosmo_jobs::controllable::{ControllableBackend, Gate, Plan, Release};
 use kosmo_jobs::{
-    JobClock, JobLayer, JobRequest, JobState, Limits, MAX_LIVE_JOBS, Rejected, TerminalState,
+    CancelAnswer, JobClock, JobLayer, JobRequest, JobState, Limits, MAX_LIVE_JOBS, Rejected,
+    StopReason, TerminalState,
 };
 use support::{Checked, controllable, eval, value, versions};
 
@@ -115,6 +117,65 @@ fn a_shutdown_ends_a_running_job_cancelled_before_it_returns() -> Checked {
     let terminal = layer.take(id).ok_or("no terminal state")?;
     assert_eq!(terminal.record().state(), TerminalState::Cancelled);
     assert!(terminal.record().lines().is_empty());
+    assert_eq!(layer.live_jobs(), 0);
+    Ok(())
+}
+
+#[test]
+fn a_shutdown_finishes_the_jobs_that_have_no_plan() -> Checked {
+    let tagged = versions(1, 0, 0)?;
+    let mut layer = controllable(ControllableBackend::new());
+    let session = layer.open_session()?;
+
+    // A job without a plan waits before it starts, so it is still queued.
+    let queued = layer.submit(eval(session, tagged, "1"))?;
+    assert!(layer.poll().is_empty());
+    assert_eq!(layer.state(queued), Some(JobState::Queued));
+    layer.shutdown();
+    let terminal = layer.take(queued).ok_or("no terminal state")?;
+    assert_eq!(terminal.record().state(), TerminalState::Cancelled);
+    assert_eq!(terminal.record().stop(), Some(StopReason::Cancellation));
+    assert_eq!(layer.live_jobs(), 0, "the backend finished the job");
+
+    // A job without a plan that arrives after the shutdown ends too.
+    let late = layer.submit(eval(session, tagged, "2"))?;
+    layer.wait(late).ok_or("no terminal state")?;
+    assert_eq!(layer.live_jobs(), 0);
+    Ok(())
+}
+
+#[test]
+fn a_cancel_request_marks_only_its_job_in_the_controllable_backend() -> Checked {
+    let tagged = versions(1, 0, 0)?;
+    let mut backend = ControllableBackend::new();
+    for order in 0..2 {
+        backend.plan(
+            order,
+            Plan::new()
+                .request(value(tagged, "1"))
+                .gate(Gate::Between(0), Release::Manual),
+        );
+    }
+    let mut layer = controllable(backend);
+    let session = layer.open_session()?;
+    let first = layer.submit(eval(session, tagged, "1"))?;
+    let second = layer.submit(eval(session, tagged, "1"))?;
+    assert!(layer.poll().is_empty());
+
+    // Both jobs wait before their first request; only the first is
+    // cancelled.
+    assert_eq!(layer.cancel(first), CancelAnswer::Requested);
+    assert!(layer.backend().was_cancelled(0));
+    assert!(!layer.backend().was_cancelled(1));
+    for order in 0..2 {
+        layer.controllable().release(order, Gate::Between(0));
+    }
+    assert_eq!(layer.poll(), vec![first, second]);
+    let first_end = layer.take(first).ok_or("no terminal state")?;
+    assert_eq!(first_end.record().state(), TerminalState::Cancelled);
+    let second_end = layer.take(second).ok_or("no terminal state")?;
+    assert_eq!(second_end.record().state(), TerminalState::Completed);
+    assert_eq!(second_end.record().lines().len(), 1);
     assert_eq!(layer.live_jobs(), 0);
     Ok(())
 }
