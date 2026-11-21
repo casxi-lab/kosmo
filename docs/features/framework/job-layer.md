@@ -197,9 +197,11 @@ error, and no line is delivered.
 
 ## Terminal states
 
-One pure function of the job layer's core computes each terminal record from
-the backend's `Finished`, the job's versions and number of requests, and
-whether a cancel request was accepted while the job ran. The record holds the
+One pure function of the job layer's core computes the terminal record of
+each job whose `Finished` it handles, from that `Finished`, the job's versions
+and number of requests, and whether a cancel request was accepted while the
+job ran; a job cancelled while queued gets its record when the cancellation
+is accepted. The record holds the
 terminal state, the stop, the delivered lines and the echoed versions. A stop
 is one of five reasons: cancellation, deadline, forced stop, CPU budget and
 backend internal error. A record is marked as forced exactly when its stop is
@@ -360,7 +362,8 @@ test runner, or by a gate at a reading of a fake clock.
    `runner::tests::the_default_limits_of_a_job_are_those_of_kalyx_field_by_field`,
    `runner::tests::each_limit_of_a_job_goes_into_its_own_kalyx_field`;
    `kosmo-math-kalyx` `tests/job_requests.rs`:
-   `each_request_of_a_job_gets_its_own_copy_of_the_limits`.
+   `each_request_of_a_job_gets_its_own_copy_of_the_limits`,
+   `the_second_request_runs_under_the_limits_of_the_job`.
 4. The kalyx runner gives kalyx the operation by its name, the variable, the
    linear text, the job's three versions and the default settings. Tests:
    `kosmo-jobs` `request::tests::the_operations_have_the_names_of_the_command_entry`;

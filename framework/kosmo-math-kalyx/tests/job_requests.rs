@@ -14,6 +14,11 @@ use support::jobs::{KalyxJobs, typed};
 /// The value line of `1/3+1/6` at the versions 1, 0 and 0: 16 bytes.
 const VALUE: &[u8] = b"value\t1\t0\t0\t1/2\n";
 
+/// The error line of `12345` under `max_input_bytes = 4`.
+const OVER_INPUT: &[u8] =
+    b"error\t1\t0\t0\tResourceLimit\t0..5\tField(max_input_bytes)\t-\t4\tRequired(5)\t\
+                            resource limit exceeded: max_input_bytes\n";
+
 #[test]
 fn each_request_of_a_job_gets_its_own_copy_of_the_limits() -> Checked {
     let mut jobs = KalyxJobs::new()?;
@@ -39,6 +44,32 @@ fn each_request_of_a_job_gets_its_own_copy_of_the_limits() -> Checked {
     let finished = jobs.finished(id)?;
     assert_eq!(finished.requests().len(), 2);
     assert_eq!(finished.stop(), None);
+    Ok(())
+}
+
+#[test]
+fn the_second_request_runs_under_the_limits_of_the_job() -> Checked {
+    let mut jobs = KalyxJobs::new()?;
+    let session = jobs.layer.open_session()?;
+    let line = typed("12345")?;
+    // Under kalyx's default limits the second request would write a value
+    // line; under the job's limits it fails as the first does.
+    let mut limits = Limits::new();
+    limits.max_input_bytes = 4;
+    let requests = vec![
+        Request::new(Operation::Eval, "", line.text.as_str()),
+        Request::new(Operation::Eval, "", line.text.as_str()),
+    ];
+    let submission = Submission::several(session, line.versions, requests)
+        .ok_or("two requests")?
+        .with_limits(limits);
+    let id = jobs.layer.submit(submission)?;
+    let terminal = jobs.layer.wait(id).ok_or("no terminal state")?;
+    let record = terminal.record();
+    assert_eq!(record.state(), TerminalState::Failed);
+    assert_eq!(record.stop(), None);
+    assert_eq!(record.lines(), &[OVER_INPUT.to_vec(), OVER_INPUT.to_vec()]);
+    assert_eq!(jobs.finished(id)?.requests().len(), 2);
     Ok(())
 }
 

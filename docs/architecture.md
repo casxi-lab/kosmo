@@ -388,8 +388,8 @@ generic over the runner port and has a single worker thread, which runs one
 job at a time in the order it receives them.
 
 - **Worker thread.** The stub creates the worker when it is constructed, with
-  `std::thread::Builder`, a fixed name and an explicit stack size whose value
-  is fixed with the implementation. If the worker cannot be created,
+  `std::thread::Builder`, a fixed name and an explicit stack size, given in
+  the [job layer](features/framework/job-layer.md#host-stub). If the worker cannot be created,
   constructing the job layer returns an error; nothing panics.
 - **Channels.** Jobs reach the worker through a dispatch channel,
   `sync_channel(MAX_LIVE_JOBS)`. Every job in it is live, and live jobs never
@@ -403,8 +403,8 @@ job at a time in the order it receives them.
   starts (see worker death below) gets only `Finished`, and the core handles
   it the same way.
 - **Runner calls.** The runner's `prepare` is called on the job-layer thread
-  and its run call only on the worker thread; the port's exact shape is fixed
-  with the implementation.
+  and its run call only on the worker thread; the port's shape is in the
+  [job layer](features/framework/job-layer.md#ports).
 - **Order.** Jobs complete one at a time, in submission order. A test with
   several jobs that only submits them and then waits for each to reach its
   terminal state in turn has a determined result without gates. Events
@@ -488,8 +488,9 @@ job at a time in the order it receives them.
     checks the flag and then the deadline.
   - How handles map to flags, and the shapes of `prepare` on the job-layer
     thread and of the run call on the worker thread (for example whether the
-    runner is `Sync`, or is split per job), are fixed with the
-    implementation. The runner need not support two runs at once. This
+    runner is `Sync`, or is split per job), are given in the
+    [job layer](features/framework/job-layer.md#ports). The runner need not
+    support two runs at once. This
     division stays.
 - The job layer is built with an injected monotonic clock port: `u64`
   nanoseconds, the unit of kalyx's `Clock`, `Send` and forkable. The stub and

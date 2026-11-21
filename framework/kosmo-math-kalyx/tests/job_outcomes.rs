@@ -164,6 +164,8 @@ fn a_deadline_that_kalyx_sees_exhausts_the_job_with_the_fallback_line() -> Check
         report.error(),
         ErrorClass::Serialize(SerializeFailure::DeadlineExceeded)
     );
+    // The request stopped the job itself, so no stop is reported apart.
+    assert_eq!(finished.stop(), None);
     assert_eq!(jobs.clock.worker_readings(), 2);
     Ok(())
 }
