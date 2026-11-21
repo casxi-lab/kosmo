@@ -37,8 +37,8 @@
 //! ```
 //! use kosmo_jobs::controllable::{ControllableBackend, Plan};
 //! use kosmo_jobs::{
-//!     ErrorClass, JobClock, JobLayer, Operation, OutcomeKind, Request, RequestReport,
-//!     Submission, TerminalState,
+//!     EchoedVersions, ErrorClass, JobClock, JobLayer, Operation, OutcomeKind, Request,
+//!     RequestReport, Submission, TerminalState,
 //! };
 //! use kosmo_math_model::version::Versions;
 //!
@@ -48,9 +48,11 @@
 //!     fn fork(&self) -> Box<dyn JobClock> { Box::new(Still) }
 //! }
 //!
+//! // The backend echoes the versions 0, 0 and 0 of the request.
 //! let versions = Versions::default();
+//! let echo = EchoedVersions::new(0, 0, 0);
 //! let line = b"value\t0\t0\t0\t1/2\n".to_vec();
-//! let report = RequestReport::new(OutcomeKind::Value, ErrorClass::NoError, Some(line.clone()), versions);
+//! let report = RequestReport::new(OutcomeKind::Value, ErrorClass::NoError, Some(line.clone()), echo);
 //! let mut backend = ControllableBackend::new();
 //! backend.plan(0, Plan::new().request(report));
 //!
@@ -81,7 +83,8 @@ pub use port::{
     SessionCancel, WorkItem,
 };
 pub use report::{
-    ErrorClass, Finished, OutcomeKind, Report, RequestReport, SerializeFailure, StopReason,
+    EchoedVersions, ErrorClass, Finished, OutcomeKind, Report, RequestReport, SerializeFailure,
+    StopReason,
 };
 pub use request::{JobId, JobRequest, Limits, Operation, Rejected, Request, SessionId, Submission};
 

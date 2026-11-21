@@ -74,6 +74,61 @@ impl Finished {
     }
 }
 
+/// The three versions that the outcome of a request echoed, as numbers:
+/// the source, context and settings versions.
+///
+/// A backend builds the echo from the numbers that its computation gives
+/// back, such as the three version numbers of a kalyx `Outcome`, so it can
+/// echo any versions, also ones that differ from the request's. The job
+/// layer compares each number with the matching version of the job's
+/// requests.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EchoedVersions {
+    source: u64,
+    context: u64,
+    settings: u64,
+}
+
+impl EchoedVersions {
+    /// The echo of the source version `source`, the context version
+    /// `context` and the settings version `settings`.
+    pub const fn new(source: u64, context: u64, settings: u64) -> EchoedVersions {
+        EchoedVersions {
+            source,
+            context,
+            settings,
+        }
+    }
+
+    /// The echoed source version.
+    pub const fn source(self) -> u64 {
+        self.source
+    }
+
+    /// The echoed context version.
+    pub const fn context(self) -> u64 {
+        self.context
+    }
+
+    /// The echoed settings version.
+    pub const fn settings(self) -> u64 {
+        self.settings
+    }
+}
+
+impl From<Versions> for EchoedVersions {
+    /// The echo of `versions` unchanged, as a backend gives it for a
+    /// request computed from them.
+    fn from(versions: Versions) -> EchoedVersions {
+        EchoedVersions::new(
+            versions.source.get(),
+            versions.context.get(),
+            versions.settings.get(),
+        )
+    }
+}
+
 /// The report of one request that ran.
 ///
 /// It holds the kind of the outcome, the class of its error, the bytes of
@@ -88,7 +143,7 @@ pub struct RequestReport {
     kind: OutcomeKind,
     error: ErrorClass,
     line: Option<Vec<u8>>,
-    echoed: Versions,
+    echoed: EchoedVersions,
 }
 
 impl RequestReport {
@@ -98,7 +153,7 @@ impl RequestReport {
         kind: OutcomeKind,
         error: ErrorClass,
         line: Option<Vec<u8>>,
-        echoed: Versions,
+        echoed: EchoedVersions,
     ) -> RequestReport {
         RequestReport {
             kind,
@@ -125,7 +180,7 @@ impl RequestReport {
     }
 
     /// The versions that the outcome echoed.
-    pub const fn echoed(&self) -> Versions {
+    pub const fn echoed(&self) -> EchoedVersions {
         self.echoed
     }
 
@@ -273,10 +328,24 @@ impl StopReason {
 
 #[cfg(test)]
 mod tests {
+    use kosmo_math_model::version::{ContextVersion, SettingsVersion};
+
     use super::*;
 
     fn report(kind: OutcomeKind, error: ErrorClass) -> RequestReport {
-        RequestReport::new(kind, error, None, Versions::default())
+        RequestReport::new(kind, error, None, EchoedVersions::new(0, 0, 0))
+    }
+
+    #[test]
+    fn an_echo_keeps_its_three_numbers() {
+        let echo = EchoedVersions::new(1, 2, 3);
+        assert_eq!((echo.source(), echo.context(), echo.settings()), (1, 2, 3));
+        let versions = Versions {
+            context: ContextVersion::new(2),
+            settings: SettingsVersion::new(3),
+            ..Versions::default()
+        };
+        assert_eq!(EchoedVersions::from(versions), EchoedVersions::new(0, 2, 3));
     }
 
     #[test]

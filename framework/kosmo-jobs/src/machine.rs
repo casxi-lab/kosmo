@@ -57,7 +57,8 @@ use kosmo_math_model::version::Versions;
 
 use crate::report::RequestEffect;
 use crate::{
-    Finished, JobId, JobRequest, MAX_LIVE_JOBS, Rejected, Report, SessionId, StopReason, Submission,
+    EchoedVersions, Finished, JobId, JobRequest, MAX_LIVE_JOBS, Rejected, Report, SessionId,
+    StopReason, Submission,
 };
 
 /// One input of the core's step function.
@@ -202,7 +203,7 @@ pub struct TerminalRecord {
     state: TerminalState,
     stop: Option<StopReason>,
     lines: Vec<Vec<u8>>,
-    echoed: Option<Versions>,
+    echoed: Option<EchoedVersions>,
     internal_error: bool,
 }
 
@@ -230,10 +231,10 @@ impl TerminalRecord {
         self.lines
     }
 
-    /// The versions that the requests echoed: the request's own versions
-    /// when every echo matched them, the first echo that differs
-    /// otherwise, and `None` when no request ran.
-    pub const fn echoed(&self) -> Option<Versions> {
+    /// The versions that the requests echoed: the numbers of the request's
+    /// own versions when every echo matched them, the first echo that
+    /// differs otherwise, and `None` when no request ran.
+    pub const fn echoed(&self) -> Option<EchoedVersions> {
         self.echoed
     }
 
@@ -298,11 +299,11 @@ impl Terminal {
 /// 1. In `cancel_requested` the job is `cancelled`, whatever the report
 ///    holds, and delivers no line. The record keeps the reported stop, or
 ///    cancellation when there is none.
-/// 2. Otherwise a backend internal error, an echo that differs from
-///    `versions`, or reports that do not fit the job (more reports than
-///    requests, a report after one whose error stopped the job, or fewer
-///    reports without a stop) give `failed`, marked as an internal error,
-///    without lines.
+/// 2. Otherwise a backend internal error, an echo whose number for any of
+///    the three versions differs from that of `versions`, or reports that
+///    do not fit the job (more reports than requests, a report after one
+///    whose error stopped the job, or fewer reports without a stop) give
+///    `failed`, marked as an internal error, without lines.
 /// 3. Otherwise the first stop decides: a request whose errors include
 ///    `Cancelled` or `DeadlineExceeded`, or else the reported stop.
 ///    Cancellation gives `cancelled` without lines; a passed deadline, a
@@ -328,8 +329,9 @@ pub fn terminal(
         if request_stop.is_some() {
             misfit = true;
         }
-        if report.echoed() != versions && differing.is_none() {
-            differing = Some(report.echoed());
+        let echo = report.echoed();
+        if differing.is_none() && !echoes(echo, versions) {
+            differing = Some(echo);
         }
         match report.effect() {
             RequestEffect::Succeeds => {}
@@ -340,7 +342,7 @@ pub fn terminal(
     if request_stop.is_none() && reported_stop.is_none() && reports.len() < requests {
         misfit = true;
     }
-    let echoed = differing.or_else(|| reports.first().map(|_| versions));
+    let echoed = differing.or_else(|| reports.first().map(|_| EchoedVersions::from(versions)));
     let stop = request_stop.or(reported_stop);
     let record = |state, stop, lines, internal_error| TerminalRecord {
         state,
@@ -367,6 +369,14 @@ pub fn terminal(
         None if failed => record(TerminalState::Failed, None, lines(), false),
         None => record(TerminalState::Completed, None, lines(), false),
     }
+}
+
+/// Whether `echo` gives the numbers of `versions`, compared one version at
+/// a time.
+fn echoes(echo: EchoedVersions, versions: Versions) -> bool {
+    echo.source() == versions.source.get()
+        && echo.context() == versions.context.get()
+        && echo.settings() == versions.settings.get()
 }
 
 /// The phase of a job in the table.

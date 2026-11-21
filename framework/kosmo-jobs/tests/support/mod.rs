@@ -9,8 +9,8 @@ use std::error::Error;
 
 use kosmo_jobs::controllable::ControllableBackend;
 use kosmo_jobs::{
-    ErrorClass, JobClock, JobId, JobLayer, Operation, OutcomeKind, Request, RequestReport,
-    SessionId, Submission, Terminal, TerminalState,
+    EchoedVersions, ErrorClass, JobClock, JobId, JobLayer, Operation, OutcomeKind, Request,
+    RequestReport, SessionId, Submission, Terminal, TerminalState,
 };
 use kosmo_math_model::EditBuffer;
 use kosmo_math_model::version::{
@@ -69,13 +69,14 @@ pub fn line(tag: &str, versions: Versions, rest: &str) -> Vec<u8> {
     .into_bytes()
 }
 
-/// The report of a request whose value has the display text `text`.
+/// The report of a request whose value has the display text `text`, which
+/// echoes `versions`.
 pub fn value(versions: Versions, text: &str) -> RequestReport {
     RequestReport::new(
         OutcomeKind::Value,
         ErrorClass::NoError,
         Some(line("value", versions, text)),
-        versions,
+        EchoedVersions::from(versions),
     )
 }
 
@@ -99,7 +100,7 @@ pub fn texts(terminal: &Terminal) -> Vec<String> {
 pub struct Held {
     /// The submission whose result it is.
     pub id: JobId,
-    /// The versions that the result echoed.
+    /// The versions of the submission, which its result was computed from.
     pub versions: Versions,
 }
 
@@ -185,15 +186,17 @@ impl Region {
     }
 
     /// Receives a terminal state. A cancelled job has no result; any other
-    /// is judged and goes into the slot and its record, only its record, or
-    /// the discard count. Returns the judgement of a result.
+    /// is judged by the versions of the job's requests, since the job layer
+    /// fails a job whose echo differs from them, and goes into the slot and
+    /// its record, only its record, or the discard count. Returns the
+    /// judgement of a result.
     pub fn deliver(&mut self, terminal: &Terminal) -> Option<Judgement> {
         if terminal.record().state() == TerminalState::Cancelled {
             return None;
         }
         let held = Held {
             id: terminal.id(),
-            versions: terminal.record().echoed().unwrap_or(terminal.versions()),
+            versions: terminal.versions(),
         };
         self.delivered += 1;
         let judgement = judge(

@@ -23,7 +23,12 @@ fn line(text: &str) -> Option<Vec<u8>> {
 }
 
 fn report(kind: OutcomeKind, error: ErrorClass, text: Option<&str>) -> RequestReport {
-    RequestReport::new(kind, error, text.and_then(line), versions())
+    RequestReport::new(kind, error, text.and_then(line), versions().into())
+}
+
+/// The report of a request whose value line echoes `echo`.
+fn echoing(echo: EchoedVersions) -> RequestReport {
+    RequestReport::new(OutcomeKind::Value, ErrorClass::NoError, line("value"), echo)
 }
 
 fn value() -> RequestReport {
@@ -233,20 +238,37 @@ fn faults_and_limits_do_not_stop_a_job_of_several_requests() {
 
 #[test]
 fn an_echo_of_other_versions_fails_the_job_outside_cancel_requested() {
-    let echo = RequestReport::new(
-        OutcomeKind::Value,
-        ErrorClass::NoError,
-        line("value"),
-        other_versions(),
-    );
+    let echo = echoing(other_versions().into());
     let outside = terminal(false, versions(), 1, end(vec![echo.clone()], None));
     assert_eq!(outside.state(), TerminalState::Failed);
     assert!(outside.internal_error());
     assert!(outside.lines().is_empty());
-    assert_eq!(outside.echoed(), Some(other_versions()));
+    assert_eq!(outside.echoed(), Some(EchoedVersions::new(0, 2, 4)));
     let inside = terminal(true, versions(), 1, end(vec![echo], None));
     assert_eq!(inside.state(), TerminalState::Cancelled);
     assert!(!inside.internal_error());
+}
+
+#[test]
+fn an_echo_that_differs_in_any_one_version_fails_the_job() {
+    // The request's versions are 0, 2 and 3.
+    for echo in [
+        EchoedVersions::new(1, 2, 3),
+        EchoedVersions::new(0, 5, 3),
+        EchoedVersions::new(0, 2, 7),
+    ] {
+        let record = terminal(false, versions(), 1, end(vec![echoing(echo)], None));
+        assert_eq!(record.state(), TerminalState::Failed, "{echo:?}");
+        assert!(record.internal_error(), "{echo:?}");
+        assert!(record.lines().is_empty(), "{echo:?}");
+        assert_eq!(record.echoed(), Some(echo));
+    }
+    let same = EchoedVersions::new(0, 2, 3);
+    let record = terminal(false, versions(), 1, end(vec![echoing(same)], None));
+    assert_eq!(record.state(), TerminalState::Completed);
+    assert!(!record.internal_error());
+    assert_eq!(lines(&record), ["value"]);
+    assert_eq!(record.echoed(), Some(same));
 }
 
 #[test]
@@ -306,7 +328,7 @@ fn the_core_checks_reports_against_the_requests_of_the_job() {
 #[test]
 fn the_record_keeps_the_echo_of_the_requests_that_ran() {
     let record = terminal(false, versions(), 1, end(vec![value()], None));
-    assert_eq!(record.echoed(), Some(versions()));
+    assert_eq!(record.echoed(), Some(EchoedVersions::new(0, 2, 3)));
     let none = terminal(
         false,
         versions(),

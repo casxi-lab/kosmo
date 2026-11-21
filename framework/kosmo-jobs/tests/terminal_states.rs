@@ -7,8 +7,8 @@ mod support;
 
 use kosmo_jobs::controllable::{ControllableBackend, Gate, Plan, Release};
 use kosmo_jobs::{
-    CancelAnswer, ErrorClass, JobState, Operation, OutcomeKind, Report, Request, RequestReport,
-    SerializeFailure, StopReason, Submission, Terminal, TerminalState,
+    CancelAnswer, EchoedVersions, ErrorClass, JobState, Operation, OutcomeKind, Report, Request,
+    RequestReport, SerializeFailure, StopReason, Submission, Terminal, TerminalState,
 };
 use support::{Checked, controllable, eval, line, texts, value, versions};
 
@@ -20,7 +20,7 @@ fn a_state_line_completes_the_job_and_is_delivered() -> Checked {
         OutcomeKind::State,
         ErrorClass::NoError,
         Some(state.clone()),
-        tagged,
+        EchoedVersions::new(1, 2, 3),
     );
     let mut backend = ControllableBackend::new();
     backend.plan(0, Plan::new().request(report));
@@ -31,7 +31,10 @@ fn a_state_line_completes_the_job_and_is_delivered() -> Checked {
     assert_eq!(terminal.record().state(), TerminalState::Completed);
     assert_eq!(terminal.record().lines(), &[state]);
     assert_eq!(texts(&terminal), ["state\t1\t2\t3\tIterationLimit\n"]);
-    assert_eq!(terminal.record().echoed(), Some(tagged));
+    assert_eq!(
+        terminal.record().echoed(),
+        Some(EchoedVersions::new(1, 2, 3))
+    );
     Ok(())
 }
 
@@ -42,7 +45,7 @@ fn a_request_cancelled_after_acceptance_ends_the_job_cancelled_without_lines() -
         OutcomeKind::Cancelled,
         ErrorClass::Serialize(SerializeFailure::Cancelled),
         None,
-        tagged,
+        tagged.into(),
     );
     let mut backend = ControllableBackend::new();
     backend.plan(
@@ -219,7 +222,7 @@ fn an_echo_of_other_versions_fails_the_job_unless_it_was_cancelled() -> Checked 
     assert_eq!(record.state(), TerminalState::Failed);
     assert!(record.internal_error());
     assert!(record.lines().is_empty());
-    assert_eq!(record.echoed(), Some(other));
+    assert_eq!(record.echoed(), Some(EchoedVersions::new(2, 0, 0)));
 
     // In cancel_requested: cancelled.
     let cancelled = layer.submit(eval(session, tagged, "1/3+1/6"))?;
