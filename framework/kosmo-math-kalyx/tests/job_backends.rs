@@ -67,11 +67,14 @@ fn contract<B: JobBackend>(layer: &mut JobLayer<B>, line: &Typed) -> Checked<See
 /// The crates that the manifest `manifest` names in any table of
 /// dependencies: the keys of a table such as `[dependencies]`, and the name
 /// in the header of a table of one dependency, such as
-/// `[dependencies.<name>]` or `[dev-dependencies.<name>]`.
+/// `[dependencies.<name>]` or `[dev-dependencies.<name>]`. It skips a
+/// comment, from a `#` to the end of its line, also after a header; it
+/// takes no key or header to hold a `#`.
 fn dependencies(manifest: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut in_dependencies = false;
-    for line in manifest.lines().map(str::trim) {
+    for line in manifest.lines() {
+        let line = line.split_once('#').map_or(line, |(code, _)| code).trim();
         if let Some(table) = line.strip_prefix('[') {
             let table = table.trim_end_matches(']').trim();
             in_dependencies = table.ends_with("dependencies");
@@ -148,9 +151,23 @@ workspace = true
 
 [target.'cfg(unix)'.build-dependencies]
 cc = \"=1.0.0\"
+
+[dev-dependencies] # tests only
+proptest = \"=1.0.0\" # pinned
+# serde = \"=1.0.0\"
+
+[target.'cfg(all())'.dependencies] # every target
+libc.workspace = true
 ";
     assert_eq!(
         dependencies(manifest),
-        ["kosmo-math-model", "kalyx", "kosmo-math-kalyx", "cc"]
+        [
+            "kosmo-math-model",
+            "kalyx",
+            "kosmo-math-kalyx",
+            "cc",
+            "proptest",
+            "libc"
+        ]
     );
 }

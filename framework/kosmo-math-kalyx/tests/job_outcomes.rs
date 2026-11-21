@@ -145,6 +145,11 @@ fn a_deadline_that_kalyx_sees_exhausts_the_job_with_the_fallback_line() -> Check
         return Err("not one line".into());
     };
     assert!(text(fallback)?.starts_with("error\t1\t0\t0\tDeadlineExceeded\t"));
+    let item = read_output_line(fallback, line.versions, &line.snapshot);
+    let Content::Error { kind, .. } = item.content else {
+        return Err(format!("not an error: {item:?}").into());
+    };
+    assert_eq!(kind, ErrorKind::DeadlineExceeded);
 
     let received = jobs.layer.backend().received(id).ok_or("not received")?;
     assert_eq!(received.deadline(), Some(deadline));
@@ -226,6 +231,11 @@ fn a_deadline_that_kalyx_sees_after_a_cancel_request_ends_the_job_cancelled() ->
     assert_eq!(report.kind(), OutcomeKind::DeadlineExceeded);
     let fallback = report.line().ok_or("no fallback line")?;
     assert!(text(fallback)?.starts_with("error\t1\t0\t0\tDeadlineExceeded\t"));
+    let item = read_output_line(fallback, line.versions, &line.snapshot);
+    let Content::Error { kind, .. } = item.content else {
+        return Err(format!("not an error: {item:?}").into());
+    };
+    assert_eq!(kind, ErrorKind::DeadlineExceeded);
     assert_eq!(jobs.clock.worker_readings(), 2);
     Ok(())
 }

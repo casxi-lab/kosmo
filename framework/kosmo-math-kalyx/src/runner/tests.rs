@@ -278,6 +278,17 @@ fn a_passed_deadline_stops_the_request_and_the_fallback_line_reads_no_clock() {
 }
 
 #[test]
+fn a_deadline_that_has_not_passed_lets_the_request_write_its_value_line() {
+    let (ran, readings) = eval("1/3+1/6", kalyx::Limits::new(), Some(1), &CancelFlag::new());
+    assert_eq!(ran.report.kind(), OutcomeKind::Value);
+    assert_eq!(ran.report.error(), ErrorClass::NoError);
+    assert_eq!(line(&ran), "value\t0\t0\t0\t1/2\n");
+    assert!(!ran.stops);
+    // The first charge read the clock, which reads 0, before the deadline 1.
+    assert!(readings >= 1);
+}
+
+#[test]
 fn a_line_that_fails_with_a_fault_is_a_failed_request() {
     assert_eq!(
         serialize_failure(ErrorKind::Fault(FaultKind::Internal)),

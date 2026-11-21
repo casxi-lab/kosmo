@@ -150,7 +150,13 @@ fn a_cancellation_seen_between_two_requests_runs_no_second_request() -> Checked 
         ErrorClass::Serialize(SerializeFailure::ResourceLimit)
     );
     let fallback = report.line().ok_or("no fallback line")?;
-    assert!(fallback.starts_with(b"error\t1\t0\t0\tResourceLimit\t"));
+    // The line of the first request, whose input is 5 bytes long; the
+    // second's is 7.
+    assert_eq!(
+        std::str::from_utf8(fallback)?,
+        "error\t1\t0\t0\tResourceLimit\t0..5\tField(max_input_bytes)\t-\t4\tRequired(5)\t\
+         resource limit exceeded: max_input_bytes\n"
+    );
     // No reading after the gate: the runner found the flag before the
     // second request and did not run it.
     assert_eq!(jobs.clock.worker_readings(), 2);
