@@ -338,6 +338,17 @@ fn the_record_keeps_the_echo_of_the_requests_that_ran() {
     assert_eq!(none.echoed(), None);
 }
 
+#[test]
+fn the_record_keeps_the_first_echo_that_differs() {
+    let first = EchoedVersions::new(0, 2, 4);
+    let second = EchoedVersions::new(0, 9, 3);
+    let reports = vec![value(), echoing(first), echoing(second)];
+    let record = terminal(false, versions(), 3, end(reports, None));
+    assert_eq!(record.state(), TerminalState::Failed);
+    assert!(record.internal_error());
+    assert_eq!(record.echoed(), Some(first));
+}
+
 fn submission(session: SessionId) -> Submission {
     Submission::new(session, versions(), Request::new(Operation::Eval, "", "1"))
 }
@@ -435,7 +446,10 @@ fn reports_of_a_job_cancelled_while_queued_are_discarded() {
     let id = accept(&mut core, session);
     core.cancel(id);
     assert_eq!(core.ready(), vec![id]);
-    assert!(core.take(id).is_some());
+    let taken = core.take(id).unwrap();
+    assert_eq!(taken.record().state(), TerminalState::Cancelled);
+    assert_eq!(taken.record().stop(), Some(StopReason::Cancellation));
+    assert!(core.ready().is_empty(), "a taken state is not listed again");
     assert_eq!(core.live(), 1, "live until the backend finishes it");
     assert_eq!(core.take(id), None, "taken once, also while still live");
     assert_eq!(core.report(Report::Started(id)), ReportEffect::Discarded);
@@ -467,6 +481,18 @@ fn a_terminal_state_is_absorbing_and_taken_once() {
     assert_eq!(taken.versions(), versions());
     assert_eq!(core.take(id), None);
     assert_eq!(core.live(), 0);
+}
+
+#[test]
+fn a_started_report_does_not_withdraw_a_cancellation() {
+    let mut core = Machine::new();
+    let session = core.open_session().unwrap();
+    let id = accept(&mut core, session);
+    assert_eq!(core.report(Report::Started(id)), ReportEffect::Started);
+    assert_eq!(core.cancel(id).0, CancelAnswer::Requested);
+    assert_eq!(core.report(Report::Started(id)), ReportEffect::Discarded);
+    assert_eq!(core.state(id), Some(JobState::CancelRequested));
+    assert_eq!(core.cancel(id).0, CancelAnswer::AlreadyRequested);
 }
 
 #[test]
