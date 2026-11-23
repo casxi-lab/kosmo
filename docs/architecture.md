@@ -793,10 +793,11 @@ only in these directions:
   dependency graph, dev-dependencies included, has no cycle.
 - A pure-core crate depends only on pure-core crates and never on a crate
   marked provisional.
-- Export crates have no direct external dependency, and pure-core crates
-  have none at all. The other server crates and the host backends will use
-  only the few packages that the layout table allows for each of them, and a
-  host window library only in the nested backend crate.
+- Export crates have no direct external dependency; pure-core crates and
+  the export crates of `display/` have none at all. The other server crates
+  and the host backends will use only the few packages that the layout table
+  allows for each of them, and a host window library only in the nested
+  backend crate.
 - Only the kalyx adapter `kosmo-math-kalyx` depends on kalyx directly: no
   other crate, and not `xtask`, declares the package `kalyx`. Other crates
   reach kalyx only through the adapter.
@@ -3793,8 +3794,8 @@ hosts and is not the device's security boundary.
      in-process implementation and the other modules of `kosmo-client` have no
      unsafe code. The allowlist of `framework/` does not grow.
    - kosmo otherwise takes such general functions from exactly pinned packages;
-     this is the one exception, because export crates have no external
-     dependency.
+     this is the one exception, because export crates have no direct
+     external dependency.
 3. **A memory object is passed once.** The client keeps its descriptor and
    mapping, and the server refers to the object by its handle in the session;
    later commits are ordinary queued frames without descriptors. When a session
