@@ -119,14 +119,17 @@ after the update pass and brings each answer back in the next round.
    holes or its first invalid part instead, as `NotPrepared::NotConverted`,
    so nothing is computed from it.
 2. `accept(pending, answer)` takes the pending value with the job layer's
-   answer, `Result<JobId, kosmo_jobs::Rejected>`, as `submit` returns it. An accepted
-   submission becomes the latest one and appends an entry to the history,
-   with the snapshot and the versions of the pending value, and `accept`
-   returns its job identity. A refused submission changes nothing: it
-   appends no entry and does not become the latest, and the refusal comes
+   answer, `Result<JobId, kosmo_jobs::Rejected>`, as `submit` returns it. An
+   accepted submission becomes the latest one and appends an entry to the
+   history, with the snapshot and the versions of the pending value, and
+   `accept` returns its job identity. A refused submission changes nothing:
+   it appends no entry and does not become the latest, and the refusal comes
    back as `NotAccepted::Refused`. An identity that does not come after the
    latest accepted one, which a second answer or another job layer would
-   give, changes nothing either.
+   give, comes back as `NotAccepted::NotAfterLatest` and changes nothing
+   either. The job layer did accept that job, and it runs on: unless it is
+   the job of an entry already, as for a second answer, cancel it or take
+   its terminal state without delivering it to the Scratchpad.
 
 You keep the pending value until the answer comes; the Scratchpad keeps no
 pending submissions. An edit of the line between the two steps does not
@@ -159,13 +162,16 @@ variable, and its outcome is written once.
   taken; delivering that terminal state counts toward the discard count.
 - Job identities count up within one job layer, so the entries of one
   Scratchpad belong to the jobs of one job layer. A frontend that builds a
-  new job layer, as after the host stub's worker thread ended, builds a new
-  Scratchpad with it.
+  new job layer, for example after the host stub's worker thread has ended,
+  builds a new Scratchpad with it.
 
 ## Delivering results
 
 `deliver(&terminal)` takes the terminal state of a job, as `wait` or `take`
-of the job layer gives it, and returns a `Delivery`:
+of the job layer gives it, and returns a `Delivery`. Only terminal states of
+the Scratchpad's own job layer, the one that accepted its submissions, may
+be delivered: a terminal state of another job layer can carry the identity
+of a different job that has an entry here.
 
 - `judgement`: the result judged against the Scratchpad's current versions
   and latest submission, from the job's identity and versions, as

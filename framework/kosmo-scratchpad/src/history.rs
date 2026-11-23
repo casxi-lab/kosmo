@@ -247,14 +247,18 @@ impl fmt::Display for NotPrepared {
 impl std::error::Error for NotPrepared {}
 
 /// Why [`Scratchpad::accept`](crate::Scratchpad::accept) appended no entry.
-/// Nothing changed.
+/// Nothing of the Scratchpad changed.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum NotAccepted {
     /// The job layer refused the submission.
     Refused(kosmo_jobs::Rejected),
     /// The job identity does not come after the identity of the latest
-    /// accepted submission, so it is not a new job of the same job layer.
+    /// accepted submission, so it is not a new job of the same job layer,
+    /// as a second answer for one submission or an answer of another job
+    /// layer gives. The job layer did accept that job, and it runs on;
+    /// unless it is the job of an entry already, the caller cancels it or
+    /// takes its terminal state without delivering it here.
     NotAfterLatest {
         /// The identity that was given.
         id: JobId,

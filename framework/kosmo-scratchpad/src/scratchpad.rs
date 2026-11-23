@@ -260,7 +260,10 @@ impl Scratchpad {
     /// When the job layer refused the submission, nothing changes, and the
     /// refusal comes back as [`NotAccepted::Refused`]. Nothing changes
     /// either for an identity that does not come after the latest one,
-    /// which another job layer or a second answer would give.
+    /// which another job layer or a second answer would give, as
+    /// [`NotAccepted::NotAfterLatest`]: the job layer did accept that job,
+    /// and unless it is the job of an entry already, the caller cancels it
+    /// or takes its terminal state without delivering it here.
     pub fn accept(
         &mut self,
         pending: Pending,
@@ -281,6 +284,11 @@ impl Scratchpad {
 
     /// Delivers the terminal state of a job, which the caller took from its
     /// job layer.
+    ///
+    /// Only terminal states of this Scratchpad's job layer, the one that
+    /// accepted its submissions, may be delivered: job identities count up
+    /// within one job layer, so a terminal state of another job layer can
+    /// carry the identity of a different job that has an entry here.
     ///
     /// The result is judged against the Scratchpad's current versions and
     /// latest submission, from the job's identity and versions. The terminal
