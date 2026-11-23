@@ -157,7 +157,7 @@ fn a_refusal_keeps_the_selection() -> Checked {
 }
 
 #[test]
-fn a_copy_replaces_the_selection_and_an_empty_one_changes_nothing() -> Checked {
+fn a_copy_replaces_the_selection_and_an_empty_one_without_a_selection_changes_nothing() -> Checked {
     let mut jobs = Jobs::new()?;
     let (mut pad, id) = delivered(&mut jobs, "x+1", |versions| value(versions, "1 + x"))?;
     pad.clear()?;
@@ -168,6 +168,8 @@ fn a_copy_replaces_the_selection_and_an_empty_one_changes_nothing() -> Checked {
     assert_eq!(convert(&pad.line().snapshot())?, "2*(x+1)");
     assert_eq!(pad.versions().source.get(), version.get() + 1);
 
+    // The copy replaced the selection, so the empty copies find none.
+    assert_eq!(pad.line().selection(), None);
     let before = pad.clone();
     pad.reuse(id, Part::Input, 2..2)?;
     pad.reuse(id, Part::Result, 5..5)?;

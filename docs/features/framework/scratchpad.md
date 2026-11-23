@@ -334,7 +334,7 @@ No test sleeps or reads the wall clock.
    `part_of_a_result_is_reused`, `a_result_fills_the_hole_of_one_over`,
    `part_of_an_input_fills_the_hole_of_two_times`,
    `a_fragment_need_not_be_an_operand`;
-   `reuse::tests::a_copy_replaces_the_selection_and_an_empty_one_changes_nothing`,
+   `reuse::tests::a_copy_replaces_the_selection_and_an_empty_one_without_a_selection_changes_nothing`,
    `reuse::tests::an_empty_copy_deletes_the_selection`,
    `reuse::tests::the_result_of_a_stale_entry_can_be_reused`.
 8. A reused copy is a copy: editing the line afterwards leaves the entry's

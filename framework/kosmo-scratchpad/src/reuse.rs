@@ -20,8 +20,8 @@ pub enum Part {
     Result,
 }
 
-/// Why nothing was reused. The current line, its cursor and its source
-/// version did not change.
+/// Why nothing was reused. The current line, its cursor, its selection and
+/// its source version did not change.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotReused {
