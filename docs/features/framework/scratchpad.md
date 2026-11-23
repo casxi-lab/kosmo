@@ -12,9 +12,10 @@ of `kosmo-math-model`, on [formula conversion](../math/formula-conversion.md)
 and the reading of output lines in `kosmo-math-kalyx`, and on the
 [job layer](job-layer.md) `kosmo-jobs`. It holds no job layer itself:
 whoever holds the job layer submits each job, takes its terminal state and
-hands it to the Scratchpad. No frontend uses it yet; the line-mode terminal
-of the `kosmo` program and the calculator application `kosmo-calc` are
-planned on top of it. The design rules that it follows are in
+hands it to the Scratchpad. The
+[line-mode terminal](../desktop/line-mode-terminal.md) of the `kosmo`
+program uses it, and the calculator application `kosmo-calc` is planned on
+top of it. The design rules that it follows are in
 [versions](../../architecture.md#versions),
 [results that are not current](../../architecture.md#results-that-are-not-current)
 and [effects and the result slot](../../architecture.md#effects-and-the-result-slot)
@@ -138,8 +139,8 @@ change the entry, which keeps the line as it was prepared, and the job's
 result is then stale.
 
 Submitting does not clear the line, so the result of a submission can be
-current. Clearing the line, as the planned terminal will before it reads the
-next line, is an edit that increases the source version: a result that
+current. Clearing the line, as the terminal does before it reads the next
+line, is an edit that increases the source version: a result that
 arrives after it is stale and goes only into its entry.
 
 ## History
@@ -254,9 +255,9 @@ history and of reuse, and finds them unchanged.
   settings, and its work cannot be saved as a document. These belong to
   the Scratchpad and discovery capability of [Scope](../../scope.md), and
   are planned.
-- No frontend uses it yet: the terminal of the `kosmo` program, which will
-  list the history, and the calculator application `kosmo-calc`, which will
-  connect it to a result slot, are planned.
+- The terminal of the `kosmo` program lists the history but has no command
+  that reuses an entry, and the calculator application `kosmo-calc`, which
+  will connect the Scratchpad to a result slot, is planned.
 - It holds one-line input only; two-dimensional templates come with
   two-dimensional editing.
 - The variable of a submission holds at most 4,096 bytes.

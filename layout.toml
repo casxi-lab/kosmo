@@ -78,7 +78,7 @@ targets = ["aarch64-unknown-linux-gnu", "aarch64-apple-darwin"]
 lock-allowlist = "xtask/allowlist.toml"
 
 # Every crate that exists, with its directory and layer. `export`: crates of
-# other workspaces may depend on it; an export crate has no external
+# other workspaces may depend on it; an export crate has no direct external
 # dependency. `facade`: an export crate that only re-exports. `pure-core`:
 # no_std, no unsafe code, no build script, no external dependency and no
 # interior mutability, depending only on pure-core crates. `provisional`:
@@ -136,6 +136,15 @@ layer = "F3"
 export = false
 pure-core = false
 publish = false
+
+[crates.kosmo-sdk]
+path = "framework/kosmo-sdk"
+layer = "F3"
+export = true
+facade = true
+pure-core = false
+publish = false
+same-layer = ["kosmo-scratchpad"]
 
 [crates.kosmo]
 path = "desktop/kosmo"

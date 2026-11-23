@@ -21,11 +21,12 @@ The last two report whitespace errors in unstaged and staged changes.
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
 workspaces `framework/`, with the libraries `kosmo-math-model`, `kosmo-jobs`,
-`kosmo-math-kalyx` and `kosmo-scratchpad`, and `desktop/`, with the program
-`kosmo`, and the repository tasks in `xtask/`, run as `cargo xtask`.
-`cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version`
-runs the program, and `cargo xtask check` runs these steps in order and stops
-at the first one that fails:
+`kosmo-math-kalyx` and `kosmo-scratchpad` and the facade `kosmo-sdk`, and
+`desktop/`, with the program `kosmo`, and the repository tasks in `xtask/`,
+run as `cargo xtask`.
+`cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
+program's line-mode terminal, and `cargo xtask check` runs these steps in
+order and stops at the first one that fails:
 
 1. `layout`: the source layout, as [the layout step](#the-layout-step)
    describes;
@@ -222,7 +223,7 @@ attribute of a library root, do not. It checks:
   that the table does not mark publishable;
 - provisional crates: no pure-core crate depends on a crate marked
   `provisional`, through any dependency table;
-- export crates: an export crate has no external dependency;
+- export crates: an export crate has no direct external dependency;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above to `deny` or `forbid` in
   `[workspace.lints.clippy]` and the `restriction` group that holds them to

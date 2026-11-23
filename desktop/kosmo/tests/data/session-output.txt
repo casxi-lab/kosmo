@@ -1,0 +1,6 @@
+value (source 3, settings 0): 2*x
+value (source 7, settings 0): 3*x^2
+input error: MissingOperand at position 2
+input error: UnknownCommand
+job 1: :diff x x^2 => value (source 3, settings 0): 2*x
+job 2: :diff x x^3 => value (source 7, settings 0): 3*x^2

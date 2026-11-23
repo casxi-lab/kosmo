@@ -8,13 +8,13 @@ also names the two frontends of the first release and lists every component
 with its verification level.
 
 The rules are fixed before the code that follows them. So far the product code
-is the `kosmo` program, which only reports its version, the one-line editing
+is the `kosmo` program with its line-mode terminal, the one-line editing
 structure in `kosmo-math-model`, formula conversion in `kosmo-math-kalyx`, the
 job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
-kalyx's output lines, and the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse;
+kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
+history and reuse, and the SDK facade `kosmo-sdk`, which re-exports them;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -793,10 +793,11 @@ only in these directions:
   dependency graph, dev-dependencies included, has no cycle.
 - A pure-core crate depends only on pure-core crates and never on a crate
   marked provisional.
-- Export crates and pure-core crates have no external dependency. The other
-  server crates and the host backends will use only the few packages that the
-  layout table allows for each of them, and a host window library only in the
-  nested backend crate.
+- Export crates have no direct external dependency; pure-core crates and
+  the export crates of `display/` have none at all. The other server crates
+  and the host backends will use only the few packages that the layout table
+  allows for each of them, and a host window library only in the nested
+  backend crate.
 - Only the kalyx adapter `kosmo-math-kalyx` depends on kalyx directly: no
   other crate, and not `xtask`, declares the package `kalyx`. Other crates
   reach kalyx only through the adapter.
@@ -819,8 +820,9 @@ licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `framework/` exists,
 with the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
-`kosmo-scratchpad`, and `desktop/`, with the program `kosmo`; the table states
-the rules of `display/` and lists no crate for it. A change that adds a crate
+`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the
+program `kosmo`; the table states the rules of `display/` and lists no crate
+for it. A change that adds a crate
 registers it in the table, and the first crate of a workspace adds the workspace
 root. The layout step of `cargo xtask check` enforces this layout on the tracked
 files, and the deps step on what Cargo resolves; Contributing describes the
@@ -3792,8 +3794,8 @@ hosts and is not the device's security boundary.
      in-process implementation and the other modules of `kosmo-client` have no
      unsafe code. The allowlist of `framework/` does not grow.
    - kosmo otherwise takes such general functions from exactly pinned packages;
-     this is the one exception, because export crates have no external
-     dependency.
+     this is the one exception, because export crates have no direct
+     external dependency.
 3. **A memory object is passed once.** The client keeps its descriptor and
    mapping, and the server refers to the object by its handle in the session;
    later commits are ordinary queued frames without descriptors. When a session
@@ -3993,13 +3995,13 @@ A component is a unit with its own role, contract and level.
 | Component | Crates | Role | Level | Evidence |
 | --- | --- | --- | --- | --- |
 | Workspace base, layout and supply-chain checks | `xtask/` | Tool | A0 | `planned` |
-| Line-mode terminal frontend | `kosmo` | Frontend | A0 | `planned` |
+| Line-mode terminal frontend | `kosmo` | Frontend | A0 | [Line-mode terminal](features/desktop/line-mode-terminal.md); tests in `desktop/kosmo/src/` and `desktop/kosmo/tests/` |
 | One-line editing structure | `kosmo-math-model` | Data-structure core | A1 | [One-line editing](features/math/one-line-editing.md); tests in `framework/kosmo-math-model/src/` and `framework/kosmo-math-model/tests/` |
 | Exact display | `kosmo-math-model`, `kosmo-math-kalyx` | Presentation | A0 | `planned` |
 | Formula conversion (linear text, range mapping, read-back) | `kosmo-math-kalyx` | Cross-project format | A1 | [Formula conversion](features/math/formula-conversion.md); tests in `framework/kosmo-math-kalyx/src/` and `framework/kosmo-math-kalyx/tests/` |
 | Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | [Job layer](features/framework/job-layer.md); tests in `framework/kosmo-jobs/src/`, `framework/kosmo-jobs/tests/`, `framework/kosmo-math-kalyx/src/runner/` and `framework/kosmo-math-kalyx/tests/` |
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/kosmo-scratchpad/src/` and `framework/kosmo-scratchpad/tests/` |
-| SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | `planned` |
+| SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/kosmo-sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
 | Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | `planned` |
 | Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |

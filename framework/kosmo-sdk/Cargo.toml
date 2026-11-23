@@ -1,0 +1,17 @@
+[package]
+name = "kosmo-sdk"
+description = "The SDK facade of kosmo: the framework libraries re-exported, unstable and not published"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+kosmo-jobs.workspace = true
+kosmo-math-kalyx.workspace = true
+kosmo-math-model.workspace = true
+kosmo-scratchpad.workspace = true
+
+[lints]
+workspace = true
