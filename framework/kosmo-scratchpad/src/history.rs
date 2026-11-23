@@ -191,6 +191,7 @@ impl Outcome {
 /// What [`Scratchpad::deliver`](crate::Scratchpad::deliver) did with a
 /// terminal state.
 #[must_use = "the judgement says whether the result is the current one"]
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Delivery {
     /// The judgement of the result against the Scratchpad's current
@@ -201,6 +202,7 @@ pub struct Delivery {
 }
 
 /// Where a delivered terminal state went.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Destination {
     /// Into the entry of its job, which had no outcome before.

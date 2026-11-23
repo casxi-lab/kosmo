@@ -9,7 +9,8 @@ use kosmo_math_model::{Rejected, Snapshot};
 
 use crate::history::Entry;
 
-/// Which line of an entry a reused range is in.
+/// Which line of an entry a reused range is in. An entry has these two
+/// lines only: what was submitted and what came back.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Part {
     /// The submitted line, the entry's input snapshot.
@@ -36,7 +37,8 @@ pub enum NotReused {
     Error,
     /// The result is a state.
     State,
-    /// The result's output line could not be read.
+    /// The result's output line could not be read, or holds a kind of
+    /// content that this version cannot reuse.
     Unreadable,
     /// The display text of the value does not read back into a complete
     /// line, for example because it is longer than one insertion may be.
@@ -77,6 +79,8 @@ fn value(entry: &Entry) -> Result<&str, NotReused> {
         Content::Value(text) => Ok(text),
         Content::Error { .. } => Err(NotReused::Error),
         Content::State(_) => Err(NotReused::State),
+        Content::Unreadable(_) => Err(NotReused::Unreadable),
+        // A kind of content that a later version of the display model adds.
         _ => Err(NotReused::Unreadable),
     }
 }

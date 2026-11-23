@@ -223,7 +223,7 @@ and its source version stay as they were:
 | `NoLine` | The job ended without an output line, with its terminal state, such as a cancelled job |
 | `Error` | The result is an error |
 | `State` | The result is a state |
-| `Unreadable` | The result's output line could not be read |
+| `Unreadable` | The result's output line could not be read, or holds a kind of content that this version cannot reuse |
 | `NotReadBack` | The value's display text does not read back into a line, such as one longer than the 4,096 bytes of one insertion |
 | `Rejected` | The current line rejected the copy, such as past its 4,096 items, or the range runs backwards or past the reused line |
 
