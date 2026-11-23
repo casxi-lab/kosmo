@@ -141,9 +141,10 @@ an expression, words such as `diff` and `expand` are ordinary names.
   `error (source S, settings T): DeadlineExceeded on the whole line`. The
   program sets no time limit, so only a caller of the library function that
   gives one sees it. Any other job that ends without an output line writes
-  `internal error (source S, settings T): ` and the reason, and a
-  submission that the job layer does not accept writes `internal error: `
-  and the reason; with one live job, neither is expected.
+  `internal error (source S, settings T): ` and the reason. A submission
+  that the job layer does not accept, and a job that the job layer gives no
+  terminal state for, write `internal error: ` and the reason, the latter in
+  the history too; with one live job, neither is expected.
 - `:history` writes `job <n>: <line> => <result>` for each entry: `<n>`
   counts the jobs of the session from 1, `<line>` is the expression for an
   evaluation and `:<operation> <variable> <expression>` otherwise, and
@@ -179,7 +180,9 @@ caller holds, and an optional time limit in nanoseconds for every
 submission. It returns `Ended::Done` or `Ended::Failed`, whose `exit_code()`
 is 0 or 1, and shuts the job layer down before it returns, so the caller
 can read the history of the Scratchpad and the worker threads of the host
-stub afterwards. `kosmo::job_layer(clock)` builds the job layer of the
+stub afterwards. It expects an empty current line and a history whose
+entries all come from that job layer, and after it returns, the Scratchpad
+and the job layer are for reading. `kosmo::job_layer(clock)` builds the job layer of the
 terminal, the host stub with the kalyx runner, on the clock it is given.
 `kosmo::program(args, input, output, errors)` is what `main` calls with the
 standard streams and the arguments: it builds the monotonic clock of the
@@ -355,10 +358,12 @@ that always reads 0, so no test sleeps or reads the wall clock.
    whose deadline passed before its request ran writes `DeadlineExceeded`
    on the whole line; any other job without an output line, which only
    another backend gives, writes an internal error with its versions and
-   the reason. Tests: `tests/terminal.rs`:
+   the reason; a job without a terminal state writes an internal error
+   without versions, and the same in the history. Tests: `tests/terminal.rs`:
    `an_error_with_a_span_is_written_with_its_items`,
    `a_job_past_its_deadline_writes_deadline_exceeded`,
-   `jobs_that_end_without_a_line_write_an_internal_error_with_their_versions`.
+   `jobs_that_end_without_a_line_write_an_internal_error_with_their_versions`,
+   `a_job_without_a_terminal_state_writes_the_same_internal_error_in_the_history`.
 9. Every line is written with each character outside 0x20 to 0x7E escaped,
    the name of a parameter with control characters included, and the
    rendering itself is unchanged. Tests:

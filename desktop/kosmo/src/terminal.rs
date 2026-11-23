@@ -71,6 +71,11 @@ impl Ended {
 /// writing fails; then it shuts `layer` down, so the host stub's worker
 /// thread has ended when it returns. An error of a line is written and
 /// changes neither how the terminal goes on nor how it ends.
+///
+/// It expects the current line of `pad` to be empty and every entry of its
+/// history to come from `layer`. After it returns, `pad` and `layer` are for
+/// reading; when writing failed, the line of the last expression is left in
+/// `pad`.
 pub fn run<B: JobBackend>(
     input: &mut dyn BufRead,
     output: &mut dyn Write,
@@ -194,14 +199,12 @@ impl<B: JobBackend> Terminal<'_, B> {
             Ok(id) => id,
             Err(not) => return format!("internal error: {not}"),
         };
-        let freshness = match self.layer.wait(id) {
-            Some(terminal) => match self.pad.deliver(&terminal).judgement {
-                Judgement::Current => Freshness::Current,
-                Judgement::Superseded | Judgement::Stale => Freshness::Stale,
-            },
-            // Without a terminal state the entry has no outcome, so its line
-            // is the internal error that the history writes for it too.
-            None => Freshness::Current,
+        let Some(terminal) = self.layer.wait(id) else {
+            return output::undelivered(id);
+        };
+        let freshness = match self.pad.deliver(&terminal).judgement {
+            Judgement::Current => Freshness::Current,
+            Judgement::Superseded | Judgement::Stale => Freshness::Stale,
         };
         match self.pad.entry(id) {
             Some(entry) => output::outcome(entry, freshness),

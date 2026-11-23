@@ -7,7 +7,7 @@
 use std::io::{self, Write};
 
 use kosmo::{Ended, MAX_LINE_BYTES, enter, job_layer, run};
-use kosmo_sdk::kosmo_jobs::controllable::{ControllableBackend, Plan};
+use kosmo_sdk::kosmo_jobs::controllable::{ControllableBackend, Gate, Plan, Release};
 use kosmo_sdk::kosmo_jobs::{JobClock, JobLayer, Operation, StopReason, TerminalState};
 use kosmo_sdk::kosmo_math_kalyx::convert;
 use kosmo_sdk::kosmo_math_model::{Completeness, EditBuffer, Item, Position};
@@ -331,6 +331,8 @@ fn a_character_outside_the_character_set_is_an_error() {
     );
     assert_done(&ran);
     assert!(ran.pad.history().is_empty());
+    // The line was cleared after the error.
+    assert!(ran.pad.line().items().is_empty());
 
     let ran = run_on(b"\xff1\n=\n").unwrap();
     assert_eq!(
@@ -347,6 +349,7 @@ fn nesting_deeper_than_the_limit_is_an_error() {
     assert_eq!(ran.output(), "input error: TooDeep at position 64\n");
     assert_done(&ran);
     assert!(ran.pad.history().is_empty());
+    assert!(ran.pad.line().items().is_empty());
 }
 
 #[test]
@@ -440,6 +443,35 @@ fn jobs_that_end_without_a_line_write_an_internal_error_with_their_versions() {
     );
     assert!(layer.backend().is_shut_down());
     assert_eq!(pad.history().len(), 3);
+}
+
+#[test]
+fn a_job_without_a_terminal_state_writes_the_same_internal_error_in_the_history() {
+    // The controllable backend holds the job at its start and is never
+    // released, so the job layer has no report to come for it, which the
+    // host stub with the kalyx runner never does.
+    let mut backend = ControllableBackend::new();
+    backend.plan(0, Plan::new().gate(Gate::Started, Release::Manual));
+    let mut layer = JobLayer::new(backend, Box::new(Still));
+    let session = layer.open_session().unwrap();
+    let mut pad = Scratchpad::new();
+    let mut output = Vec::new();
+    let input = b"1/3+1/6\n:history\n";
+    let ended = run(
+        &mut &input[..],
+        &mut output,
+        &mut pad,
+        &mut layer,
+        session,
+        None,
+    );
+    assert_eq!(ended, Ended::Done);
+    assert_eq!(
+        String::from_utf8(output).unwrap(),
+        "internal error: the job layer gave no terminal state for job 1\n\
+         job 1: 1/3+1/6 => internal error: the job layer gave no terminal state for job 1\n"
+    );
+    assert!(layer.backend().is_shut_down());
 }
 
 /// An output that fails every write and flush.

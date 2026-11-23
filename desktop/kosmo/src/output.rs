@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 use std::io::{self, Write};
 
-use kosmo_sdk::kosmo_jobs::{Operation, StopReason, TerminalState};
+use kosmo_sdk::kosmo_jobs::{JobId, Operation, StopReason, TerminalState};
 use kosmo_sdk::kosmo_math_kalyx::NotConverted;
 use kosmo_sdk::kosmo_math_model::display::{Content, DisplayItem, ErrorKind, Freshness};
 use kosmo_sdk::kosmo_math_model::version::Versions;
@@ -89,16 +89,23 @@ fn invalid_name(kind: InvalidKind) -> &'static str {
     }
 }
 
+/// The line for job `id` when the job layer gives no terminal state for it,
+/// at submission and in the history alike.
+pub(crate) fn undelivered(id: JobId) -> String {
+    format!("internal error: the job layer gave no terminal state for {id}")
+}
+
 /// The line for the outcome of `entry`, shown with `freshness`.
 ///
 /// A job with an output line writes the rendering of its display item. A
 /// job whose deadline passed before its request ran has no line and writes
 /// the error `DeadlineExceeded` on the whole line. Any other job without a
-/// line writes an internal error with its versions and the reason.
+/// line writes an internal error with its versions and the reason, and a
+/// job without a terminal state the line of [`undelivered`].
 pub(crate) fn outcome(entry: &Entry, freshness: Freshness) -> String {
     let versions = entry.versions();
     let Some(outcome) = entry.outcome() else {
-        return internal(versions, "the job has not been delivered");
+        return undelivered(entry.id());
     };
     if let Some(item) = outcome.item() {
         return item.render(freshness);
