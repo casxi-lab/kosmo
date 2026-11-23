@@ -17,7 +17,8 @@
 //!    `Submission` of one request of the job layer `kosmo-jobs`, and gives a
 //!    [`Pending`] value with the snapshot and the versions it was converted
 //!    from. It changes nothing; an incomplete or invalid line gives its holes
-//!    or its invalid part instead.
+//!    or its invalid part instead, and a variable longer than
+//!    [`MAX_VARIABLE_BYTES`] is not submitted.
 //! 2. Once the job layer has answered, [`Scratchpad::accept`] takes the
 //!    pending value with the answer. An accepted submission becomes the
 //!    latest one and appends an [`Entry`] to the history, keyed by its job
@@ -87,7 +88,7 @@ mod scratchpad;
 #[cfg(test)]
 mod test_jobs;
 
-pub use history::{Delivery, Destination, Entry, NotAccepted, Outcome, Pending};
+pub use history::{Delivery, Destination, Entry, NotAccepted, NotPrepared, Outcome, Pending};
 pub use reuse::{NotReused, Part};
 pub use scratchpad::Scratchpad;
 
@@ -95,7 +96,16 @@ pub use scratchpad::Scratchpad;
 /// history holds this many evicts the oldest entry first.
 ///
 /// There is no separate bound on the bytes of the history, because each
-/// entry is bounded already: its input holds at most 4,096 items, and the
-/// output line of its result at most the larger of 65,536 bytes and the
-/// `max_output_bytes` of its job's limits, which is 65,536 by default.
+/// entry is bounded already: its input holds at most 4,096 items, its
+/// variable at most [`MAX_VARIABLE_BYTES`] bytes, and the output line of its
+/// result at most the larger of 65,536 bytes and the `max_output_bytes` of
+/// its job's limits, which is 65,536 by default.
 pub const MAX_HISTORY_ENTRIES: usize = 32;
+
+/// The most bytes of the variable of a submission. Preparing a submission
+/// with a longer variable gives [`NotPrepared::VariableTooLong`].
+///
+/// A variable is a name such as `x`. The bound is the 4,096 bytes that one
+/// insertion into the line holds, as many as the longest line, so any name
+/// that can be typed into the line fits.
+pub const MAX_VARIABLE_BYTES: usize = 4096;

@@ -2,6 +2,7 @@ use kosmo_jobs::controllable::{Gate, Plan, Release};
 use kosmo_jobs::{
     JobState, Limits, Operation, OutcomeKind, Rejected as Refusal, StopReason, TerminalState,
 };
+use kosmo_math_kalyx::NotConverted;
 use kosmo_math_model::display::{Content, ErrorKind};
 use kosmo_math_model::version::{ContextVersion, Judgement, SettingsVersion};
 use kosmo_math_model::{
@@ -184,14 +185,19 @@ fn lines_that_are_not_complete_give_their_holes_or_invalid_part() -> Checked {
             .map(|_| ())
     };
     let mut pad = Scratchpad::new();
-    let Err(NotConverted::Incomplete(holes)) = prepare(&pad) else {
-        return Err("an empty line was prepared".into());
+    let reason = prepare(&pad).err().ok_or("an empty line was prepared")?;
+    assert_eq!(
+        reason.to_string(),
+        "the line is incomplete: it has a hole at position 0"
+    );
+    let NotPrepared::NotConverted(NotConverted::Incomplete(holes)) = reason else {
+        return Err("an empty line gave another reason".into());
     };
     assert_eq!(holes.len(), 1);
     assert_eq!(holes[0].kind, HoleKind::EmptyLine);
 
     pad.insert_text("1/")?;
-    let Err(NotConverted::Incomplete(holes)) = prepare(&pad) else {
+    let Err(NotPrepared::NotConverted(NotConverted::Incomplete(holes))) = prepare(&pad) else {
         return Err("an incomplete line was prepared".into());
     };
     assert_eq!(holes.len(), 1);
@@ -200,7 +206,7 @@ fn lines_that_are_not_complete_give_their_holes_or_invalid_part() -> Checked {
 
     pad.clear()?;
     pad.insert_text("1)")?;
-    let Err(NotConverted::Invalid(invalid)) = prepare(&pad) else {
+    let Err(NotPrepared::NotConverted(NotConverted::Invalid(invalid))) = prepare(&pad) else {
         return Err("an invalid line was prepared".into());
     };
     assert_eq!(invalid.kind, InvalidKind::SurplusRightBracket);
@@ -208,6 +214,49 @@ fn lines_that_are_not_complete_give_their_holes_or_invalid_part() -> Checked {
         pad.line().completeness(),
         Completeness::Invalid(_)
     ));
+    Ok(())
+}
+
+#[test]
+fn a_variable_longer_than_its_bound_is_not_prepared() -> Checked {
+    let mut jobs = Jobs::new()?;
+    let mut pad = Scratchpad::new();
+    pad.insert_text("x^2")?;
+    let before = pad.clone();
+    let prepare = |pad: &Scratchpad, variable: &str| {
+        pad.prepare(jobs.session, Operation::Diff, variable, Limits::new(), None)
+            .map(|_| ())
+    };
+    assert_eq!(MAX_VARIABLE_BYTES, 4096);
+
+    // The bound counts bytes: two-byte characters reach it at half as many.
+    let longer = "x".repeat(MAX_VARIABLE_BYTES + 1);
+    let wide = "\u{e9}".repeat(MAX_VARIABLE_BYTES / 2 + 1);
+    for (variable, bytes) in [(longer.as_str(), 4097), (wide.as_str(), 4098)] {
+        let reason = prepare(&pad, variable)
+            .err()
+            .ok_or("a long variable was prepared")?;
+        assert_eq!(reason, NotPrepared::VariableTooLong { bytes });
+        assert_eq!(pad, before);
+    }
+    // The variable is checked before the line: an empty line with a long
+    // variable gives the variable's reason.
+    assert_eq!(
+        prepare(&Scratchpad::new(), &longer),
+        Err(NotPrepared::VariableTooLong { bytes: 4097 })
+    );
+    assert_eq!(
+        NotPrepared::VariableTooLong { bytes: 4097 }.to_string(),
+        "the variable has 4097 bytes; a variable holds at most 4096 bytes"
+    );
+
+    // A variable of exactly the bound is submitted and kept in its entry.
+    let longest = "x".repeat(MAX_VARIABLE_BYTES);
+    let (submission, pending) =
+        pad.prepare(jobs.session, Operation::Diff, &longest, Limits::new(), None)?;
+    let id = pad.accept(pending, jobs.layer.submit(submission))?;
+    let entry = pad.entry(id).ok_or("no entry")?;
+    assert_eq!(entry.variable().len(), MAX_VARIABLE_BYTES);
     Ok(())
 }
 

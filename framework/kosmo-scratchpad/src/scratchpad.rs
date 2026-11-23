@@ -4,13 +4,13 @@
 use std::ops::Range;
 
 use kosmo_jobs::{JobId, Limits, Operation, Request, SessionId, Submission, Terminal};
-use kosmo_math_kalyx::{NotConverted, convert};
+use kosmo_math_kalyx::convert;
 use kosmo_math_model::version::{ContextVersion, SettingsVersion, Versions, judge};
 use kosmo_math_model::{EditBuffer, Fragment, Rejected};
 
-use crate::MAX_HISTORY_ENTRIES;
-use crate::history::{Delivery, Destination, Entry, NotAccepted, Pending};
+use crate::history::{Delivery, Destination, Entry, NotAccepted, NotPrepared, Pending};
 use crate::reuse::{NotReused, Part, read_result};
+use crate::{MAX_HISTORY_ENTRIES, MAX_VARIABLE_BYTES};
 
 /// The Scratchpad: the current line, the region's versions and latest
 /// accepted submission, the history and the discard count.
@@ -210,8 +210,11 @@ impl Scratchpad {
     /// the submission will get.
     ///
     /// Preparing changes nothing: neither the line nor its source version.
-    /// An empty, incomplete or invalid line is not converted, and gives its
-    /// holes or its first invalid part instead.
+    /// A variable longer than [`MAX_VARIABLE_BYTES`] gives
+    /// [`NotPrepared::VariableTooLong`], so that every entry of the history
+    /// stays bounded. An empty, incomplete or invalid line is not converted,
+    /// and gives its holes or its first invalid part instead, as
+    /// [`NotPrepared::NotConverted`].
     pub fn prepare(
         &self,
         session: SessionId,
@@ -219,9 +222,14 @@ impl Scratchpad {
         variable: &str,
         limits: Limits,
         time_limit: Option<u64>,
-    ) -> Result<(Submission, Pending), NotConverted> {
+    ) -> Result<(Submission, Pending), NotPrepared> {
+        if variable.len() > MAX_VARIABLE_BYTES {
+            return Err(NotPrepared::VariableTooLong {
+                bytes: variable.len(),
+            });
+        }
         let input = self.line.snapshot();
-        let text = convert(&input)?;
+        let text = convert(&input).map_err(NotPrepared::NotConverted)?;
         let versions = Versions {
             source: input.version(),
             context: self.context,

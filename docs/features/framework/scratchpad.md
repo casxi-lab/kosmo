@@ -113,9 +113,11 @@ after the update pass and brings each answer back in the next round.
    source version and the Scratchpad's context and settings versions. With
    it comes a `Pending` value that keeps the snapshot, the versions, the
    operation and the variable. Preparing changes nothing, neither the line
-   nor its source version. An empty, incomplete or invalid line is not
-   converted, and gives its holes or its first invalid part instead, so
-   nothing is computed from it.
+   nor its source version. A variable longer than `MAX_VARIABLE_BYTES`,
+   4,096 bytes, is not submitted and gives `NotPrepared::VariableTooLong`.
+   An empty, incomplete or invalid line is not converted, and gives its
+   holes or its first invalid part instead, as `NotPrepared::NotConverted`,
+   so nothing is computed from it.
 2. `accept(pending, answer)` takes the pending value with the job layer's
    answer, `Result<JobId, kosmo_jobs::Rejected>`, as `submit` returns it. An accepted
    submission becomes the latest one and appends an entry to the history,
@@ -149,8 +151,9 @@ variable, and its outcome is written once.
 - The history holds at most `MAX_HISTORY_ENTRIES`, 32, entries. Accepting a
   submission when it holds 32 evicts the oldest entry first. There is no
   separate bound on its bytes: an entry's input holds at most 4,096 items,
-  and the output line of its result at most the larger of 65,536 bytes and
-  the `max_output_bytes` of its job's limits, which is 65,536 by default.
+  its variable at most 4,096 bytes, and the output line of its result at
+  most the larger of 65,536 bytes and the `max_output_bytes` of its job's
+  limits, which is 65,536 by default.
 - The job of an evicted entry is not cancelled. It runs to its end and
   counts toward the job layer's live jobs until its terminal state is
   taken; delivering that terminal state counts toward the discard count.
@@ -248,6 +251,7 @@ history and of reuse, and finds them unchanged.
   connect it to a result slot, are planned.
 - It holds one-line input only; two-dimensional templates come with
   two-dimensional editing.
+- The variable of a submission holds at most 4,096 bytes.
 - Only a value can be reused as a result, and only when its display text
   fits one insertion of 4,096 bytes. A value of kalyx 0.1.0 reads back as
   the same term; a later kalyx version is checked again when kosmo moves to
@@ -276,10 +280,12 @@ No test sleeps or reads the wall clock.
 2. Preparing converts a complete line into a job of one request with its
    operation, variable, session, limits, time limit and versions, and
    changes nothing; an empty, incomplete or invalid line gives its holes or
-   its first invalid part. Tests:
+   its first invalid part, and a variable longer than 4,096 bytes gives its
+   own reason. Tests:
    `scratchpad::tests::preparing_changes_neither_the_line_nor_its_version`,
    `scratchpad::tests::a_prepared_job_carries_the_line_its_versions_limits_and_time_limit`,
-   `scratchpad::tests::lines_that_are_not_complete_give_their_holes_or_invalid_part`.
+   `scratchpad::tests::lines_that_are_not_complete_give_their_holes_or_invalid_part`,
+   `scratchpad::tests::a_variable_longer_than_its_bound_is_not_prepared`.
 3. An accepted submission becomes the latest and appends one entry with
    the snapshot and versions it was prepared from, also when the line
    changed before the answer; a refused submission, or an identity that

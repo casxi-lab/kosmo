@@ -1,10 +1,11 @@
 //! The entries of the history, the pending value of a submission, and what
-//! accepting a submission and delivering a terminal state give.
+//! preparing and accepting a submission and delivering a terminal state
+//! give.
 
 use std::fmt;
 
 use kosmo_jobs::{JobId, Operation, StopReason, Terminal, TerminalState};
-use kosmo_math_kalyx::read_output_line;
+use kosmo_math_kalyx::{NotConverted, read_output_line};
 use kosmo_math_model::Snapshot;
 use kosmo_math_model::display::DisplayItem;
 use kosmo_math_model::version::{Judgement, Versions};
@@ -211,6 +212,37 @@ pub enum Destination {
     /// Nowhere: the entry of its job has an outcome already, which stays.
     AlreadyFinished,
 }
+
+/// Why [`Scratchpad::prepare`](crate::Scratchpad::prepare) built no
+/// submission. Nothing changed.
+#[non_exhaustive]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NotPrepared {
+    /// The variable is longer than
+    /// [`MAX_VARIABLE_BYTES`](crate::MAX_VARIABLE_BYTES).
+    VariableTooLong {
+        /// The bytes of the variable that was given.
+        bytes: usize,
+    },
+    /// The line is not converted: it is empty or incomplete, with its holes,
+    /// or invalid, with its first invalid part.
+    NotConverted(NotConverted),
+}
+
+impl fmt::Display for NotPrepared {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NotPrepared::VariableTooLong { bytes } => write!(
+                f,
+                "the variable has {bytes} bytes; a variable holds at most {} bytes",
+                crate::MAX_VARIABLE_BYTES
+            ),
+            NotPrepared::NotConverted(reason) => write!(f, "{reason}"),
+        }
+    }
+}
+
+impl std::error::Error for NotPrepared {}
 
 /// Why [`Scratchpad::accept`](crate::Scratchpad::accept) appended no entry.
 /// Nothing changed.
