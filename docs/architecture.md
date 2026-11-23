@@ -11,9 +11,10 @@ The rules are fixed before the code that follows them. So far the product code
 is the `kosmo` program, which only reports its version, the one-line editing
 structure in `kosmo-math-model`, formula conversion in `kosmo-math-kalyx`, the
 job layer in `kosmo-jobs` with its host stub and its controllable backend,
-the kalyx runner in `kosmo-math-kalyx`, and the versions and the display
-model of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills
-from kalyx's output lines;
+the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
+of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
+kalyx's output lines, and the Scratchpad in `kosmo-scratchpad`, with its
+history and reuse;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -263,7 +264,7 @@ result:
   input.
 - A cancelled job has no result.
 - Handling a still-running job whose history entry was evicted is defined with
-  the Scratchpad.
+  the Scratchpad, in its [history](features/framework/scratchpad.md#history).
 
 ## Formula conversion
 
@@ -817,10 +818,11 @@ allowlist that the workspace's `lock-allowlist` names; the deps step of
 licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `framework/` exists,
-with the libraries `kosmo-math-model`, `kosmo-jobs` and `kosmo-math-kalyx`, and
-`desktop/`, with the program `kosmo`; the table states the rules of `display/`
-and lists no crate for it. A change that adds a crate registers it in the
-table, and the first crate of a workspace adds the workspace root. The layout
+with the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
+`kosmo-scratchpad`, and `desktop/`, with the program `kosmo`; the table states
+the rules of `display/` and lists no crate for it. A change that adds a crate
+registers it in the table, and the first crate of a workspace adds the
+workspace root. The layout
 step of `cargo xtask check` enforces this layout on the tracked files, and the deps
 step on what Cargo resolves; Contributing describes the checks of
 [the layout step](../CONTRIBUTING.md#the-layout-step) and of
@@ -3997,7 +3999,7 @@ A component is a unit with its own role, contract and level.
 | Exact display | `kosmo-math-model`, `kosmo-math-kalyx` | Presentation | A0 | `planned` |
 | Formula conversion (linear text, range mapping, read-back) | `kosmo-math-kalyx` | Cross-project format | A1 | [Formula conversion](features/math/formula-conversion.md); tests in `framework/kosmo-math-kalyx/src/` and `framework/kosmo-math-kalyx/tests/` |
 | Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | [Job layer](features/framework/job-layer.md); tests in `framework/kosmo-jobs/src/`, `framework/kosmo-jobs/tests/`, `framework/kosmo-math-kalyx/src/runner/` and `framework/kosmo-math-kalyx/tests/` |
-| Scratchpad | `kosmo-scratchpad` | Composition | A0 | `planned` |
+| Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/kosmo-scratchpad/src/` and `framework/kosmo-scratchpad/tests/` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | `planned` |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
 | Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | `planned` |
