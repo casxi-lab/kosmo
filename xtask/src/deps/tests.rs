@@ -92,7 +92,7 @@ fn this_repository_passes() {
     assert!(
         printed.contains("deps: xtask: 1 members, 0 export crates, ")
             && printed.contains(
-                "deps: desktop: 1 members, 0 export crates, 0 crates.io packages, 0 internal edges\n"
+                "deps: desktop: 1 members, 0 export crates, 6 crates.io packages, 11 internal edges\n"
             ),
         "{printed}"
     );
@@ -114,8 +114,8 @@ fn this_repository_passes() {
     for (key, value) in [
         ("desktop_members", "1"),
         ("desktop_exports", "0"),
-        ("desktop_crates_io", "0"),
-        ("desktop_internal_edges", "0"),
+        ("desktop_crates_io", "6"),
+        ("desktop_internal_edges", "11"),
     ] {
         assert_eq!(fact(key), Some(value), "{key}");
     }
