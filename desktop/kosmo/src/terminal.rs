@@ -74,8 +74,8 @@ impl Ended {
 ///
 /// It expects the current line of `pad` to be empty and every entry of its
 /// history to come from `layer`. After it returns, `pad` and `layer` are for
-/// reading; when writing failed, the line of the last expression is left in
-/// `pad`.
+/// reading; when writing the line for an expression failed, what was entered
+/// of that expression is left in `pad`.
 pub fn run<B: JobBackend>(
     input: &mut dyn BufRead,
     output: &mut dyn Write,

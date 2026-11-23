@@ -268,8 +268,8 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-sdk
   thread of its own and neither reads nor changes terminal attributes is
   checked by review until the layout step checks the platform boundary. The
   deps step checks that it has no direct external dependency.
-- That `kosmo-sdk` holds only re-exports is checked by review; the layout
-  step checks only that it is an export crate.
+- That `kosmo-sdk` holds only re-exports and has no features is checked by
+  review; the layout step checks only that it is an export crate.
 
 ## Requirements
 
