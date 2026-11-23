@@ -2,10 +2,11 @@
 
 This page describes the complete target scope of kosmo: what it will provide,
 which other parts of casξ it builds on, and the status of each capability.
-Parts of two capabilities work so far: the one-line editing structure of
-math input and its conversion into the text that kalyx reads, and the job
-layer, which runs computations with kalyx as versioned jobs on the host.
-Every other capability has the status `planned`.
+Parts of three capabilities work so far: the one-line editing structure of
+math input and its conversion into the text that kalyx reads; the job layer,
+which runs computations with kalyx as versioned jobs on the host; and the
+Scratchpad's history and reuse of subexpressions, as a library that no
+frontend uses yet. Every other capability has the status `planned`.
 
 | Status | Meaning |
 | --- | --- |
@@ -110,7 +111,7 @@ columns.
 | Capability | What kosmo will provide | Builds on | Status |
 | --- | --- | --- | --- |
 | Calculator | The calculator application, built through the SDK like any other application: one-line input with a result view and history first, then two-dimensional input. The Scratchpad is part of it, as its mode without a document. It is the first application on kosmo's display server | kosmo framework, kalyx | `planned` |
-| Scratchpad and discovery | A Scratchpad that switches between calculation and graph; history and reuse of subexpressions; undo; formula templates; a function catalog with argument help; context menus and settings. Calculation and graph share a temporary context that never changes a document; Scratchpad work is saved as a document only when you ask, and variable conflicts are resolved at that point | krepi document service, kalyx | `planned` |
+| Scratchpad and discovery | A Scratchpad that switches between calculation and graph; history and reuse of subexpressions; undo; formula templates; a function catalog with argument help; context menus and settings. Calculation and graph share a temporary context that never changes a document; Scratchpad work is saved as a document only when you ask, and variable conflicts are resolved at that point. The history of one-line submissions and the reuse of their inputs and results work, in memory only: [Scratchpad](features/framework/scratchpad.md) | krepi document service, kalyx | `partial` |
 | Compound documents and split views | Documents made of problems, pages and application regions; reordering and copying pages; layouts with several views on one page, where a first release may show one application per page full screen; saving and reopening restores source content, layout and variable scopes | krepi document service | `planned` |
 | Linked values | Variables, functions and data shared by every region of one problem; formulas, graphs, tables, measurements, notes and sliders updating each other; edits, including dragging a graph or geometry object, sent as semantic edits that the document service commits; dependency cycles reported; undo; problems isolated by default, with values from another problem only through an explicit import or library reference | krepi document service, kalyx | `planned` |
 | Notes and scientific typesetting | Text, math boxes that can be recalculated or turned off, annotations, images and chemical formula typesetting; opening a graph page from a selected expression. Chemical boxes are typesetting only; they do not balance or solve reactions | kalyx, krepi document service | `planned` |

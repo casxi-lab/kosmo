@@ -1,0 +1,16 @@
+[package]
+name = "kosmo-scratchpad"
+description = "The Scratchpad: one line of formula input, its submission as versioned jobs, a bounded history and reuse of its inputs and results"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+kosmo-jobs.workspace = true
+kosmo-math-kalyx.workspace = true
+kosmo-math-model.workspace = true
+
+[lints]
+workspace = true

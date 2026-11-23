@@ -20,12 +20,12 @@ The last two report whitespace errors in unstaged and staged changes.
 
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
-workspaces `framework/`, with the libraries `kosmo-math-model`, `kosmo-jobs`
-and `kosmo-math-kalyx`, and `desktop/`, with the program `kosmo`, and the
-repository tasks in `xtask/`, run as `cargo xtask`. Run the program with
-`cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version`.
-`cargo xtask check` runs these steps in order and stops at the first one that
-fails:
+workspaces `framework/`, with the libraries `kosmo-math-model`, `kosmo-jobs`,
+`kosmo-math-kalyx` and `kosmo-scratchpad`, and `desktop/`, with the program
+`kosmo`, and the repository tasks in `xtask/`, run as `cargo xtask`.
+`cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version`
+runs the program, and `cargo xtask check` runs these steps in order and stops
+at the first one that fails:
 
 1. `layout`: the source layout, as [the layout step](#the-layout-step)
    describes;
