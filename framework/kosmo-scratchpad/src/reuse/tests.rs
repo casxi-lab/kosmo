@@ -121,6 +121,42 @@ fn a_copy_that_the_line_cannot_hold_is_rejected() -> Checked {
 }
 
 #[test]
+fn a_refusal_keeps_the_selection() -> Checked {
+    let mut jobs = Jobs::new()?;
+    let (mut state, state_id) = delivered(&mut jobs, "1", |versions| {
+        Plan::new().request(report(OutcomeKind::State, versions, "IterationLimit"))
+    })?;
+    let (mut pad, id) = delivered(&mut jobs, "x+1", |versions| value(versions, "1 + x"))?;
+
+    state.clear()?;
+    state.insert_text("2*3")?;
+    state.extend_left();
+    assert!(state.line().selection().is_some());
+    assert_eq!(
+        refused(&mut state, state_id, Part::Result, 0..1)?,
+        NotReused::State
+    );
+
+    // A selection of one item in a line one item short of its bound: the
+    // copy of three items would still make the line too long, which the
+    // line finds before it changes anything.
+    pad.clear()?;
+    pad.insert_text(&"1".repeat(MAX_ITEMS - 1))?;
+    pad.extend_left();
+    assert!(pad.line().selection().is_some());
+    assert_eq!(
+        refused(&mut pad, id, Part::Input, 0..3)?,
+        NotReused::Rejected(Rejected::TooManyItems)
+    );
+    let backwards = Range { start: 2, end: 1 };
+    assert_eq!(
+        refused(&mut pad, id, Part::Input, backwards)?,
+        NotReused::Rejected(Rejected::NotInSnapshot)
+    );
+    Ok(())
+}
+
+#[test]
 fn a_copy_replaces_the_selection_and_an_empty_one_changes_nothing() -> Checked {
     let mut jobs = Jobs::new()?;
     let (mut pad, id) = delivered(&mut jobs, "x+1", |versions| value(versions, "1 + x"))?;

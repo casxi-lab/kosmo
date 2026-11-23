@@ -349,6 +349,7 @@ No test sleeps or reads the wall clock.
    `reuse::tests::a_cancelled_job_has_no_line_to_reuse`,
    `reuse::tests::a_range_that_runs_backwards_or_past_the_line_is_rejected`,
    `reuse::tests::a_copy_that_the_line_cannot_hold_is_rejected`,
+   `reuse::tests::a_refusal_keeps_the_selection`,
    `reuse::tests::reasons_name_what_could_not_be_reused`.
 10. Submitting, delivering, evicting and reusing write no file: the files of
     the working directory are the same before and after. Test:

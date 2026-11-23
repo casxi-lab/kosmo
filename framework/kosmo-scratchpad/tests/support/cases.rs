@@ -168,6 +168,13 @@ pub fn fill_one_over_a_hole() -> Checked {
 pub fn two_times_a_hole() -> Checked<(Scratchpad, JobId)> {
     let (mut pad, c) = with_entry(Operation::Expand, "x", "(x+1)^2", EXPANDED)?;
     pad.insert_text("2*")?;
+    assert_eq!(
+        pad.line().cursor(),
+        Position {
+            block: pad.line().root(),
+            index: 2
+        }
+    );
     Ok((pad, c))
 }
 
