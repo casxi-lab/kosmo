@@ -4,13 +4,12 @@ This document lists what kosmo saves or exchanges and what it needs from the
 typed values that hold it: the editing structure of a formula, the three
 versions, exact results, errors with their places, the entries of the
 Scratchpad history and the Scratchpad's separation from documents, and three
-rules for every typed value that kosmo keeps: the type tags and schema
-versions of source content, display text that is only a cache, and the
-validity of results. It ends with the kinds of content that kosmo will save or
-exchange later. It is written for people who build kosmo or a component that
-provides typed values to it, such as the document service that stores
-documents and their values or the computer algebra system that computes
-results.
+rules for what kosmo saves: the type tags and schema versions of source
+content, display text that is only a cache, and the validity of results. It
+ends with the kinds of content that kosmo will save or exchange later. It is
+written for people who build kosmo or a component that provides typed values
+to it, such as the document service that stores documents and their values or
+the computer algebra system that computes results.
 
 The numbered requirements are kosmo's needs. Each states what kosmo saves or
 exchanges and what typed values must provide for it: the representation, the
@@ -20,15 +19,18 @@ encoding and the byte layout, is the provider's choice, and a provider can
 accept or reject each requirement on its own.
 
 kosmo saves nothing yet. All of its state is in memory, and it exchanges with
-kalyx, the computer algebra system that it uses, only the linear text of a
-formula, as [formula conversion](../features/math/formula-conversion.md)
-describes, and the output lines that hold the results. So each requirement also
-states what holds now and what it leaves to the provider, and names the types
-and tests of kosmo that implement or check the current state: types with their
-crate, unit tests with their module, such as `version::tests::…`, and
-integration tests with their file in the `tests/` directory of the crate, such
-as `tests/history.rs`. The requests, reports and terminal states of jobs belong
-to the [job layer](../features/framework/job-layer.md) and are not listed here.
+kalyx, the computer algebra system that it uses, the linear text of a formula
+with its versions, as [formula
+conversion](../features/math/formula-conversion.md) describes, and the output
+lines that hold the results. So each requirement also states what holds now
+and what it leaves to the provider, and names the types and tests of kosmo
+that implement or check the current state: types with their crate, unit tests
+with their module, such as `version::tests::…`, and integration tests with
+their file in the `tests/` directory of the crate, such as `tests/history.rs`.
+The requests, reports and terminal records of jobs, and how a submitter waits
+for them, belong to the [job layer](../features/framework/job-layer.md) and
+are not listed here; requirement 5 lists only what a history entry keeps of
+them.
 
 A requirement that a provider rejects does not change kosmo's design in this
 document; kosmo's design changes only through its architecture, whose
@@ -82,12 +84,12 @@ requirements rest on.
    history entry carries.
    - Representation: three distinct 64-bit unsigned counters. The source
      version numbers the content of an editing buffer, the context version
-     the context of a region, which [Scope](../scope.md) calls the
-     environment version, and the settings version the semantic settings of
-     a settings holder. Each is compared only within the buffer, region or
-     holder that numbers it, and the three travel together with every
-     request, result and history entry, as
-     [three version types](../architecture.md#three-version-types) states.
+     the context of a region and the settings version the semantic settings
+     of a settings holder. The context version is what [Scope](../scope.md)
+     calls the environment version. Each is compared only within the buffer,
+     region or holder that numbers it, and the three travel together with
+     every request, result and history entry, as [three version
+     types](../architecture.md#three-version-types) states.
    - Version marks: the versions are the marks themselves. A rendering of a
      result writes only the source and settings versions; whatever saves or
      exchanges a result carries all three.
@@ -120,8 +122,8 @@ requirements rest on.
    - Version marks: the three versions of requirement 2. A saved result must
      also tell which version of the computer algebra system computed it,
      because display bytes hold only for the locked version.
-   - Size bound: display text holds at most 65,536 bytes when it is shown; a
-     rendering cuts longer text and states its length. An output line is
+   - Size bound: a rendering shows at most 65,536 bytes of display text;
+     longer text is cut and states its length. An output line is
      bounded by the output limit of its request, 65,536 bytes by default. The
      text of a value that can be read back for reuse holds at most 4,096
      bytes.
@@ -184,9 +186,11 @@ requirements rest on.
      its operation, evaluation, expansion or differentiation; its variable;
      and its result, written at most once: the terminal state, the stop
      reason, whether the job failed with an internal error, and the display
-     item (requirements 3 and 4). An entry is a copy of its own: editing the
-     current line, reusing the entry and later results change none of it, as
-     the [history](../features/framework/scratchpad.md#history) describes.
+     item (requirements 3 and 4). An entry is a snapshot of its own: editing
+     the current line, reusing the entry and later results change none of
+     its input, versions, operation and variable, and its result is written
+     once, as the [history](../features/framework/scratchpad.md#history)
+     describes.
    - Version marks: the three versions at which it was submitted. A late
      result goes only into the entry of its own versions.
    - Size bound: the history holds at most 32 entries and evicts the oldest
@@ -223,7 +227,7 @@ requirements rest on.
    - Types and tests: in `kosmo-scratchpad`, `Scratchpad`, and the test
      `tests/memory_only.rs`: `the_scratchpad_writes_no_file`.
 
-## Every typed value
+## Saved content and results
 
 7. **Type tags and versions of source content.** How kosmo's source content
    is saved in a document.
