@@ -223,7 +223,7 @@ attribute of a library root, do not. It checks:
   that the table does not mark publishable;
 - provisional crates: no pure-core crate depends on a crate marked
   `provisional`, through any dependency table;
-- export crates: an export crate has no external dependency;
+- export crates: an export crate has no direct external dependency;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above to `deny` or `forbid` in
   `[workspace.lints.clippy]` and the `restriction` group that holds them to

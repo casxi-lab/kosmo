@@ -793,10 +793,10 @@ only in these directions:
   dependency graph, dev-dependencies included, has no cycle.
 - A pure-core crate depends only on pure-core crates and never on a crate
   marked provisional.
-- Export crates and pure-core crates have no external dependency. The other
-  server crates and the host backends will use only the few packages that the
-  layout table allows for each of them, and a host window library only in the
-  nested backend crate.
+- Export crates have no direct external dependency, and pure-core crates
+  have none at all. The other server crates and the host backends will use
+  only the few packages that the layout table allows for each of them, and a
+  host window library only in the nested backend crate.
 - Only the kalyx adapter `kosmo-math-kalyx` depends on kalyx directly: no
   other crate, and not `xtask`, declares the package `kalyx`. Other crates
   reach kalyx only through the adapter.
