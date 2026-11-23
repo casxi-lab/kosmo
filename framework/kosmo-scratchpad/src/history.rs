@@ -223,7 +223,7 @@ pub enum NotPrepared {
     /// The line converts, but the variable is longer than
     /// [`MAX_VARIABLE_BYTES`](crate::MAX_VARIABLE_BYTES).
     VariableTooLong {
-        /// The bytes of the variable that was given.
+        /// The length of the given variable in bytes.
         bytes: usize,
     },
     /// The line is not converted: it is empty or incomplete, with its holes,

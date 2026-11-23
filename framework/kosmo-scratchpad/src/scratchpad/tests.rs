@@ -228,6 +228,8 @@ fn a_variable_longer_than_its_bound_is_not_prepared() -> Checked {
             .map(|_| ())
     };
     assert_eq!(MAX_VARIABLE_BYTES, 4096);
+    // The bound is documented as that of one insertion into the line.
+    assert_eq!(MAX_VARIABLE_BYTES, kosmo_math_model::MAX_INSERT_BYTES);
 
     // The bound counts bytes: two-byte characters reach it at half as many.
     let longer = "x".repeat(MAX_VARIABLE_BYTES + 1);
