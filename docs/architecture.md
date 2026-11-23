@@ -266,6 +266,10 @@ result:
 - Handling a still-running job whose history entry was evicted is defined with
   the Scratchpad, in its [history](features/framework/scratchpad.md#history).
 
+What kosmo needs from typed values to save and exchange its editing structure,
+versions and results is listed in
+[requirements on typed values](requirements/typed-values.md).
+
 ## Formula conversion
 
 kosmo gives kalyx a formula as linear text and takes every result from kalyx's
