@@ -31,6 +31,7 @@ pub fn job_layer(clock: Box<dyn JobClock>) -> Result<Layer, WorkerNotStarted> {
 }
 
 /// How the terminal ended.
+#[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Ended {
     /// The input ended, or `:quit` was read.
@@ -193,12 +194,14 @@ impl<B: JobBackend> Terminal<'_, B> {
             Ok(id) => id,
             Err(not) => return format!("internal error: {not}"),
         };
-        let Some(terminal) = self.layer.wait(id) else {
-            return format!("internal error: the job layer gave no terminal state for {id}");
-        };
-        let freshness = match self.pad.deliver(&terminal).judgement {
-            Judgement::Current => Freshness::Current,
-            Judgement::Superseded | Judgement::Stale => Freshness::Stale,
+        let freshness = match self.layer.wait(id) {
+            Some(terminal) => match self.pad.deliver(&terminal).judgement {
+                Judgement::Current => Freshness::Current,
+                Judgement::Superseded | Judgement::Stale => Freshness::Stale,
+            },
+            // Without a terminal state the entry has no outcome, so its line
+            // is the internal error that the history writes for it too.
+            None => Freshness::Current,
         };
         match self.pad.entry(id) {
             Some(entry) => output::outcome(entry, freshness),

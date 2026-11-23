@@ -466,6 +466,32 @@ fn a_failed_write_stops_the_terminal_with_exit_code_one() {
     assert_eq!(ran.pad.history().len(), 1);
 }
 
+/// An output that keeps what is written to it and fails every flush.
+struct Unflushable(Vec<u8>);
+
+impl Write for Unflushable {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Err(io::Error::other("the output failed"))
+    }
+}
+
+#[test]
+fn a_failed_flush_stops_the_terminal_with_exit_code_one() {
+    let mut output = Unflushable(Vec::new());
+    let ran = run_into(b"1/3+1/6\n2\n", &mut output, None).unwrap();
+    assert_eq!(ran.ended, Ended::Failed);
+    assert_eq!(ran.live_threads, 0);
+    // The line was written, but the terminal read no line after it.
+    assert_eq!(output.0, b"value (source 7, settings 0): 1/2\n");
+    assert_eq!(ran.unread, b"2\n");
+    assert_eq!(ran.pad.history().len(), 1);
+}
+
 /// An input that fails after its first line.
 struct FailingInput {
     first: Option<&'static [u8]>,
