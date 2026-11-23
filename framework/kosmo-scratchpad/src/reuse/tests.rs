@@ -140,6 +140,26 @@ fn a_copy_replaces_the_selection_and_an_empty_one_changes_nothing() -> Checked {
 }
 
 #[test]
+fn an_empty_copy_deletes_the_selection() -> Checked {
+    let mut jobs = Jobs::new()?;
+    let (mut pad, id) = delivered(&mut jobs, "x+1", |versions| value(versions, "1 + x"))?;
+    pad.clear()?;
+    pad.insert_text("2*3")?;
+    for part in [Part::Input, Part::Result] {
+        pad.extend_left();
+        assert!(pad.line().selection().is_some());
+        let version = pad.versions().source;
+        pad.reuse(id, part, 1..1)?;
+        assert_eq!(pad.line().selection(), None);
+        assert_eq!(pad.versions().source.get(), version.get() + 1);
+    }
+    // Each empty copy deleted the selected item before the cursor.
+    let expected: Vec<Item> = "2".chars().map(Item::Char).collect();
+    assert_eq!(pad.line().items(), expected.as_slice());
+    Ok(())
+}
+
+#[test]
 fn the_result_of_a_stale_entry_can_be_reused() -> Checked {
     let mut jobs = Jobs::new()?;
     let mut pad = Scratchpad::new();

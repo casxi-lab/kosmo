@@ -217,10 +217,11 @@ where it goes, as fragment insertion does.
 | `expand` of `(x+1)^2` in `x`, value `1 + 2*x + x^2` | Result, items 0..3, `1 +` | `1/` | `1/(1 +)` | None: the line misses an operand |
 
 A copy that changes the line increases its source version by exactly 1, as
-every edit does; an empty range changes nothing. The entry stays as it was.
-The result of an entry of an older version can be reused too. When nothing
-can be reused, `NotReused` says why, and the line, its cursor, its selection
-and its source version stay as they were:
+every edit does. An empty range changes nothing when nothing is selected;
+with a selection it deletes the selection, as any insertion replaces it. The
+entry stays as it was. The result of an entry of an older version can be
+reused too. When nothing can be reused, `NotReused` says why, and the line,
+its cursor, its selection and its source version stay as they were:
 
 | Reason | When |
 | --- | --- |
@@ -326,12 +327,14 @@ No test sleeps or reads the wall clock.
 7. Reuse inserts a copy of any range of an entry's input or of its value
    read back, with brackets where an operand is missing and the copy is not
    one, and the line converts to the linear text of the table in
-   [Reuse](#reuse). Tests: `tests/reuse.rs`:
-   `a_whole_input_is_reused_in_an_empty_line`, `part_of_a_result_is_reused`,
-   `a_result_fills_the_hole_of_one_over`,
+   [Reuse](#reuse). A copy replaces the selection; an empty range changes
+   nothing without a selection and deletes the selection with one. Tests:
+   `tests/reuse.rs`: `a_whole_input_is_reused_in_an_empty_line`,
+   `part_of_a_result_is_reused`, `a_result_fills_the_hole_of_one_over`,
    `part_of_an_input_fills_the_hole_of_two_times`,
    `a_fragment_need_not_be_an_operand`;
    `reuse::tests::a_copy_replaces_the_selection_and_an_empty_one_changes_nothing`,
+   `reuse::tests::an_empty_copy_deletes_the_selection`,
    `reuse::tests::the_result_of_a_stale_entry_can_be_reused`.
 8. A reused copy is a copy: editing the line afterwards leaves the entry's
    input, versions and result as they were, and reuse increases the source

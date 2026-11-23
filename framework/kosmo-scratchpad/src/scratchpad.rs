@@ -175,7 +175,9 @@ impl Scratchpad {
     /// only one that forms an operand. Only a value can be reused as a
     /// result: its display text is read back when it is reused. A copy that
     /// changes the line increases its source version by exactly 1, and the
-    /// entry stays as it was.
+    /// entry stays as it was. An empty range changes nothing when nothing
+    /// is selected; with a selection it deletes the selection, as any
+    /// insertion replaces it.
     ///
     /// When nothing can be reused, the reason says why and nothing changes:
     /// not the line, its cursor, its selection or its source version.
