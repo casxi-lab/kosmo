@@ -239,12 +239,20 @@ fn a_variable_longer_than_its_bound_is_not_prepared() -> Checked {
         assert_eq!(reason, NotPrepared::VariableTooLong { bytes });
         assert_eq!(pad, before);
     }
-    // The variable is checked before the line: an empty line with a long
-    // variable gives the variable's reason.
-    assert_eq!(
-        prepare(&Scratchpad::new(), &longer),
-        Err(NotPrepared::VariableTooLong { bytes: 4097 })
-    );
+    // The line is checked before the variable: an empty, incomplete or
+    // invalid line gives the reason it gives with any variable, and only a
+    // complete line, as above, gives the variable's reason.
+    for text in ["", "1/", "1)"] {
+        let mut line = Scratchpad::new();
+        if !text.is_empty() {
+            line.insert_text(text)?;
+        }
+        let reason = prepare(&line, &longer)
+            .err()
+            .ok_or("a line that is not complete was prepared")?;
+        assert!(matches!(reason, NotPrepared::NotConverted(_)));
+        assert_eq!(prepare(&line, "x").err(), Some(reason));
+    }
     assert_eq!(
         NotPrepared::VariableTooLong { bytes: 4097 }.to_string(),
         "the variable has 4097 bytes; a variable holds at most 4096 bytes"

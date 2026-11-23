@@ -220,7 +220,7 @@ pub enum Destination {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NotPrepared {
-    /// The variable is longer than
+    /// The line converts, but the variable is longer than
     /// [`MAX_VARIABLE_BYTES`](crate::MAX_VARIABLE_BYTES).
     VariableTooLong {
         /// The bytes of the variable that was given.

@@ -102,8 +102,8 @@ pub use scratchpad::Scratchpad;
 /// its job's limits, which is 65,536 by default.
 pub const MAX_HISTORY_ENTRIES: usize = 32;
 
-/// The most bytes of the variable of a submission. Preparing a submission
-/// with a longer variable gives [`NotPrepared::VariableTooLong`].
+/// The most bytes of the variable of a submission. Preparing a complete
+/// line with a longer variable gives [`NotPrepared::VariableTooLong`].
 ///
 /// A variable is a name such as `x`. The bound is the 4,096 bytes that one
 /// insertion into the line holds, as many as the longest line, so any name

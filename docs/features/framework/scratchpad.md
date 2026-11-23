@@ -113,11 +113,12 @@ after the update pass and brings each answer back in the next round.
    source version and the Scratchpad's context and settings versions. With
    it comes a `Pending` value that keeps the snapshot, the versions, the
    operation and the variable. Preparing changes nothing, neither the line
-   nor its source version. A variable longer than `MAX_VARIABLE_BYTES`,
-   4,096 bytes, is not submitted and gives `NotPrepared::VariableTooLong`.
-   An empty, incomplete or invalid line is not converted, and gives its
+   nor its source version. The line is checked first: an empty, incomplete
+   or invalid line is not converted, whatever the variable, and gives its
    holes or its first invalid part instead, as `NotPrepared::NotConverted`,
-   so nothing is computed from it.
+   so nothing is computed from it. Then a variable longer than
+   `MAX_VARIABLE_BYTES`, 4,096 bytes, is not submitted and gives
+   `NotPrepared::VariableTooLong`.
 2. `accept(pending, answer)` takes the pending value with the job layer's
    answer, `Result<JobId, kosmo_jobs::Rejected>`, as `submit` returns it. An
    accepted submission becomes the latest one and appends an entry to the
@@ -287,8 +288,8 @@ No test sleeps or reads the wall clock.
 2. Preparing converts a complete line into a job of one request with its
    operation, variable, session, limits, time limit and versions, and
    changes nothing; an empty, incomplete or invalid line gives its holes or
-   its first invalid part, and a variable longer than 4,096 bytes gives its
-   own reason. Tests:
+   its first invalid part whatever the variable, and a complete line with a
+   variable longer than 4,096 bytes gives the variable's own reason. Tests:
    `scratchpad::tests::preparing_changes_neither_the_line_nor_its_version`,
    `scratchpad::tests::a_prepared_job_carries_the_line_its_versions_limits_and_time_limit`,
    `scratchpad::tests::lines_that_are_not_complete_give_their_holes_or_invalid_part`,

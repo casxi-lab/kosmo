@@ -212,11 +212,12 @@ impl Scratchpad {
     /// the submission will get.
     ///
     /// Preparing changes nothing: neither the line nor its source version.
-    /// A variable longer than [`MAX_VARIABLE_BYTES`] gives
+    /// The line is checked first: an empty, incomplete or invalid line is
+    /// not converted, whatever the variable, and gives its holes or its
+    /// first invalid part instead, as [`NotPrepared::NotConverted`]. Then a
+    /// variable longer than [`MAX_VARIABLE_BYTES`] gives
     /// [`NotPrepared::VariableTooLong`], so that every entry of the history
-    /// stays bounded. An empty, incomplete or invalid line is not converted,
-    /// and gives its holes or its first invalid part instead, as
-    /// [`NotPrepared::NotConverted`].
+    /// stays bounded.
     pub fn prepare(
         &self,
         session: SessionId,
@@ -225,13 +226,13 @@ impl Scratchpad {
         limits: Limits,
         time_limit: Option<u64>,
     ) -> Result<(Submission, Pending), NotPrepared> {
+        let input = self.line.snapshot();
+        let text = convert(&input).map_err(NotPrepared::NotConverted)?;
         if variable.len() > MAX_VARIABLE_BYTES {
             return Err(NotPrepared::VariableTooLong {
                 bytes: variable.len(),
             });
         }
-        let input = self.line.snapshot();
-        let text = convert(&input).map_err(NotPrepared::NotConverted)?;
         let versions = Versions {
             source: input.version(),
             context: self.context,
