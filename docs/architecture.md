@@ -821,13 +821,12 @@ Crates and workspaces appear with their first code. So far `framework/` exists,
 with the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
 `kosmo-scratchpad`, and `desktop/`, with the program `kosmo`; the table states
 the rules of `display/` and lists no crate for it. A change that adds a crate
-registers it in the table, and the first crate of a workspace adds the
-workspace root. The layout
-step of `cargo xtask check` enforces this layout on the tracked files, and the deps
-step on what Cargo resolves; Contributing describes the checks of
-[the layout step](../CONTRIBUTING.md#the-layout-step) and of
-[the fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps) and
-their limits.
+registers it in the table, and the first crate of a workspace adds the workspace
+root. The layout step of `cargo xtask check` enforces this layout on the tracked
+files, and the deps step on what Cargo resolves; Contributing describes the
+checks of [the layout step](../CONTRIBUTING.md#the-layout-step) and of [the
+fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps) and their
+limits.
 
 ## Platform boundary
 

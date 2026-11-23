@@ -89,24 +89,24 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo has no usable application yet. Of the features above, four parts work,
-as libraries: the editing structure of one-line formula input, its conversion
-into the text that kalyx reads, the job layer that runs that text with
-kalyx, and the Scratchpad's history of submissions with the reuse of their
-inputs and results. The repository holds documentation, the kosmo logo, a
-commit hook, the repository checks, the layout table `layout.toml` and two
-product workspaces. The `framework/` workspace has the libraries `kosmo-math-model`,
-which holds [one-line formula input](docs/features/math/one-line-editing.md)
-while you edit it, `kosmo-jobs`, which runs computations as
-[versioned jobs](docs/features/framework/job-layer.md),
-`kosmo-math-kalyx`, which [converts](docs/features/math/formula-conversion.md)
-the input into the text that kalyx reads and runs the jobs with kalyx, and
-`kosmo-scratchpad`, the [Scratchpad](docs/features/framework/scratchpad.md),
-which keeps a history of the submissions of a line with their results and
-reuses their inputs and results in the line. The
-`desktop/` workspace has the `kosmo` program, which so far only reports its
-version. CI runs the repository checks on every pull request to `main` and
-every push to `main`. These commands run from the repository root:
+kosmo has no usable application yet. Of the features above, four parts work, as
+libraries: the editing structure of one-line formula input, its conversion into
+the text that kalyx reads, the job layer that runs that text with kalyx, and
+the Scratchpad's history of submissions with the reuse of their inputs and
+results. The repository holds documentation, the kosmo logo, a commit hook, the
+repository checks, the layout table `layout.toml` and two product workspaces.
+The `framework/` workspace has the libraries `kosmo-math-model`, which holds
+[one-line formula input](docs/features/math/one-line-editing.md) while you edit
+it, `kosmo-jobs`, which runs computations as [versioned
+jobs](docs/features/framework/job-layer.md), `kosmo-math-kalyx`, which
+[converts](docs/features/math/formula-conversion.md) the input into the text
+that kalyx reads and runs the jobs with kalyx, and `kosmo-scratchpad`, the
+[Scratchpad](docs/features/framework/scratchpad.md), which keeps a history of
+the submissions of a line with their results and reuses their inputs and
+results in the line. The `desktop/` workspace has the `kosmo` program, which so
+far only reports its version. CI runs the repository checks on every pull
+request to `main` and every push to `main`. These commands run from the
+repository root:
 
 ```sh
 cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version
