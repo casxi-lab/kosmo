@@ -155,7 +155,9 @@ an expression, words such as `diff` and `expand` are ordinary names.
   printable ASCII, but the name of a parameter of a resource limit may hold
   any character, such as a C1 control character or one that changes the
   direction of text; escaped, it cannot act on the host's terminal. A name
-  with letters outside ASCII is written escaped too.
+  with letters outside ASCII is written escaped too. A backslash is written
+  as it is, so a name that holds the text `\u{9b}` is written the same as one
+  that holds the character U+009B.
 
 ## Exit codes
 
@@ -227,8 +229,9 @@ of its own; kalyx and the packages that kalyx depends on come through
 is unstable, so its modules can change in any version, and it is not
 published.
 
-The crates of `desktop/` depend on the framework only through it. The
-layout table marks it as the framework's export crate and facade, and the
+It is the framework's only export crate so far, so the crates of
+`desktop/` reach the framework only through it. The layout table marks it
+as the framework's export crate and facade, and the
 layout and deps steps of `cargo xtask check` fail when a crate of
 `desktop/` depends on a crate of `framework/` that is not an export crate.
 An SDK interface of its own, with its contracts and documentation for the
@@ -246,8 +249,8 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-sdk
 - It takes whole lines. It has no editing within a line beyond what the
   host's terminal offers before Enter, no recall of earlier lines and no key
   that cancels a running job: a computation runs until its job ends, within
-  the default limits of kalyx 0.1.0. A raw-mode terminal is planned as an
-  adapter crate of its own.
+  the default limits of kalyx 0.1.0. A raw-mode terminal, if one is added,
+  is an adapter crate of its own.
 - It waits for each job, so it never cancels one and never gets a late
   result of an older version; the [Scratchpad](../framework/scratchpad.md)
   and the [job layer](../framework/job-layer.md) describe how those are
@@ -262,6 +265,8 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-sdk
   thread of its own and neither reads nor changes terminal attributes is
   checked by review until the layout step checks the platform boundary. The
   deps step checks that it has no direct external dependency.
+- That `kosmo-sdk` holds only re-exports is checked by review; the layout
+  step checks only that it is an export crate.
 
 ## Requirements
 
@@ -280,6 +285,7 @@ that always reads 0, so no test sleeps or reads the wall clock.
    `the_terminal_ends_at_the_end_of_input_with_its_worker_thread_ended`,
    `quit_ends_the_terminal_without_reading_further`,
    `a_failed_write_stops_the_terminal_with_exit_code_one`,
+   `a_failed_flush_stops_the_terminal_with_exit_code_one`,
    `a_failed_read_stops_the_terminal_with_exit_code_one`;
    `tests::the_program_runs_the_terminal_without_arguments`.
 2. Without arguments the program runs the terminal, `kosmo --version` prints
@@ -369,7 +375,8 @@ that always reads 0, so no test sleeps or reads the wall clock.
     clock. Test:
     `clock::tests::readings_never_decrease_and_a_fork_reads_the_same_clock`.
 12. The crates of `desktop/` depend on the framework only through
-    `kosmo-sdk`, which only re-exports, and the packages that `desktop/`
-    resolves are exactly those of its allowlist: the layout and deps steps of
-    `cargo xtask check`. The example of the facade's crate documentation
-    uses the Scratchpad and formula conversion through it.
+    `kosmo-sdk`, and the packages that `desktop/` resolves are exactly those
+    of its allowlist: the layout and deps steps of `cargo xtask check`. That
+    `kosmo-sdk` only re-exports is checked by review (see Limits). The
+    example of the facade's crate documentation uses the Scratchpad and
+    formula conversion through it.

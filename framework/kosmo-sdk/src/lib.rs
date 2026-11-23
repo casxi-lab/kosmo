@@ -16,9 +16,10 @@
 //! - [`kosmo_scratchpad`]: the Scratchpad, with its history of submissions
 //!   and the reuse of their inputs and results.
 //!
-//! Crates outside the `framework/` workspace depend on the framework only
-//! through this facade. An SDK interface of its own, with its contracts,
-//! is planned; until then the facade adds nothing to what it re-exports.
+//! It is the only export crate of the framework so far, so crates outside
+//! the `framework/` workspace reach the framework only through it. An SDK
+//! interface of its own, with its contracts, is planned; until then the
+//! facade adds nothing to what it re-exports.
 //!
 //! ```
 //! use kosmo_sdk::kosmo_math_kalyx::convert;
