@@ -40,6 +40,15 @@ name = "kosmo-math-model"
 version = "0.1.0-dev.1"
 
 [[package]]
+name = "kosmo-scratchpad"
+version = "0.1.0-dev.1"
+dependencies = [
+ "kosmo-jobs",
+ "kosmo-math-kalyx",
+ "kosmo-math-model",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

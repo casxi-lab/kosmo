@@ -130,6 +130,13 @@ default-features = true
 features = []
 resolved-features = []
 
+[crates.kosmo-scratchpad]
+path = "framework/kosmo-scratchpad"
+layer = "F3"
+export = false
+pure-core = false
+publish = false
+
 [crates.kosmo]
 path = "desktop/kosmo"
 layer = "S2"
