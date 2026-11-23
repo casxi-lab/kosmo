@@ -89,39 +89,50 @@ relies on from the other parts of casξ.
 
 ## Status
 
-kosmo has no usable application yet. Of the features above, four parts work, as
-libraries: the editing structure of one-line formula input, its conversion into
-the text that kalyx reads, the job layer that runs that text with kalyx, and
-the Scratchpad's history of submissions with the reuse of their inputs and
-results. The repository holds documentation, the kosmo logo, a commit hook, the
-repository checks, the layout table `layout.toml` and two product workspaces.
-The `framework/` workspace has the libraries `kosmo-math-model`, which holds
+kosmo has no application on its framework yet. On a host computer, the
+`kosmo` program computes one line at a time in a terminal: the
+[line-mode terminal](docs/features/desktop/line-mode-terminal.md) reads
+expressions and a few commands from standard input and writes exact results,
+such as `2*x` for the derivative of `x^2`, to standard output. Of the features
+above, the parts that it builds on work, as libraries: the editing structure
+of one-line formula input, its conversion into the text that kalyx reads, the
+job layer that runs that text with kalyx, and the Scratchpad's history of
+submissions with the reuse of their inputs and results. The repository holds
+documentation, the kosmo logo, a commit hook, the repository checks, the
+layout table `layout.toml` and two product workspaces. The `framework/`
+workspace has the libraries `kosmo-math-model`, which holds
 [one-line formula input](docs/features/math/one-line-editing.md) while you edit
 it, `kosmo-jobs`, which runs computations as [versioned
 jobs](docs/features/framework/job-layer.md), `kosmo-math-kalyx`, which
 [converts](docs/features/math/formula-conversion.md) the input into the text
-that kalyx reads and runs the jobs with kalyx, and `kosmo-scratchpad`, the
+that kalyx reads and runs the jobs with kalyx, `kosmo-scratchpad`, the
 [Scratchpad](docs/features/framework/scratchpad.md), which keeps a history of
 the submissions of a line with their results and reuses their inputs and
-results in the line. The `desktop/` workspace has the `kosmo` program, which so
-far only reports its version. CI runs the repository checks on every pull
-request to `main` and every push to `main`. These commands run from the
-repository root:
+results in the line, and the facade `kosmo-sdk`, which re-exports them and
+through which the `desktop/` workspace uses them. The `desktop/` workspace has
+the `kosmo` program. CI runs the repository checks on every pull request to
+`main` and every push to `main`. These commands run from the repository root:
 
 ```sh
+printf ':diff x x^2\n:diff x x^3\n:history\n' | cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo
 cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo -- --version
+cargo test --locked --manifest-path desktop/Cargo.toml -p kosmo
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-model
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-jobs
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-scratchpad
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-sdk
 cargo xtask check
 ```
 
-The first prints `kosmo` and its version, the next four run the tests of the
-editing structure, of the job layer, of formula conversion with the kalyx
-runner and of the Scratchpad, and the last runs the repository checks. No
-version has been released yet: a release is a tagged commit, and the version
-that `main` shows is not a release until it is tagged.
+The first runs two derivatives and lists the history in the terminal; without
+the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo`
+reads the lines that you type. The second prints `kosmo` and its version. The
+next six run the tests of the terminal, of the editing structure, of the job
+layer, of formula conversion with the kalyx runner, of the Scratchpad and of
+the facade, and the last runs the repository checks. No version has been
+released yet: a release is a tagged commit, and the version that `main` shows
+is not a release until it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates will use only `core` and `alloc`. Its first releases will run

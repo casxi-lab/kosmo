@@ -2,11 +2,14 @@
 
 This page describes the complete target scope of kosmo: what it will provide,
 which other parts of casξ it builds on, and the status of each capability.
-Parts of three capabilities work so far: the one-line editing structure of
+Parts of five capabilities work so far: the one-line editing structure of
 math input and its conversion into the text that kalyx reads; the job layer,
-which runs computations with kalyx as versioned jobs on the host; and the
-Scratchpad's history and reuse of subexpressions, as a library that no
-frontend uses yet. Every other capability has the status `planned`.
+which runs computations with kalyx as versioned jobs on the host; the
+Scratchpad's history and reuse of subexpressions; the line-mode terminal of
+the `kosmo` program, which computes one line at a time through the
+Scratchpad on a host computer; and the SDK crate, which so far only
+re-exports the framework libraries. Every other capability has the status
+`planned`.
 
 | Status | Meaning |
 | --- | --- |
@@ -93,8 +96,8 @@ columns.
 | Math input and formula editing | An editing structure kept apart from the semantic expressions of the CAS, so that incomplete input such as `1/□` can exist and simplification never changes the structure or the cursor you are editing; conversion of the editing structure into expressions; one-line input first, then two-dimensional editing with fractions, radicals, subscripts and superscripts; matrix and vector entry. The editing structure and the formula editing controls do not depend on the CAS and are open to other applications; only the kalyx adapter crate depends on kalyx. The editing structure of one-line input and its conversion into kalyx's input text work: [one-line editing](features/math/one-line-editing.md), [formula conversion](features/math/formula-conversion.md) | kalyx | `partial` |
 | Result display | Typeset results in exact or approximate form; scientific and engineering notation; angle, number base and display modes stated explicitly; every result tagged with the source, environment and settings versions it was computed from | kalyx, krepi job service | `planned` |
 | Focus, navigation and commands | Several independently focused regions on a page; semantic commands such as evaluate selection, cancel job, zoom viewport, run program and check proof, delivered to the focused region; a background page never takes the current input; a global stop and switch entry; shared selection, clipboard and undo | kosmo display server (focus routing), krepi job service | `planned` |
-| SDK and client libraries | An SDK crate for applications that at first only re-exports the framework, is marked unstable and is not published; project templates, developer documentation and developer tools; the client library of the display protocol with its conformance tests; a C interface to the client library, with bindings for other languages such as Go. Until version 1.0, applications use the framework only through its Rust API | kosmo framework and display protocol | `planned` |
-| Host preview | kosmo on a host computer: the line-mode terminal frontend; the framework's headless backend, driven by event scripts; the display server with its headless and nested backends, where a host window appears only as an output of the nested display server. The code above the framework's platform interface and the display server's device ports is the same as on the device. A host run does not test system-call isolation, device drivers, memory limits or power loss | Host operating system | `planned` |
+| SDK and client libraries | An SDK crate for applications that at first only re-exports the framework, is marked unstable and is not published; project templates, developer documentation and developer tools; the client library of the display protocol with its conformance tests; a C interface to the client library, with bindings for other languages such as Go. Until version 1.0, applications use the framework only through its Rust API. The SDK crate exists and so far only re-exports the framework libraries: [the SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade) | kosmo framework and display protocol | `partial` |
+| Host preview | kosmo on a host computer: the line-mode terminal frontend; the framework's headless backend, driven by event scripts; the display server with its headless and nested backends, where a host window appears only as an output of the nested display server. The code above the framework's platform interface and the display server's device ports is the same as on the device. A host run does not test system-call isolation, device drivers, memory limits or power loss. The line-mode terminal works: [line-mode terminal](features/desktop/line-mode-terminal.md) | Host operating system | `partial` |
 
 ### Desktop environment and system interface
 
