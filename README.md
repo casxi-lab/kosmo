@@ -172,6 +172,8 @@ be checked first when kosmo runs on the device.
 - [Requirements on krepi: display and
   devices](docs/requirements/display-and-devices.md): what kosmo needs from
   krepi for the display path on the device.
+- [Requirements on typed values](docs/requirements/typed-values.md): what kosmo
+  saves or exchanges and what it needs from the typed values that hold it.
 - [Contributing](CONTRIBUTING.md) and [repository instructions](AGENTS.md).
 
 ## License
