@@ -133,8 +133,9 @@ impl<T, R: JobRunner<T>> JobRunner<T> for Gated<R> {
 impl GateControl {
     /// Waits until the job at the gate waits there. Fails when there is no
     /// gate, when that job ended without waiting there, or when the worker
-    /// thread ended first.
-    pub fn wait_at_gate(&self) -> Checked {
+    /// thread ended first. Tests wait through [`HostJobs::wait_at_gate`],
+    /// which also fails when the host stub has not received that job.
+    fn wait_at_gate(&self) -> Checked {
         let mut state = self.shared.lock();
         let gate = state.gate.ok_or("no job waits at a gate")?;
         loop {
