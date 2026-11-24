@@ -205,7 +205,7 @@ fn cancelled_before_kalyx(cancel: Cancel) -> Checked<String> {
     let mut run = Run::new("cancel", Some(0), None)?;
     run.type_text("x^2")?;
     let old = run.submit()?;
-    run.jobs.gate.wait_at_gate()?;
+    run.jobs.wait_at_gate()?;
     if cancel == Cancel::Running {
         run.jobs.layer.poll();
         assert_eq!(run.jobs.layer.state(old), Some(JobState::Running));
@@ -300,7 +300,8 @@ fn record() -> Checked<String> {
 
 #[test]
 fn the_old_job_cancelled_at_the_gate_ends_cancelled_and_shows_no_result() -> Checked {
-    cancelled_before_kalyx(Cancel::Running)?;
+    let (cancel, _) = expected_orders()?;
+    assert_eq!(cancelled_before_kalyx(Cancel::Running)?, cancel);
     Ok(())
 }
 
@@ -313,7 +314,8 @@ fn a_cancel_before_the_start_is_handled_also_stops_the_old_job_before_kalyx() ->
 
 #[test]
 fn the_late_old_result_goes_only_into_the_entry_of_its_own_version() -> Checked {
-    late_old_result()?;
+    let (_, late) = expected_orders()?;
+    assert_eq!(late_old_result()?, late);
     Ok(())
 }
 

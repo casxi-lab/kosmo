@@ -8,9 +8,11 @@
 //! A gate and a hold name a job by its submission order, counting from 0;
 //! the stub's worker runs the jobs in that order. The test waits until the
 //! job at the gate waits there, acts on the job layer and opens the gate.
-//! Nothing sleeps or reads the wall clock. Waiting at the gate fails instead
-//! of hanging once the job at the gate has ended without waiting there or
-//! the worker thread has ended, and dropping [`HostJobs`] opens the gate and
+//! Nothing sleeps or reads the wall clock. Waiting at the gate through
+//! [`HostJobs::wait_at_gate`] fails instead of hanging when the host stub
+//! has not received the job at the gate, once that job has ended without
+//! waiting there, or once the worker thread has ended, and dropping
+//! [`HostJobs`] opens the gate and
 //! releases the hold before the job layer shuts down and joins the worker
 //! thread, so a test that fails at any point still ends.
 
@@ -317,6 +319,23 @@ impl HostJobs {
             hold: hold_control,
             session,
         })
+    }
+
+    /// Waits until the job at the gate waits there, as
+    /// [`GateControl::wait_at_gate`] does, and fails first when the host
+    /// stub has not received that job. A job that the stub received reaches
+    /// the worker thread while the worker runs, so the wait then ends.
+    pub fn wait_at_gate(&self) -> Checked {
+        let gate = self
+            .gate
+            .shared
+            .lock()
+            .gate
+            .ok_or("no job waits at a gate")?;
+        if self.layer.backend().received.len() <= gate {
+            return Err("the host stub has not received the job at the gate".into());
+        }
+        self.gate.wait_at_gate()
     }
 
     /// The `Finished` of job `id` as the host stub reported it, once the
