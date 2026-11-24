@@ -62,8 +62,9 @@ job layer nor the host stub changes for the test:
 
 The test waits for the worker at the gate through a mutex and a condition
 variable; nothing sleeps or reads the wall clock. Waiting at the gate fails
-instead of hanging once the job at the gate has ended without waiting there
-or the worker thread has ended. Dropping the job layer of a run opens the
+instead of hanging when the host stub has not received the job at the gate,
+once that job has ended without waiting there, or once the worker thread has
+ended. Dropping the job layer of a run opens the
 gate and releases the hold first, so a test that fails still ends.
 
 **The old job is cancelled before kalyx runs it.** The old job waits at the
@@ -72,7 +73,7 @@ report, so the job is running, submits the new job, so two jobs are live, and
 cancels the old one, which the job layer answers with `Requested`. Then it
 opens the gate. The kalyx runner finds the cancellation before the first
 request, so kalyx never runs for the old job: its `Finished` has no request
-report and the stop "cancelled", and the job ends `cancelled` without a line.
+report and the stop "cancellation", and the job ends `cancelled` without a line.
 The new job runs after it. The test delivers the old job's terminal state,
 which is stale and leaves the old entry without a display item, and then the
 new one's, which is current and shown. When the test cancels the old job
@@ -168,7 +169,7 @@ test sleeps or reads the wall clock.
    `the_late_old_result_goes_only_into_the_entry_of_its_own_version`.
 2. The old job, cancelled while it waits at the gate before the kalyx runner,
    ends `cancelled` without a line, and kalyx never runs for it: its
-   `Finished` has no request report and the stop "cancelled". Its delivery
+   `Finished` has no request report and the stop "cancellation". Its delivery
    is stale and leaves its entry without a display item, and only the new
    result is shown. The cancellation is answered `Requested` once the job
    layer has handled the job's `Started`, and `Cancelled` before, with the
