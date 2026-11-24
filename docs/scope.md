@@ -182,7 +182,9 @@ Two examples will run there:
 1. A derivative of $x^2$ is requested, the input is changed to $x^3$ and
    submitted again. The old job can be cancelled, and the old result, even when
    it arrives late, belongs to the old source version only and never replaces
-   the new result.
+   the new result. On a host, the
+   [resubmitted input](features/framework/resubmitted-input.md) test runs this
+   example through the Scratchpad and the job layer with kalyx 0.1.0.
 2. A job in an isolated worker prints output continuously or loops; a test
    worker comes first, and Python and proof jobs come later. The GUI stays
    editable, output is bounded, the region's stop control first requests

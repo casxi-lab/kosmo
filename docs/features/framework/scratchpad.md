@@ -277,8 +277,10 @@ modules under `src/` (named here with their module, such as
 their file). The integration tests run jobs on the controllable backend of
 the job layer, which answers with the output lines that kalyx 0.1.0 writes
 for the same requests; `tests/with_kalyx.rs` runs those requests through the
-Scratchpad on the host stub with the kalyx runner and compares the lines.
-No test sleeps or reads the wall clock.
+Scratchpad on the host stub with the kalyx runner and compares the lines,
+and `tests/resubmitted_input.rs` runs the example of a
+[resubmitted input](resubmitted-input.md) on the host stub with the kalyx
+runner and test gates around them. No test sleeps or reads the wall clock.
 
 1. Every editing operation reaches the current line as the editing buffer
    does it, and nothing else changes the line, so its source version starts

@@ -414,11 +414,18 @@ job at a time in the order it receives them.
   several jobs that only submits them and then waits for each to reach its
   terminal state in turn has a determined result without gates. Events
   interleaved with a running job, namely cancellation, session cancellation
-  and advances of the fake clock, are still ordered through the controllable
-  backend's gates and probes. So are cases that need another completion
-  order: both completion orders of an old and a new job of one region, and
-  late and early results. No test sleeps or reads the wall clock, and the
-  core and the stub do not change for tests.
+  and advances of the fake clock, are still ordered through gates: the
+  controllable backend's gates and probes, or test gates around the host
+  stub. So are cases that need another completion order: both completion
+  orders of an old and a new job of one region, and late and early results.
+  The test gates around the host stub are two layers that use only the
+  public ports: a runner on the worker thread that wraps the stub's runner
+  and makes a chosen job wait before that runner gets it, and a backend that
+  wraps the stub and holds a chosen job's `Finished` until the test releases
+  it, so that the job layer sees the jobs finish in another order than the
+  worker ran them. The [resubmitted input](features/framework/resubmitted-input.md)
+  example uses both. No test sleeps or reads the wall clock, and the core and
+  the stub do not change for tests.
 - **Cancellation before the first request.** When the core accepts a cancel
   request, the shell sets the job's cancel handle. The worker takes a job
   that is still in the dispatch channel as usual, reports `Started` and hands
