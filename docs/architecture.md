@@ -413,12 +413,20 @@ job at a time in the order it receives them.
 - **Order.** Jobs complete one at a time, in submission order. A test with
   several jobs that only submits them and then waits for each to reach its
   terminal state in turn has a determined result without gates. Events
-  interleaved with a running job, namely cancellation, session cancellation
-  and advances of the fake clock, are still ordered through the controllable
-  backend's gates and probes. So are cases that need another completion
-  order: both completion orders of an old and a new job of one region, and
-  late and early results. No test sleeps or reads the wall clock, and the
-  core and the stub do not change for tests.
+  interleaved with a running job, namely cancellation, session cancellation and
+  advances of the fake clock, are still ordered through gates: the controllable
+  backend's gates and probes or, on the host stub, handshakes with a test
+  runner, a gate at a reading of a fake clock that the runner reads on the
+  worker thread, or test gates around the stub. So are cases that need another
+  completion order: both completion orders of an old and a new job of one
+  region, and late and early results. The test gates around the host stub that
+  the [resubmitted input](features/framework/resubmitted-input.md) example uses
+  are two layers that use only the public ports: a runner on the worker thread
+  that wraps the stub's runner and makes a chosen job wait before that runner
+  gets it, and a backend that wraps the stub and holds a chosen job's `Finished`
+  until the test releases it, so that the job layer sees the jobs finish in
+  another order than the worker ran them. No test sleeps or reads the wall
+  clock, and the core and the stub do not change for tests.
 - **Cancellation before the first request.** When the core accepts a cancel
   request, the shell sets the job's cancel handle. The worker takes a job
   that is still in the dispatch channel as usual, reports `Started` and hands
@@ -682,7 +690,8 @@ while:
   uses no threads on the device;
 - the core assumes neither a backend's parallelism nor its report order; the
   first release's host stub completes jobs one at a time in submission order,
-  and the controllable backend's gates cover other orders;
+  and gates of the controllable backend or around the host stub cover other
+  orders;
 - the controllable backend implements the same port, with contract tests
   generic over it.
 

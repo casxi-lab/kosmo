@@ -1,10 +1,12 @@
 //! Helpers shared by the integration tests: a job layer on the controllable
-//! backend, the output lines of kalyx 0.1.0 that its jobs answer with, and
-//! the cases of history and reuse that several test files run.
+//! backend, the output lines of kalyx 0.1.0 that its jobs answer with, the
+//! cases of history and reuse that several test files run, and in [`gates`]
+//! a job layer on the host stub with test gates around it.
 
 #![allow(dead_code, reason = "each test file uses some of the helpers")]
 
 pub mod cases;
+pub mod gates;
 
 use std::error::Error;
 

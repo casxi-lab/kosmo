@@ -1,0 +1,6 @@
+cancel: job 1 diff x x^2: stale: cancelled (source 3, settings 0)
+cancel: job 2 diff x x^3: current: value (source 5, settings 0): 3*x^2
+cancel: shown value (source 5, settings 0): 3*x^2
+late: job 2 diff x x^3: current: value (source 5, settings 0): 3*x^2
+late: job 1 diff x x^2: stale: value (source 3, settings 0, stale): 2*x
+late: shown value (source 5, settings 0): 3*x^2
