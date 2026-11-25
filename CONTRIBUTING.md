@@ -276,16 +276,22 @@ resolves. It does not find a forbidden item in a path that a macro assembles
 from parts, as in `$krate::fs` in a `macro_rules!` body; in an item that a
 crate reaches through a re-export, whether another crate's or its own, as in
 `clock::Context::new` after `pub use kalyx::Context;` in a module `clock`,
-through a path that starts with `crate` or `super`, or through a type alias
-with generic parameters; through an `extern crate` rename in another file or
-an import in the body of a macro call; in a path from the crate root right
-after a comparison `>` that follows a `<` in the same statement; or in code
-that `include!` or `#[path]` brings in from outside `src/`. It reads only the
+through a path that starts with `crate` or `super`, through `self::` in a
+block that has an item of that name, which the step reads in the block
+instead of its module, or through a type alias with generic parameters;
+through an `extern crate` rename in another file or an import in the body of
+a macro call; through a glob import whose path goes through another glob
+import of the same module or block, directly or through a rename, as
+`use time::*;` after `use std::*;`; in a path from the crate root right after
+a comparison `>` that follows a `<` in the same statement; or in code that
+`include!` or `#[path]` brings in from outside `src/`. It reads only the
 `src/` of a crate, even when `[lib] path` puts the library root elsewhere,
 and does not check a crate without a library target. A path of one segment
 does not say whether it names a type or a value, so a function, constant or
-static hides a forbidden type of the same name, and an imported name hides a
-forbidden macro of the same name. The other way round, the step reports
+static hides a forbidden type of the same name, a module, type or trait
+hides a forbidden value of the same name, as `mod UNIX_EPOCH` beside
+`use std::time::*;`, and an imported name hides a forbidden macro of the
+same name. The other way round, the step reports
 some code that uses no forbidden item. It counts a name that a module
 imports, one by one or with a glob import, also in the modules inside it,
 and does not tell a path from a name that is not one: a variable,

@@ -274,6 +274,10 @@ enum Site {
     /// In an import other than a glob import, whose path starts with a
     /// module, a type or a crate.
     Import,
+    /// In an import other than a glob import, before the glob imports of
+    /// its own module or block are known: as [`Site::Import`], but only
+    /// through the glob imports of the modules and blocks around it.
+    ImportOutside,
     /// In a glob import, which does not go through the glob imports of its
     /// own module or block: they would only extend one another.
     Glob,
@@ -286,22 +290,27 @@ impl Scope {
     /// `rest` does here. An import or an item that defines the first
     /// segment hides the glob imports of its own module or block and of
     /// those around it; a first segment that nothing hides goes through
-    /// every glob import, and also stands for itself when it names a crate
-    /// that the scan follows.
+    /// the glob imports that `site` reads, and also stands for itself when
+    /// it names a crate that the scan follows.
     fn resolve(&self, segments: &[String], rooted: bool, site: Site) -> BTreeSet<Vec<String>> {
-        let Some(first) = segments.first() else {
+        if segments.is_empty() {
             return BTreeSet::new();
-        };
+        }
         let joined = |prefix: &Vec<String>, rest: &[String]| {
             prefix.iter().chain(rest).cloned().collect::<Vec<String>>()
         };
         if rooted {
             return BTreeSet::from([segments.to_vec()]);
         }
-        if first == "self" && segments.len() > 1 {
-            // The scope of a block stands in for that of its module.
-            return self.resolve(&segments[1..], false, site);
-        }
+        // `self::rest` names what `rest` does here; the scope of a block
+        // stands in for that of its module.
+        let selves = segments
+            .iter()
+            .take_while(|segment| *segment == "self")
+            .count()
+            .min(segments.len() - 1);
+        let segments = &segments[selves..];
+        let first = &segments[0];
         let imported = self.names.get(first);
         if imported.is_none() && LOCAL.contains(&first.as_str()) {
             return BTreeSet::new();
@@ -311,7 +320,7 @@ impl Scope {
             defined = defined.max(self.values.get(first).copied());
         }
         let hidden_to = imported.map(|(depth, _)| *depth).max(defined);
-        let globs_below = if site == Site::Glob {
+        let globs_below = if matches!(site, Site::Glob | Site::ImportOutside) {
             self.depth
         } else {
             usize::MAX
@@ -456,12 +465,12 @@ enum Body {
 }
 
 /// What the `{ ... }` at `at` is the body of.
-fn body_of(trees: &[TokenTree], at: usize) -> Body {
+fn body_of(trees: &[TokenTree], body: usize) -> Body {
     // The item starts after the `;` or the `{ ... }` before it; a `{ ... }`
     // inside angle brackets, as in `impl W<{ 1 }>`, is a generic argument.
     let mut angles = 0_usize;
     let mut start = 0;
-    for before in (0..at).rev() {
+    for before in (0..body).rev() {
         match &trees[before] {
             TokenTree::Punct(punct) if punct.as_char() == '>' && !is_arrow(trees, before) => {
                 angles += 1;
@@ -498,11 +507,36 @@ fn body_of(trees: &[TokenTree], at: usize) -> Body {
                 }
             }
             Some(TokenTree::Ident(_)) if is_keyword(trees, at, &QUALIFIERS) => at += 1,
-            _ if is_keyword(trees, at, &["impl"]) => return Body::Impl(at),
-            _ if is_keyword(trees, at, &["trait"]) => return Body::Trait,
+            _ if is_keyword(trees, at, &["impl"]) && header_reaches(trees, at, body) => {
+                return Body::Impl(at);
+            }
+            _ if is_keyword(trees, at, &["trait"]) && header_reaches(trees, at, body) => {
+                return Body::Trait;
+            }
             _ => return Body::Block,
         }
     }
+}
+
+/// Whether the header of the item whose keyword is at `keyword` reaches
+/// the `{ ... }` at `body`: no other `{ ... }` outside angle brackets comes
+/// between them, as the body of a local `impl` before an `if n > 0 { ... }`
+/// would.
+fn header_reaches(trees: &[TokenTree], keyword: usize, body: usize) -> bool {
+    let mut angles = 0_usize;
+    for at in keyword..body {
+        match &trees[at] {
+            TokenTree::Punct(punct) if punct.as_char() == '<' => angles += 1,
+            TokenTree::Punct(punct) if punct.as_char() == '>' && !is_arrow(trees, at) => {
+                angles = angles.saturating_sub(1);
+            }
+            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace && angles == 0 => {
+                return false;
+            }
+            _ => {}
+        }
+    }
+    true
 }
 
 /// The path of the type that the `impl` whose keyword is at `keyword` and
@@ -748,59 +782,103 @@ fn enter(outer: &Scope, found: &Declarations) -> Scope {
         base.names.remove(name);
     }
     let mut scope = base.clone();
-    // Each pass resolves one more import of a chain of imports through one
-    // another. Glob imports do not go through the glob imports of their own
-    // module or block, so the passes settle; the bound ends the cycles of
-    // imports, which only code that does not compile has.
-    for _ in 0..=found.imports.len() {
-        let mut next = base.clone();
-        for import in &found.imports {
-            let targets = import_targets(&scope, outer, import);
-            if import.glob {
-                for target in targets {
-                    if item_of_path(&target).is_none() {
-                        next.globs.insert(target, depth);
-                    }
-                }
-            } else if let Some(name) = &import.name {
-                next.names
-                    .entry(name.clone())
-                    .or_insert_with(|| (depth, BTreeSet::new()))
-                    .1
-                    .extend(targets);
+    // First every import reads only the glob imports around its module or
+    // block, so that this level's glob imports never grow from names that
+    // came through them; then the other imports also read this level's
+    // glob imports, which stay as they are. In each phase a pass resolves
+    // one more import of a chain of imports through one another, and the
+    // bound ends the cycles of imports, which only code that does not
+    // compile has.
+    for outside in [true, false] {
+        for _ in 0..=found.imports.len() {
+            let mut next = base.clone();
+            if !outside {
+                next.globs = scope.globs.clone();
             }
-        }
-        let settled = next.names == scope.names && next.globs == scope.globs;
-        scope = next;
-        if settled {
-            break;
+            for import in &found.imports {
+                if import.glob && !outside {
+                    continue;
+                }
+                let targets = import_targets(&scope, outer, &found.imports, import, outside);
+                if import.glob {
+                    for target in targets {
+                        if item_of_path(&target).is_none() {
+                            next.globs.insert(target, depth);
+                        }
+                    }
+                } else if let Some(name) = &import.name {
+                    next.names
+                        .entry(name.clone())
+                        .or_insert_with(|| (depth, BTreeSet::new()))
+                        .1
+                        .extend(targets);
+                }
+            }
+            let settled = next.names == scope.names && next.globs == scope.globs;
+            scope = next;
+            if settled {
+                break;
+            }
         }
     }
     scope
 }
 
-/// The paths from a crate root that `import`, of a module or block with
-/// the scope `scope` inside `outer`, may stand for. An import whose path
-/// starts with the name it brings in, as `use time::Instant as time;`,
-/// reads that name as it is around the module or block.
-fn import_targets(scope: &Scope, outer: &Scope, import: &Import) -> BTreeSet<Vec<String>> {
-    let site = if import.glob {
-        Site::Glob
-    } else {
-        Site::Import
-    };
-    let own = import
+/// The name that `import` brings in when its path starts with that name.
+fn own_name(import: &Import) -> Option<&String> {
+    import
         .name
         .as_ref()
-        .filter(|name| !import.rooted && import.segments.first() == Some(*name));
-    let Some(name) = own else {
+        .filter(|name| !import.rooted && import.segments.first() == Some(*name))
+}
+
+/// The paths from a crate root that `import`, one of the imports `imports`
+/// of a module or block with the scope `scope` inside `outer`, may stand
+/// for; `outside` reads only the glob imports around the module or block.
+/// An import whose path starts with the name it brings in, as
+/// `use time::Instant as time;`, reads that name both as the other imports
+/// of the module or block that bring it in do and as it is around it.
+fn import_targets(
+    scope: &Scope,
+    outer: &Scope,
+    imports: &[Import],
+    import: &Import,
+    outside: bool,
+) -> BTreeSet<Vec<String>> {
+    let site = match (import.glob, outside) {
+        (true, _) => Site::Glob,
+        (false, true) => Site::ImportOutside,
+        (false, false) => Site::Import,
+    };
+    let Some(name) = own_name(import) else {
         return scope.resolve(&import.segments, import.rooted, site);
     };
+    let others: Vec<&Import> = imports
+        .iter()
+        .filter(|other| {
+            !other.glob && other.name.as_ref() == Some(name) && own_name(other).is_none()
+        })
+        .collect();
+    let outside = outer.names.get(name);
     let mut around = scope.clone();
-    match outer.names.get(name) {
-        Some(entry) => around.names.insert(name.clone(), entry.clone()),
-        None => around.names.remove(name),
-    };
+    match (others.is_empty(), outside) {
+        (true, None) => {
+            around.names.remove(name);
+        }
+        (true, Some(entry)) => {
+            around.names.insert(name.clone(), entry.clone());
+        }
+        (false, _) => {
+            let mut targets: BTreeSet<Vec<String>> = others
+                .iter()
+                .flat_map(|other| scope.resolve(&other.segments, other.rooted, site))
+                .collect();
+            if let Some((_, paths)) = outside {
+                targets.extend(paths.iter().cloned());
+            }
+            around.names.insert(name.clone(), (scope.depth, targets));
+        }
+    }
     around.resolve(&import.segments, false, site)
 }
 
@@ -914,7 +992,7 @@ fn level(
     let found = declarations(&trees, associated);
     let scope = enter(outer, &found);
     for import in &found.imports {
-        for target in import_targets(&scope, outer, import) {
+        for target in import_targets(&scope, outer, &found.imports, import, false) {
             let item = if import.glob {
                 item_of_path(&target)
             } else {
@@ -1279,6 +1357,47 @@ mod tests {
             hits(text, &[]),
             [at(3, "std::time::Instant"), at(4, "std::time::Instant")]
         );
+    }
+
+    #[test]
+    fn glob_imports_through_imported_modules_settle() {
+        let mut text = String::from(
+            "use std::collections::btree_map;\nuse std::collections::hash_map;\nuse btree_map::*;\nuse hash_map::*;\nuse std::time;\nuse time::*;\n",
+        );
+        for index in 0..20 {
+            text.push_str(&format!("use core::item{index};\n"));
+        }
+        text.push_str("fn f() {\n    let _ = Instant::now();\n}\n");
+        assert_eq!(hits(&text, &[]), [at(28, "std::time::Instant")]);
+    }
+
+    #[test]
+    fn a_block_after_a_local_impl_is_not_its_body() {
+        let text = "use kalyx::Context;\nimpl From<u8> for Context {\n    fn from(n: u8) -> Self {\n        struct Floor;\n        impl Floor {\n            const VALUE: u8 = 0;\n        }\n        if n > Floor::VALUE {\n            type Made = kalyx::Context;\n            let _ = Made::new(l, c);\n            return Self::new(l, c);\n        }\n        Self::new(l, c)\n    }\n}\n";
+        assert_eq!(
+            hits(text, &[]),
+            [
+                at(10, "kalyx::Context::new"),
+                at(11, "kalyx::Context::new"),
+                at(13, "kalyx::Context::new")
+            ]
+        );
+    }
+
+    #[test]
+    fn an_import_that_reuses_a_name_of_its_level_reads_the_other_import() {
+        // The scan does not tell the module `time` from the constant
+        // `time`, so it reads both in each path that starts with `time`.
+        let text = "use std::time;\nuse time::UNIX_EPOCH as time;\npub fn f() -> time::Duration {\n    let _ = time;\n    time::Duration::ZERO\n}\n";
+        let epoch = "std::time::UNIX_EPOCH";
+        assert_eq!(
+            hits(text, &[]),
+            [at(2, epoch), at(3, epoch), at(4, epoch), at(5, epoch)]
+        );
+        // Through `super` the other import stands for nothing, so the name
+        // is also read as it is around the module.
+        let text = "use std::time;\nmod inner {\n    use super::time;\n    use time::Instant as time;\n}\n";
+        assert_eq!(hits(text, &[]), [at(4, "std::time::Instant")]);
     }
 
     #[test]
