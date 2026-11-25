@@ -382,10 +382,13 @@ impl<A: App> Runtime<A> {
     }
 
     /// The focus chain: the focused control and its ancestors up to the
-    /// region's root, or up to the root when the region's root is not one
-    /// of them.
+    /// region's root. The view check keeps the focused control at or below
+    /// the region's root, so the chain never holds a control outside the
+    /// region; it is empty without a focused control.
     fn chain(&self) -> Vec<WidgetId> {
-        let region = self.tree.region();
+        let Some(region) = self.tree.region() else {
+            return Vec::new();
+        };
         let mut chain = Vec::new();
         let mut next = self.tree.focused();
         while let Some(id) = next {
@@ -393,12 +396,12 @@ impl<A: App> Runtime<A> {
                 break;
             }
             chain.push(id);
-            if Some(id) == region {
-                break;
+            if id == region {
+                return chain;
             }
             next = self.tree.parent(id);
         }
-        chain
+        Vec::new()
     }
 
     /// Hands a focus change to the region's root.

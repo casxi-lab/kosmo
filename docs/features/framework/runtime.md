@@ -166,8 +166,9 @@ the controls that the view no longer has are removed with their subtrees.
 
 The view tree is checked before anything changes, and a rejected view leaves
 the control tree as it was, so a round never panics on a view. Two siblings
-with one key give `RebuildError::DuplicateKey`, and a second focused or
-region mark `SecondFocus` or `SecondRegion`.
+with one key give `RebuildError::DuplicateKey`, a second focused or region
+mark `SecondFocus` or `SecondRegion`, and a focused control that is neither
+the marked region's root nor below it `FocusOutsideRegion`.
 
 The tests check eight properties of the tree:
 
@@ -270,11 +271,15 @@ stay. A periodic timer is registered again by its requester.
 
 ## Focus
 
-Each surface has one region. For each surface the runtime records the stamp,
-the epoch and focus generation, of its latest `Event::FocusIn`, and whether
-it holds focus; `Event::FocusOut` with that stamp ends the holding, and a
-focus out with another stamp is ignored. A key event is checked once, in one
-place, before dispatch, and is dropped with its reason when:
+Each surface has one region. The focused control that the view marks is the
+region's root or a control below it; a view that marks it outside the region
+is rejected with `RebuildError::FocusOutsideRegion`.
+
+For each surface the runtime records the stamp, the epoch and focus
+generation, of its latest `Event::FocusIn`, and whether it holds focus;
+`Event::FocusOut` with that stamp ends the holding, and a focus out with
+another stamp is ignored. A key event is checked once, in one place, before
+dispatch, and is dropped with its reason when:
 
 | `Dropped` | When |
 | --- | --- |
@@ -292,11 +297,12 @@ tables of the focus chain: the focused control's table, then its ancestors'
 up to the region's root, then the application's, then the minimal key map.
 The command goes first to the focused control in `Phase::Target`, then to
 each ancestor up to the region's root in `Phase::Bubble`, then to
-`App::command`, and the first that handles it ends dispatch. When the
-region's root is not an ancestor of the focused control, the chain goes up
-to the root; without a focused control, it has only the application. Controls never
-receive raw key events. Every key event has exactly one outcome in the
-record: dropped with its reason, handled with its handler, or unhandled.
+`App::command`, and the first that handles it ends dispatch. The focused
+control is always in the region, so the chain ends at the region's root and
+never reaches a control above it; without a focused control, it has only
+the application. Controls never receive raw key events. Every key event has
+exactly one outcome in the record: dropped with its reason, handled with its
+handler, or unhandled.
 
 ## Commands and key bindings
 
@@ -391,8 +397,8 @@ command, `unhandled <command>` for a command that nobody handled,
 `handled <command> by app`. A command is written `<namespace>.<name>`,
 followed by the character in quotes for `kosmo.InsertText`. A requester is
 `app` or `control <slot>:<generation>`, and a view error is
-`too-many-controls`, `too-deep`, `duplicate-key <key>`, `second-focus` or
-`second-region`. For example:
+`too-many-controls`, `too-deep`, `duplicate-key <key>`, `second-focus`,
+`second-region` or `focus-outside-region`. For example:
 
 ```text
 round 8 time 8000000
@@ -463,8 +469,9 @@ slot. No test sleeps or reads the wall clock.
    `sequences_that_differ_in_one_removal_give_other_identities`.
 2. A view of exactly 4,096 controls, or exactly 64 deep, is built; one
    control more, or one level deeper, gives its distinct error and leaves
-   the tree as it was, without panicking; repeated keys and second marks
-   are rejected; a slot at its last generation is retired. Tests:
+   the tree as it was, without panicking; repeated keys, second marks and a
+   focused control outside the region are rejected; a slot at its last
+   generation is retired. Tests:
    `tree::tests::a_tree_exactly_at_its_bounds_is_built`,
    `tree::tests::one_control_beyond_a_bound_leaves_the_tree_as_it_was`,
    `tree::tests::views_with_repeated_keys_or_marks_are_rejected`,

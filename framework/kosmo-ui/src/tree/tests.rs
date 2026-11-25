@@ -395,7 +395,24 @@ fn views_with_repeated_keys_or_marks_are_rejected() {
     assert_eq!(tree.rebuild(&focus), Err(RebuildError::SecondFocus));
     let region = node(0, "root", 0).region().child(node(1, "a", 0).region());
     assert_eq!(tree.rebuild(&region), Err(RebuildError::SecondRegion));
+    // The focused control in a sibling of the region's root, and above it.
+    let beside = node(0, "root", 0)
+        .child(node(1, "a", 0).region())
+        .child(node(2, "b", 0).focused());
+    assert_eq!(tree.rebuild(&beside), Err(RebuildError::FocusOutsideRegion));
+    let above = node(0, "root", 0).child(node(1, "a", 0).focused().child(node(2, "b", 0).region()));
+    assert_eq!(tree.rebuild(&above), Err(RebuildError::FocusOutsideRegion));
     assert!(tree.is_empty());
+
+    // The focused control may be the region's root or any node below it.
+    let at = node(0, "root", 0).child(node(1, "a", 0).region().focused());
+    assert_eq!(tree.rebuild(&at), Ok(()));
+    let below = node(0, "root", 0).child(
+        node(1, "a", 0)
+            .region()
+            .child(node(2, "b", 0).child(node(3, "c", 0).focused())),
+    );
+    assert_eq!(tree.rebuild(&below), Ok(()));
 }
 
 #[test]

@@ -137,7 +137,9 @@ impl<C> View<C> {
 
     /// The node marked as the region's root. At most one node of a view
     /// tree is marked; without a mark, the root of the tree is the region's
-    /// root.
+    /// root. The focused control must be this node or below it; a view that
+    /// marks it elsewhere is rejected with
+    /// [`RebuildError::FocusOutsideRegion`].
     pub fn region(mut self) -> View<C> {
         self.region = true;
         self
@@ -184,6 +186,9 @@ pub enum RebuildError {
     SecondFocus,
     /// More than one node is marked as the region's root.
     SecondRegion,
+    /// A node is marked as the region's root, and the focused control is
+    /// neither that node nor below it.
+    FocusOutsideRegion,
 }
 
 impl fmt::Display for RebuildError {
@@ -194,6 +199,7 @@ impl fmt::Display for RebuildError {
             RebuildError::DuplicateKey(key) => write!(f, "duplicate-key {}", key.get()),
             RebuildError::SecondFocus => write!(f, "second-focus"),
             RebuildError::SecondRegion => write!(f, "second-region"),
+            RebuildError::FocusOutsideRegion => write!(f, "focus-outside-region"),
         }
     }
 }
@@ -504,13 +510,17 @@ impl<A: App> Tree<A> {
 
 /// Checks the bounds and marks of a view tree before anything changes: at
 /// most `MAX_WIDGETS` nodes, at most `MAX_DEPTH` deep, keys unique among
-/// siblings, and at most one focused node and one region root. It stops at
-/// the first problem, so its work is bounded whatever the view's size.
+/// siblings, at most one focused node and one region root, and a marked
+/// region's root at or above the focused node. It stops at the first
+/// problem, so its work is bounded whatever the view's size.
 fn check_view<C>(view: &View<C>) -> Result<(), RebuildError> {
     let mut count = 0_usize;
     let (mut focused, mut region) = (false, false);
-    let mut stack = vec![(view, 1_usize)];
-    while let Some((node, depth)) = stack.pop() {
+    let mut focus_in_region = false;
+    // Each entry carries whether its node is in the subtree of a node
+    // marked as the region's root.
+    let mut stack = vec![(view, 1_usize, false)];
+    while let Some((node, depth, above)) = stack.pop() {
         if depth > MAX_DEPTH {
             return Err(RebuildError::TooDeep);
         }
@@ -524,13 +534,25 @@ fn check_view<C>(view: &View<C>) -> Result<(), RebuildError> {
         if node.region && std::mem::replace(&mut region, true) {
             return Err(RebuildError::SecondRegion);
         }
+        let in_region = above || node.region;
+        if node.focused {
+            focus_in_region = in_region;
+        }
         let mut keys = BTreeSet::new();
         for child in &node.children {
             if !keys.insert(child.key) {
                 return Err(RebuildError::DuplicateKey(child.key));
             }
         }
-        stack.extend(node.children.iter().rev().map(|child| (child, depth + 1)));
+        stack.extend(
+            node.children
+                .iter()
+                .rev()
+                .map(|child| (child, depth + 1, in_region)),
+        );
+    }
+    if focused && region && !focus_in_region {
+        return Err(RebuildError::FocusOutsideRegion);
     }
     Ok(())
 }
