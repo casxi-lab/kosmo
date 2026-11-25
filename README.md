@@ -111,9 +111,13 @@ jobs](docs/features/framework/job-layer.md), `kosmo-math-kalyx`, which
 that kalyx reads and runs the jobs with kalyx, `kosmo-scratchpad`, the
 [Scratchpad](docs/features/framework/scratchpad.md), which keeps a history of
 the submissions of a line with their results and reuses their inputs and
-results in the line, and the facade `kosmo-sdk`, which re-exports them and
-through which the `desktop/` workspace uses them. The `desktop/` workspace has
-the `kosmo` program. CI runs the repository checks on every pull request to
+results in the line, the framework core `kosmo-ui`, which holds an
+application's [control tree](docs/features/framework/runtime.md) and runs
+the rounds of its event loop with result slots, timers, focus checks and
+the dispatch of commands, so far without layout, drawing or a platform
+interface, and the facade `kosmo-sdk`, which re-exports all of them but
+`kosmo-ui` and through which the `desktop/` workspace uses them. The
+`desktop/` workspace has the `kosmo` program. CI runs the repository checks on every pull request to
 `main` and every push to `main`. These commands run from the repository root:
 
 ```sh
@@ -124,6 +128,7 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-model
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-jobs
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-scratchpad
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-ui
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-sdk
 cargo test --locked --manifest-path display/Cargo.toml -p kosmo-types
 cargo xtask check
@@ -132,11 +137,12 @@ cargo xtask check
 The first runs two derivatives and lists the history in the terminal; without
 the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo`
 reads the lines that you type. The second prints `kosmo` and its version. The
-next seven run the tests of the terminal, of the editing structure, of the job
+next eight run the tests of the terminal, of the editing structure, of the job
 layer, of formula conversion with the kalyx runner, of the Scratchpad, of the
-facade and of the shared types, and the last runs the repository checks. No version has been
-released yet: a release is a tagged commit, and the version that `main` shows
-is not a release until it is tagged.
+framework core, of the facade and of the shared types, and the last runs the
+repository checks. No version has been released yet: a release is a tagged
+commit, and the version that `main` shows is not a release until it is
+tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates use only `core` and `alloc`. Its first releases will run

@@ -59,6 +59,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kosmo-types"
+version = "0.1.0-dev.1"
+
+[[package]]
+name = "kosmo-ui"
+version = "0.1.0-dev.1"
+dependencies = [
+ "kosmo-math-model",
+ "kosmo-types",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

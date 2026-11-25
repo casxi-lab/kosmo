@@ -14,9 +14,12 @@ job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, and
-part of the shared types in `kosmo-types`: fixed-point geometry, logical
-time, the focus generation and epoch, and the keyboard event records;
+history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, part
+of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
+focus generation and epoch, and the keyboard event records, and part of the
+framework core in `kosmo-ui`: the control tree, the event, update and view
+passes of a round, result slots, timers, dispatch with the focus check, the
+minimal key map and hit testing;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -839,8 +842,9 @@ licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `display/` exists,
 with the shared types `kosmo-types`, `framework/`, with the libraries
-`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad` and
-the facade `kosmo-sdk`, and `desktop/`, with the program `kosmo`. A change that
+`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx`, `kosmo-ui` and
+`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the program
+`kosmo`. A change that
 adds a crate registers it in the table, and the first crate of a workspace adds
 the workspace root. The layout step of `cargo xtask check` enforces this layout
 on the tracked files, and the deps step on what Cargo resolves; Contributing
@@ -4023,7 +4027,7 @@ A component is a unit with its own role, contract and level.
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/kosmo-scratchpad/src/` and `framework/kosmo-scratchpad/tests/` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/kosmo-sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
-| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | `planned` |
+| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/kosmo-ui/src/` and `framework/kosmo-ui/tests/` |
 | Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
 | Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | `planned` |
