@@ -20,10 +20,10 @@ The last two report whitespace errors in unstaged and staged changes.
 
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
-workspaces `framework/`, with the libraries `kosmo-math-model`, `kosmo-jobs`,
-`kosmo-math-kalyx` and `kosmo-scratchpad` and the facade `kosmo-sdk`, and
-`desktop/`, with the program `kosmo`, and the repository tasks in `xtask/`,
-run as `cargo xtask`.
+workspaces `display/`, with the shared types `kosmo-types`, `framework/`, with
+the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
+`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the program
+`kosmo`, and the repository tasks in `xtask/`, run as `cargo xtask`.
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
 program's line-mode terminal, and `cargo xtask check` runs these steps in
 order and stops at the first one that fails:
@@ -35,7 +35,7 @@ order and stops at the first one that fails:
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
 3. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
    workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask`,
-   `framework` and `desktop`;
+   `display`, `framework` and `desktop`;
 4. `docs`: relative links and anchors in the Markdown files;
 5. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
@@ -61,7 +61,7 @@ check.
 
 Every workspace denies the Clippy lints `unwrap_used`, `expect_used`, `panic`,
 `todo`, `unimplemented` and `allow_attributes_without_reason`, and
-`framework/`, `desktop/` and `xtask/` also forbid unsafe code. The root
+`display/`, `framework/`, `desktop/` and `xtask/` also forbid unsafe code. The root
 `clippy.toml` lets tests unwrap, expect and panic: code in `#[cfg(test)]`
 modules and in `#[test]` functions. `todo!()` is rejected in tests too. A
 helper function in `tests/` outside a `#[test]` function returns a `Result`
@@ -251,6 +251,14 @@ outside the repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
 check at all; review covers these.
 What Cargo resolves from the manifests is checked by the deps step, not by this
 one.
+
+The source layout gives the export crates of `display/` no external
+dependency at all, not even through other crates, and the layout step checks
+only the external dependencies that each crate declares itself. For an export
+crate of `display/` that is pure core, as `kosmo-types` is, the rest follows
+from its checks: a pure-core crate depends only on pure-core crates, and no
+pure-core crate declares an external dependency. For an export crate of
+`display/` that is not pure core, review checks the crates it depends on.
 
 A change that adds a crate registers it in `layout.toml` with its directory,
 layer and marks, adds it to the `members` of its workspace root, and declares

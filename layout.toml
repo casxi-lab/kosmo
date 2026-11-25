@@ -101,6 +101,13 @@ lock-allowlist = "xtask/allowlist.toml"
 # such dependencies leaves it out. When the entries differ from what Cargo
 # resolves, the deps step prints all the entries that the crate should have,
 # or, when it should have none, says that they all go.
+[crates.kosmo-types]
+path = "display/kosmo-types"
+layer = "D0"
+export = true
+pure-core = true
+publish = false
+
 [crates.kosmo-math-model]
 path = "framework/kosmo-math-model"
 layer = "F0"

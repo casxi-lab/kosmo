@@ -14,7 +14,9 @@ job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, and the SDK facade `kosmo-sdk`, which re-exports them;
+history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, and
+part of the shared types in `kosmo-types`: fixed-point geometry, logical
+time, the focus generation and epoch, and the keyboard event records;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -831,17 +833,16 @@ allowlist that the workspace's `lock-allowlist` names; the deps step of
 `cargo xtask check` compares both with what Cargo resolves and checks the
 licenses and build scripts of the packages.
 
-Crates and workspaces appear with their first code. So far `framework/` exists,
-with the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
-`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the
-program `kosmo`; the table states the rules of `display/` and lists no crate
-for it. A change that adds a crate
-registers it in the table, and the first crate of a workspace adds the workspace
-root. The layout step of `cargo xtask check` enforces this layout on the tracked
-files, and the deps step on what Cargo resolves; Contributing describes the
-checks of [the layout step](../CONTRIBUTING.md#the-layout-step) and of [the
-fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps) and their
-limits.
+Crates and workspaces appear with their first code. So far `display/` exists,
+with the shared types `kosmo-types`, `framework/`, with the libraries
+`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad` and
+the facade `kosmo-sdk`, and `desktop/`, with the program `kosmo`. A change that
+adds a crate registers it in the table, and the first crate of a workspace adds
+the workspace root. The layout step of `cargo xtask check` enforces this layout
+on the tracked files, and the deps step on what Cargo resolves; Contributing
+describes the checks of [the layout step](../CONTRIBUTING.md#the-layout-step)
+and of [the fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps)
+and their limits.
 
 ## Platform boundary
 

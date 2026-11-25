@@ -99,8 +99,11 @@ of one-line formula input, its conversion into the text that kalyx reads, the
 job layer that runs that text with kalyx, and the Scratchpad's history of
 submissions with the reuse of their inputs and results. The repository holds
 documentation, the kosmo logo, a commit hook, the repository checks, the
-layout table `layout.toml` and two product workspaces. The `framework/`
-workspace has the libraries `kosmo-math-model`, which holds
+layout table `layout.toml` and three product workspaces. The `display/`
+workspace has `kosmo-types`, the shared types of the framework and the display
+server: fixed-point geometry, logical time, focus generations and epochs, and
+keyboard event records. The `framework/` workspace has the libraries
+`kosmo-math-model`, which holds
 [one-line formula input](docs/features/math/one-line-editing.md) while you edit
 it, `kosmo-jobs`, which runs computations as [versioned
 jobs](docs/features/framework/job-layer.md), `kosmo-math-kalyx`, which
@@ -122,15 +125,16 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-jobs
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-scratchpad
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-sdk
+cargo test --locked --manifest-path display/Cargo.toml -p kosmo-types
 cargo xtask check
 ```
 
 The first runs two derivatives and lists the history in the terminal; without
 the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo`
 reads the lines that you type. The second prints `kosmo` and its version. The
-next six run the tests of the terminal, of the editing structure, of the job
-layer, of formula conversion with the kalyx runner, of the Scratchpad and of
-the facade, and the last runs the repository checks. No version has been
+next seven run the tests of the terminal, of the editing structure, of the job
+layer, of formula conversion with the kalyx runner, of the Scratchpad, of the
+facade and of the shared types, and the last runs the repository checks. No version has been
 released yet: a release is a tagged commit, and the version that `main` shows
 is not a release until it is tagged.
 
