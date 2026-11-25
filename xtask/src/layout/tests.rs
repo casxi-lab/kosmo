@@ -1030,6 +1030,39 @@ fn every_crate_of_the_table_has_a_manifest_with_its_name() {
 }
 
 #[test]
+fn a_crate_of_the_table_belongs_to_the_root_of_its_workspace() {
+    // A workspace of its own would declare kalyx where the kalyx rule
+    // does not look.
+    let own = problems_with(|files| {
+        append(
+            files,
+            "framework/kosmo-render/Cargo.toml",
+            "\n[workspace]\n\n[workspace.dependencies]\nkalyx = \"=0.1.0\"\n",
+        );
+    });
+    assert_eq!(
+        own,
+        [
+            "framework/kosmo-render/Cargo.toml: the crate kosmo-render may not declare [workspace]; it is a member of the root of its workspace"
+        ]
+    );
+    let named = problems_with(|files| {
+        edit(
+            files,
+            "framework/kosmo-render/Cargo.toml",
+            "publish = false\n",
+            "publish = false\nworkspace = \"..\"\n",
+        );
+    });
+    assert_eq!(
+        named,
+        [
+            "framework/kosmo-render/Cargo.toml: the crate kosmo-render may not set package.workspace; it is a member of the root of its workspace"
+        ]
+    );
+}
+
+#[test]
 fn members_list_exactly_the_crates_of_the_workspace() {
     let missing = problems_with(|files| {
         edit(
@@ -1645,6 +1678,8 @@ fn manifest_paths_stay_inside_the_repository() {
     assert_problems(
         &found,
         &[
+            // A crate of the table sets no package.workspace at all.
+            "desktop/kosmo/Cargo.toml: the crate kosmo may not set package.workspace; it is a member of the root of its workspace",
             "desktop/kosmo/Cargo.toml: the path ../../../outside of package.workspace leaves the repository",
             "desktop/kosmo/Cargo.toml: the path ../../../outside/README.md of package.readme leaves the repository",
             "desktop/Cargo.toml: the path ../../LICENSE of workspace.package.license-file leaves the repository",

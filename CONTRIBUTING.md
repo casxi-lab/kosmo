@@ -141,8 +141,9 @@ attribute of a library root, do not. It checks:
 - members: every tracked file whose name is `Cargo.toml` in any letter case is
   spelled exactly `Cargo.toml` and is a workspace root, a tool manifest or the
   manifest of a crate of the table; each crate of the table has a tracked
-  manifest with the crate's name; the `members` of a root list exactly its
-  crates, without patterns;
+  manifest with the crate's name, which declares neither `[workspace]` nor
+  `package.workspace`, so the crate belongs to the root of its workspace;
+  the `members` of a root list exactly its crates, without patterns;
 - the form of the manifests: members inherit every dependency from the
   `[workspace.dependencies]` of their root with `workspace = true`, adding at
   most `features` and `optional`. There, an external dependency has an exact

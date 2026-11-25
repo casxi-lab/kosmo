@@ -950,7 +950,8 @@ fn check_crates(tree: &Tree, index: &Index, covered: &[&str], problems: &mut Pro
 
 /// Every tracked manifest is the root of a workspace that exists, the
 /// manifest of a crate of the table or of a tool; every crate of the table
-/// has a tracked manifest with its name.
+/// has a tracked manifest with its name, which declares no `[workspace]`
+/// and no `package.workspace`.
 fn check_manifests(index: &Index, manifests: &Manifests, problems: &mut Problems) {
     for (path, table) in manifests {
         let dir = repo::parent(path);
@@ -988,6 +989,22 @@ fn check_manifests(index: &Index, manifests: &Manifests, problems: &mut Problems
                     problems.insert(format!(
                         "{manifest}: the package is named {}, not {name}",
                         found.unwrap_or("nothing")
+                    ));
+                }
+                // The crate belongs to the root of its workspace: a
+                // workspace of its own, or another root that it names,
+                // would declare dependencies that these checks do not read.
+                if table.contains_key("workspace") {
+                    problems.insert(format!(
+                        "{manifest}: the crate {name} may not declare [workspace]; it is a member of the root of its workspace"
+                    ));
+                }
+                if table
+                    .get("package")
+                    .is_some_and(|package| package.get("workspace").is_some())
+                {
+                    problems.insert(format!(
+                        "{manifest}: the crate {name} may not set package.workspace; it is a member of the root of its workspace"
                     ));
                 }
             }
