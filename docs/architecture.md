@@ -28,7 +28,9 @@ kalyx here means kalyx 0.1.0 from crates.io, which the first release builds
 on. The job-layer thread is the thread that holds the job layer and calls
 its API. The layout table is `layout.toml` at the repository root, which lists
 the workspaces, their layers and every crate that exists (see
-[Source layout](#source-layout)); its platform boundary column is planned.
+[Source layout](#source-layout)); its platform boundary column registers the
+platform categories of the crates at the [platform
+boundary](#platform-boundary).
 [Scope](scope.md) describes what kosmo will provide.
 
 ## Editing structure
@@ -880,15 +882,17 @@ and their limits.
   crates are registered by the change that creates them; `kosmo-testkit` is
   expected to be a boundary crate, and [host programs](#host-programs) lists the
   boundary crates of the display stack with their categories.
-- The layout step of `cargo xtask check` will gain a static check that
-  parses core libraries' `src/`, expands `use` trees and reports every
-  forbidden path, macro and type with file and line, and checks that
-  registered crates use only their category's types. Any hit fails the check;
-  negative fixtures are kept in the repository. Its limits, macro-generated
-  paths and uses inside dependencies, will be stated in
-  [Contributing](../CONTRIBUTING.md). The check and the column arrive with the
-  framework runtime; earlier crates rely on review. The column does not change
-  the workspace's layering rules.
+- The layout step of `cargo xtask check` parses the Rust files under the
+  `src/` of every library crate, unit tests included, expands `use` trees and
+  reports every forbidden path, macro and type with file and line, and in a
+  registered crate every one that its categories do not allow. The comments
+  of the layout table list the categories and the items that each allows; a
+  category never allows more, and other categories are added with the first
+  crate registered for them. Any hit fails the check; its negative cases are
+  tests of the layout step. Its limits, among them paths that macros assemble
+  and items reached through other crates, are stated with [the layout
+  step](../CONTRIBUTING.md#the-layout-step). The column does not change the
+  workspace's layering rules.
 
 ## Framework
 

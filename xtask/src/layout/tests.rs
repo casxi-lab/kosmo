@@ -66,7 +66,9 @@ type Spec = (
 );
 
 /// The crates of the valid layout. The kalyx adapter `kosmo-math-kalyx`
-/// also depends on kalyx, which the root of `framework/` declares.
+/// also depends on kalyx, which the root of `framework/` declares. As in
+/// this repository, `kosmo-jobs` is registered for threads and `kosmo` for
+/// the standard streams, arguments, exit code and real clock.
 const CRATES: [Spec; 14] = [
     (
         "kosmo-types",
@@ -101,7 +103,7 @@ const CRATES: [Spec; 14] = [
         "kosmo-jobs",
         "framework",
         "F0",
-        "same-layer = [\"kosmo-math-model\"]\n",
+        "same-layer = [\"kosmo-math-model\"]\nplatform = [\"threads\"]\n",
         &["kosmo-math-model"],
     ),
     ("kosmo-render", "framework", "F0", "", &[]),
@@ -141,7 +143,13 @@ const CRATES: [Spec; 14] = [
         &["kosmo-sdk", "kosmo-client"],
     ),
     ("kosmo-calc", "desktop", "S1", "", &["kosmo-sdk"]),
-    ("kosmo", "desktop", "S2", "", &["kosmo-calc"]),
+    (
+        "kosmo",
+        "desktop",
+        "S2",
+        "platform = [\"standard-streams\", \"arguments\", \"exit-code\", \"real-clock\"]\n",
+        &["kosmo-calc"],
+    ),
 ];
 
 /// The `[workspace.dependencies]` of each root: names and paths.
@@ -396,12 +404,12 @@ fn this_repository_passes() {
     assert_eq!(check(&tree, &check::WORKSPACES), Vec::<String>::new());
 }
 
-// The six cases below are the main failures that the layout step exists
+// The seven cases below are the main failures that the layout step exists
 // to catch: a dependency against the layer order, a dependency against the
 // workspace direction, interior mutability in a pure-core crate, a
 // pure-core crate that depends on a provisional crate, a crate that the
-// layout table does not list, and a crate other than the kalyx adapter
-// that declares kalyx.
+// layout table does not list, a crate other than the kalyx adapter that
+// declares kalyx, and a core library that uses the standard streams.
 
 #[test]
 fn rejects_a_dependency_on_a_higher_layer() {
@@ -504,6 +512,17 @@ fn rejects_kalyx_in_the_dev_dependencies_of_the_math_model() {
         found,
         [
             "framework/kosmo-math-model/Cargo.toml: [dev-dependencies] kalyx: declares the package kalyx, which only the kalyx adapter kosmo-math-kalyx may declare"
+        ]
+    );
+}
+
+#[test]
+fn a_core_library_may_not_use_standard_io() {
+    let found = problems_with(|files| append(files, RENDER_LIB, "use std::io::Write;\n"));
+    assert_eq!(
+        found,
+        [
+            "framework/kosmo-render/src/lib.rs:2: the core library kosmo-render may not use std::io; only a crate registered for the platform category standard-streams may"
         ]
     );
 }
@@ -2266,6 +2285,258 @@ fn a_pure_core_crate_does_not_test_with_a_provisional_crate() {
         found,
         [
             "display/kosmo-scene/Cargo.toml: [dev-dependencies] kosmo-proto: the pure-core crate kosmo-scene may not depend on the provisional crate kosmo-proto"
+        ]
+    );
+}
+
+// The platform boundary.
+
+/// The problem of a forbidden item at `line` of `file`, which `who` may not
+/// use and the platform category `allowed_by` allows, if one does.
+fn forbidden(file: &str, line: usize, who: &str, item: &str, allowed_by: Option<&str>) -> String {
+    let allowed_by = match allowed_by {
+        Some(category) => {
+            format!("only a crate registered for the platform category {category} may")
+        }
+        None => "no platform category allows it".to_string(),
+    };
+    format!("{file}:{line}: {who} may not use {item}; {allowed_by}")
+}
+
+/// The library root of the core library `kosmo-render`, whose first line is
+/// its documentation.
+const RENDER_LIB: &str = "framework/kosmo-render/src/lib.rs";
+
+/// The problems of `kosmo-render` with `code` after the first line of its
+/// library root, as (line, item, category) of the expected problems.
+#[track_caller]
+fn assert_render_uses(code: &str, expected: &[(usize, &str, Option<&str>)]) {
+    let found = problems_with(|files| append(files, RENDER_LIB, code));
+    let expected: Vec<String> = expected
+        .iter()
+        .map(|&(line, item, category)| {
+            forbidden(
+                RENDER_LIB,
+                line,
+                "the core library kosmo-render",
+                item,
+                category,
+            )
+        })
+        .collect();
+    assert_eq!(found, expected);
+}
+
+#[test]
+fn use_trees_renames_and_paths_from_the_root_are_expanded() {
+    assert_render_uses(
+        "use std::{fs, io::Read};\n",
+        &[
+            (2, "std::fs", None),
+            (2, "std::io", Some("standard-streams")),
+        ],
+    );
+    assert_render_uses(
+        "use std::fs as files;\npub fn f() {\n    let _ = files::read(\"x\");\n}\n",
+        &[(2, "std::fs", None), (4, "std::fs", None)],
+    );
+    assert_render_uses(
+        "pub fn f() -> bool {\n    ::std::path::Path::new(\"x\").is_absolute()\n}\n",
+        &[(3, "std::path", None)],
+    );
+    assert_render_uses("use std::net::*;\n", &[(2, "std::net", None)]);
+    assert_render_uses(
+        "use std as s;\npub fn f() {\n    s::thread::spawn(|| {});\n}\n",
+        &[(4, "std::thread", Some("threads"))],
+    );
+    assert_render_uses(
+        "use std::os::unix::net::UnixStream;\n",
+        &[(2, "std::os", None)],
+    );
+}
+
+#[test]
+fn unit_tests_and_inline_modules_count() {
+    assert_render_uses(
+        "#[cfg(test)]\nmod tests {\n    use std::time::Instant;\n}\n",
+        &[(4, "std::time::Instant", Some("real-clock"))],
+    );
+    assert_render_uses(
+        "mod inner {\n    use std::process::Command;\n}\n",
+        &[(3, "std::process", None)],
+    );
+}
+
+#[test]
+fn forbidden_macros_types_and_functions_are_found() {
+    assert_render_uses(
+        "pub fn f() {\n    println!(\"a\");\n    eprint!(\"b\");\n    dbg!(1);\n}\n",
+        &[
+            (3, "println!", Some("standard-streams")),
+            (4, "eprint!", Some("standard-streams")),
+            (5, "dbg!", Some("standard-streams")),
+        ],
+    );
+    assert_render_uses(
+        "thread_local! {\n    static N: u8 = 0;\n}\n",
+        &[(2, "thread_local!", Some("threads"))],
+    );
+    assert_render_uses(
+        "pub fn f() -> bool {\n    std::env::var(\"X\").is_ok()\n}\n",
+        &[(3, "std::env", None)],
+    );
+    assert_render_uses(
+        "use std::ffi::{OsStr, OsString};\n",
+        &[
+            (2, "std::ffi::OsStr", Some("arguments")),
+            (2, "std::ffi::OsString", Some("arguments")),
+        ],
+    );
+    assert_render_uses(
+        "pub fn f() {\n    let _ = std::time::SystemTime::now();\n    let _ = std::time::UNIX_EPOCH;\n}\n",
+        &[
+            (3, "std::time::SystemTime", Some("real-clock")),
+            (4, "std::time::UNIX_EPOCH", Some("real-clock")),
+        ],
+    );
+}
+
+#[test]
+fn kalyx_clocks_are_found() {
+    let lib = "framework/kosmo-math-kalyx/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "use kalyx::MonotonicClock;\npub fn f() {\n    let _ = kalyx::Context::new(limits, cancel);\n    let _ = kalyx::Context::with_observers(limits, cancel);\n}\n",
+        );
+    });
+    let who = "the core library kosmo-math-kalyx";
+    assert_eq!(
+        found,
+        [
+            forbidden(lib, 2, who, "kalyx::MonotonicClock", Some("real-clock")),
+            forbidden(lib, 4, who, "kalyx::Context::new", Some("real-clock")),
+        ]
+    );
+}
+
+#[test]
+fn a_registered_crate_uses_only_what_its_categories_allow() {
+    let lib = "framework/kosmo-jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "use std::thread::Builder;\npub fn f() {\n    let _ = std::fs::read(\"x\");\n    let _ = Builder::new();\n}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [forbidden(
+            lib,
+            4,
+            "the crate kosmo-jobs, registered for threads,",
+            "std::fs",
+            None
+        )]
+    );
+    let lib = "desktop/kosmo/src/lib.rs";
+    let found = problems_with(|files| {
+        files.insert(
+            lib.to_string(),
+            "use std::io::{self, Write};\nuse std::process::ExitCode;\nuse std::time::Instant;\npub fn f() -> ExitCode {\n    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();\n    let _ = (args, Instant::now(), io::stdout().flush());\n    std::process::exit(0)\n}\n".to_string(),
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+    let found = problems_with(|files| {
+        files.insert(
+            lib.to_string(),
+            "pub fn f() {\n    let _ = std::env::var(\"X\");\n    std::thread::yield_now();\n}\n"
+                .to_string(),
+        );
+    });
+    let who = "the crate kosmo, registered for standard-streams, arguments, exit-code, real-clock,";
+    assert_eq!(
+        found,
+        [
+            forbidden(lib, 2, who, "std::env", None),
+            forbidden(lib, 3, who, "std::thread", Some("threads")),
+        ]
+    );
+}
+
+#[test]
+fn compile_time_env_comments_and_strings_are_not_uses() {
+    assert_render_uses(
+        "//! Mentions std::fs and println! in a comment.\n/// ```compile_fail\n/// let _ = std::fs::read(\"x\");\n/// ```\npub const NAME: &str = env!(\"CARGO_PKG_VERSION\");\npub const PATH: &str = \"std::fs::read\";\npub const ALSO: Option<&str> = core::option_env!(\"X\");\n",
+        &[],
+    );
+}
+
+#[test]
+fn core_alloc_and_allowed_std_items_are_not_uses() {
+    assert_render_uses(
+        "use core::cell::Cell;\nuse std::collections::BTreeMap;\nuse std::sync::Arc;\nextern crate alloc;\nuse alloc::vec::Vec;\npub struct Instant;\nmod thread {\n    pub fn spawn() {}\n}\npub fn f() {\n    let _ = Instant;\n    thread::spawn();\n    let _: Option<(Cell<u8>, BTreeMap<u8, u8>, Arc<u8>, Vec<u8>)> = None;\n}\n",
+        &[],
+    );
+}
+
+#[test]
+fn a_crate_without_a_library_is_not_checked() {
+    let found = problems_with(|files| {
+        files.remove("desktop/kosmo-calc/src/lib.rs");
+        files.insert(
+            "desktop/kosmo-calc/src/main.rs".to_string(),
+            "fn main() {\n    println!(\"{:?}\", std::fs::read(\"x\"));\n}\n".to_string(),
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_platform_column_names_known_categories_for_crates_that_are_not_pure_core() {
+    let unknown = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "platform = [\"threads\"]\n",
+            "platform = [\"threads\", \"windows\", \"threads\"]\n",
+        );
+    });
+    assert_problems(
+        &unknown,
+        &[
+            "layout.toml: crates.kosmo-jobs: platform lists the unknown category windows; the categories are standard-streams, arguments, exit-code, real-clock, threads",
+            "layout.toml: crates.kosmo-jobs: platform lists threads twice",
+        ],
+    );
+    let pure = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\n",
+            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\nplatform = [\"threads\"]\n",
+        );
+    });
+    assert_eq!(
+        pure,
+        [
+            "layout.toml: crates.kosmo-types: a pure-core crate is a core library and registers no platform category"
+        ]
+    );
+    let empty = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "platform = [\"threads\"]\n",
+            "platform = []\n",
+        );
+    });
+    assert_eq!(
+        empty,
+        [
+            "layout.toml: crates.kosmo-jobs: platform lists no category; a core library leaves it out"
         ]
     );
 }

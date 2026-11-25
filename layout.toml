@@ -89,6 +89,26 @@ lock-allowlist = "xtask/allowlist.toml"
 # `same-layer` lists the crates of the same layer that the crate depends
 # on.
 #
+# `platform`, the platform boundary column, lists the platform categories
+# of a library crate, a crate with a library target, at the platform
+# boundary; a library crate without it is a core library, and a pure-core
+# crate never has it. Each category allows some of the items that core
+# libraries never use: `standard-streams`, all of `std::io` and `print!`,
+# `println!`, `eprint!`, `eprintln!` and `dbg!`; `arguments`,
+# `std::env::args` and `std::env::args_os` with their iterators `Args` and
+# `ArgsOs`, and `std::ffi::OsStr` and `OsString`; `exit-code`,
+# `std::process::ExitCode` and `std::process::exit`; `real-clock`,
+# `std::time::Instant`, `SystemTime` and `UNIX_EPOCH`, and kalyx's
+# `MonotonicClock` and `kalyx::Context::new`; `threads`, `std::thread` and
+# `thread_local!`. A category never allows more than this, and other
+# categories are added with the first crate registered for them. The
+# layout step reads the Rust files under `src/` of each library crate and
+# reports, with file and line, every forbidden item that its categories do
+# not allow; the platform boundary in docs/architecture.md lists the items.
+# It does not see paths that macros assemble or items that a crate reaches
+# through another crate that re-exports them; CONTRIBUTING.md states these
+# limits.
+#
 # `external` lists the allowed direct dependencies of the crate on crates.io
 # packages, for the targets of its workspace, as `[[crates.<name>.external]]`
 # tables: the package `name`; the requirement `version`, `=x.y.z`; `kind`,
@@ -122,6 +142,7 @@ export = false
 pure-core = false
 publish = false
 same-layer = ["kosmo-math-model"]
+platform = ["threads"]
 
 [crates.kosmo-math-kalyx]
 path = "framework/kosmo-math-kalyx"
@@ -159,3 +180,4 @@ layer = "S2"
 export = false
 pure-core = false
 publish = false
+platform = ["standard-streams", "arguments", "exit-code", "real-clock"]

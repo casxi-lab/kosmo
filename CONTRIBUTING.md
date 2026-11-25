@@ -119,11 +119,13 @@ attribute of a library root, do not. It checks:
   layer's workspace, and no two crates share a directory; `uses` names known
   workspaces; a `provisional` condition is not empty; a facade is an export
   crate; no crate of a layer marked `publish = false` is publishable;
-  `same-layer` lists crates of the same layer; no workspace or tool directory
-  is the repository root or lies inside another; each `lock-allowlist` lies
-  inside its workspace; every path is relative to the repository root and
-  written without `.`, `..`, empty parts or a trailing `/`; `targets` lists at
-  least one target platform, each once. The layers of each workspace and their
+  `same-layer` lists crates of the same layer; `platform` lists known
+  platform categories, each once, and no pure-core crate has it; no
+  workspace or tool directory is the repository root or lies inside another;
+  each `lock-allowlist` lies inside its workspace; every path is relative to
+  the repository root and written without `.`, `..`, empty parts or a
+  trailing `/`; `targets` lists at least one target platform, each once. The
+  layers of each workspace and their
   order, as the [source layout](docs/architecture.md#source-layout) lists
   them, `uses`, `publish = false` on layers D4 and F4 (conformance and
   integration tests), `facade-only` on layer S1 (first-party applications) and
@@ -225,6 +227,19 @@ attribute of a library root, do not. It checks:
 - provisional crates: no pure-core crate depends on a crate marked
   `provisional`, through any dependency table;
 - export crates: an export crate has no direct external dependency;
+- the platform boundary: a library crate, one with a `[lib]` table or a
+  tracked `src/lib.rs`, is a core library unless its entry lists platform
+  categories in `platform`, the platform boundary column. In every Rust file
+  under the `src/` of a library crate, unit tests and inline modules
+  included, no path, macro or type that the
+  [platform boundary](docs/architecture.md#platform-boundary) forbids is
+  used, unless one of the crate's categories allows it; the comments of
+  `layout.toml` list what each category allows. The step expands `use`
+  trees with their renames and glob imports, follows `extern crate` renames
+  and paths from the crate root, and reports each use with its file and
+  line: an import of a forbidden item, a path that names one or an item
+  inside one, and a call of a forbidden macro. Compile-time `env!`,
+  comments, doc comments and string literals are not uses;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above to `deny` or `forbid` in
   `[workspace.lints.clippy]` and the `restriction` group that holds them to
@@ -252,6 +267,16 @@ check at all; review covers these.
 What Cargo resolves from the manifests is checked by the deps step, not by this
 one.
 
+The platform boundary check reads tokens, not the names that the compiler
+resolves. It does not find a forbidden item in a path that a macro assembles
+from parts, as in `$krate::fs` in a `macro_rules!` body, in an item that a
+crate reaches through another crate that re-exports it, or in code that
+`include!` or `#[path]` brings in from outside `src/`; it does not check a
+crate without a library target. It counts a name that a module imports also
+in the modules inside it, so a local item there with the name of a forbidden
+import is reported as that import; renaming one of them resolves it. Review
+covers these.
+
 The source layout gives the export crates of `display/` no external
 dependency at all, not even through other crates, and the layout step checks
 only the external dependencies that each crate declares itself. For an export
@@ -261,8 +286,10 @@ pure-core crate declares an external dependency. For an export crate of
 `display/` that is not pure core, review checks the crates it depends on.
 
 A change that adds a crate registers it in `layout.toml` with its directory,
-layer and marks, adds it to the `members` of its workspace root, and declares
-it in the root's `[workspace.dependencies]` when other crates depend on it.
+layer and marks, and with its platform categories when it is a library crate
+at the platform boundary, adds it to the `members` of its workspace root, and
+declares it in the root's `[workspace.dependencies]` when other crates depend
+on it.
 The first crate of a workspace also adds the workspace's root manifest,
 `Cargo.lock` and allowlist and adds the workspace to `WORKSPACES`.
 
