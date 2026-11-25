@@ -106,8 +106,7 @@ lock-allowlist = "xtask/allowlist.toml"
 # reports, with file and line, every forbidden item that its categories do
 # not allow; the platform boundary in docs/architecture.md lists the items.
 # It does not see paths that macros assemble or items that a crate reaches
-# through another crate that re-exports them; CONTRIBUTING.md states these
-# limits.
+# through re-exports; CONTRIBUTING.md states these and its other limits.
 #
 # `external` lists the allowed direct dependencies of the crate on crates.io
 # packages, for the targets of its workspace, as `[[crates.<name>.external]]`

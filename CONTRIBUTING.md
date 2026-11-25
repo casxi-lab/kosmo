@@ -235,11 +235,13 @@ attribute of a library root, do not. It checks:
   [platform boundary](docs/architecture.md#platform-boundary) forbids is
   used, unless one of the crate's categories allows it; the comments of
   `layout.toml` list what each category allows. The step expands `use`
-  trees with their renames and glob imports, follows `extern crate` renames
-  and paths from the crate root, and reports each use with its file and
-  line: an import of a forbidden item, a path that names one or an item
-  inside one, and a call of a forbidden macro. Compile-time `env!`,
-  comments, doc comments and string literals are not uses;
+  trees with their renames and glob imports, follows `extern crate` renames,
+  type aliases, paths from the crate root and qualified paths such as
+  `<kalyx::Context>::new`, lets items and `macro_rules!` macros hide names
+  as Rust does, and reports each use with its file and line: an import of a
+  forbidden item, a path that names one or an item inside one, and a call of
+  a forbidden macro. Compile-time `env!`, comments, doc comments and string
+  literals are not uses;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above to `deny` or `forbid` in
   `[workspace.lints.clippy]` and the `restriction` group that holds them to
@@ -269,13 +271,18 @@ one.
 
 The platform boundary check reads tokens, not the names that the compiler
 resolves. It does not find a forbidden item in a path that a macro assembles
-from parts, as in `$krate::fs` in a `macro_rules!` body, in an item that a
-crate reaches through another crate that re-exports it, or in code that
-`include!` or `#[path]` brings in from outside `src/`; it does not check a
+from parts, as in `$krate::fs` in a `macro_rules!` body; in an item that a
+crate reaches through a re-export, whether another crate's or its own, as in
+`clock::Context::new` after `pub use kalyx::Context;` in a module `clock`, or
+through a type alias with generic parameters; or in code that `include!` or
+`#[path]` brings in from outside `src/`. It reads only the `src/` of a crate,
+even when `[lib] path` puts the library root elsewhere, and does not check a
 crate without a library target. It counts a name that a module imports also
-in the modules inside it, so a local item there with the name of a forbidden
-import is reported as that import; renaming one of them resolves it. Review
-covers these.
+in the modules inside it, so a variable, parameter or field there with the
+name of a forbidden import is reported as that import, and it does not know
+the macros that `#[macro_use]` brings out of a module, so a call of such a
+macro with the name of a forbidden macro is reported as that macro; renaming
+one of them resolves it. Review covers these.
 
 The source layout gives the export crates of `display/` no external
 dependency at all, not even through other crates, and the layout step checks
