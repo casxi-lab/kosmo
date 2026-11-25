@@ -2641,6 +2641,85 @@ fn an_inherited_kalyx_that_no_root_declares_is_still_kalyx() {
 }
 
 #[test]
+fn an_inherited_kalyx_that_its_root_does_not_declare_is_still_kalyx() {
+    // The root has a [workspace.dependencies] table, without kalyx in it.
+    let found = problems_with(|files| {
+        append(
+            files,
+            "desktop/kosmo-shell/Cargo.toml",
+            "kalyx.workspace = true\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[
+            &declares_kalyx("desktop/kosmo-shell/Cargo.toml", "dependencies", "kalyx"),
+            "desktop/kosmo-shell/Cargo.toml: [dependencies] kalyx: desktop/Cargo.toml does not declare it",
+        ],
+    );
+}
+
+#[test]
+fn kalyx_is_found_in_every_target_table_of_a_manifest() {
+    // The first table, in the order in which the rule reads them, is
+    // valid; the second declares kalyx.
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/kosmo-render/Cargo.toml",
+            "\n[target.'cfg(unix)'.dependencies]\nkosmo-types.workspace = true\n\n[target.'cfg(windows)'.dependencies]\nkalyx.workspace = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [declares_kalyx(
+            "framework/kosmo-render/Cargo.toml",
+            "target.'cfg(windows)'.dependencies",
+            "kalyx"
+        )]
+    );
+}
+
+#[test]
+fn a_crate_named_like_the_kalyx_adapter_may_not_declare_kalyx() {
+    // Names that end with the adapter's name, or with which it ends.
+    for name in ["extra-kosmo-math-kalyx", "math-kalyx"] {
+        let mut crates = CRATES.to_vec();
+        crates.push((name, "framework", "F1", "", &["kalyx"]));
+        let mut files = layout_of(&crates, &DECLARED);
+        declare(&mut files, "framework", "kalyx = \"=0.1.0\"");
+        assert_eq!(
+            check(&tree(&files), &ALL),
+            [declares_kalyx(
+                &format!("framework/{name}/Cargo.toml"),
+                "dependencies",
+                "kalyx"
+            )]
+        );
+    }
+}
+
+#[test]
+fn crates_of_the_display_workspace_may_not_declare_kalyx() {
+    let found = problems_with(|files| {
+        declare(files, "display", "kalyx = \"=0.1.0\"");
+        append(
+            files,
+            "display/kosmo-server/Cargo.toml",
+            "kalyx.workspace = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [declares_kalyx(
+            "display/kosmo-server/Cargo.toml",
+            "dependencies",
+            "kalyx"
+        )]
+    );
+}
+
+#[test]
 fn crates_may_reach_kalyx_through_the_adapter() {
     let found = problems_with(|files| {
         declare(
