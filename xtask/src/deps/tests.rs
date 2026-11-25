@@ -112,6 +112,10 @@ fn this_repository_passes() {
     assert_eq!(fact("xtask_crates_io"), Some(listed.as_str()));
     assert_eq!(fact("xtask_internal_edges"), Some("0"));
     for (key, value) in [
+        ("display_members", "1"),
+        ("display_exports", "1"),
+        ("display_crates_io", "0"),
+        ("display_internal_edges", "0"),
         ("desktop_members", "1"),
         ("desktop_exports", "0"),
         ("desktop_crates_io", "6"),
@@ -133,6 +137,8 @@ fn this_repository_passes() {
         [
             format!("xtask_{LINUX}_ms"),
             format!("xtask_{DARWIN}_ms"),
+            format!("display_{LINUX}_ms"),
+            format!("display_{DARWIN}_ms"),
             format!("framework_{LINUX}_ms"),
             format!("framework_{DARWIN}_ms"),
             format!("desktop_{LINUX}_ms"),

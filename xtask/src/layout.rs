@@ -7,8 +7,9 @@
 //! declared internal dependency, the declarations of kalyx, which only the
 //! kalyx adapter makes, the repository boundary, the Cargo
 //! configuration, pure-core crates, build scripts and procedural macros,
-//! versions and publishing, provisional and export crates, the shape of the
-//! workspace roots and the workspaces that the other steps cover. It
+//! versions and publishing, provisional and export crates, the platform
+//! boundary of library crates, the shape of the workspace roots and the
+//! workspaces that the other steps cover. It
 //! collects every problem and reports them one per line, as
 //! `<path>[:<line>]: <message>`, sorted by path, then by line number and
 //! then by message. When the table does not parse or is not consistent,
@@ -16,6 +17,7 @@
 //! manifest, there is no submodule, no symbolic link leaves the repository,
 //! and the Cargo configuration.
 
+mod platform;
 mod source;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -208,6 +210,10 @@ pub struct Crate {
     build_script: bool,
     #[serde(default)]
     proc_macro: bool,
+    /// The platform categories of a library crate at the platform boundary;
+    /// a library crate without them is a core library.
+    #[serde(default)]
+    platform: Option<Vec<String>>,
     /// The allowed direct external dependencies, which the deps step
     /// compares with what Cargo resolves.
     #[serde(default)]
@@ -586,6 +592,7 @@ impl<'a> Index<'a> {
             if krate.facade && !krate.export {
                 problems.push(format!("{at}: a facade must be an export crate"));
             }
+            validate_platform(&at, krate, &mut problems);
             let Some(place) = self.place(name) else {
                 problems.push(format!("{at}: unknown layer {}", krate.layer));
                 continue;
@@ -693,6 +700,39 @@ impl<'a> Index<'a> {
                     ));
                 }
             }
+        }
+    }
+}
+
+/// The `platform` column of a crate: categories that exist, each once, and
+/// none for a pure-core crate, which is always a core library.
+fn validate_platform(at: &str, krate: &Crate, problems: &mut Vec<String>) {
+    let Some(categories) = &krate.platform else {
+        return;
+    };
+    if krate.pure_core {
+        problems.push(format!(
+            "{at}: a pure-core crate is a core library and registers no platform category"
+        ));
+    }
+    if categories.is_empty() {
+        problems.push(format!(
+            "{at}: platform lists no category; a core library leaves it out"
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for category in categories {
+        if platform::Category::named(category).is_none() {
+            let known: Vec<&str> = platform::Category::ALL
+                .iter()
+                .map(|known| known.name())
+                .collect();
+            problems.push(format!(
+                "{at}: platform lists the unknown category {category}; the categories are {}",
+                known.join(", ")
+            ));
+        } else if !seen.insert(category) {
+            problems.push(format!("{at}: platform lists {category} twice"));
         }
     }
 }
@@ -950,7 +990,8 @@ fn check_crates(tree: &Tree, index: &Index, covered: &[&str], problems: &mut Pro
 
 /// Every tracked manifest is the root of a workspace that exists, the
 /// manifest of a crate of the table or of a tool; every crate of the table
-/// has a tracked manifest with its name.
+/// has a tracked manifest with its name, which declares no `[workspace]`
+/// and no `package.workspace`.
 fn check_manifests(index: &Index, manifests: &Manifests, problems: &mut Problems) {
     for (path, table) in manifests {
         let dir = repo::parent(path);
@@ -988,6 +1029,22 @@ fn check_manifests(index: &Index, manifests: &Manifests, problems: &mut Problems
                     problems.insert(format!(
                         "{manifest}: the package is named {}, not {name}",
                         found.unwrap_or("nothing")
+                    ));
+                }
+                // The crate belongs to the root of its workspace: a
+                // workspace of its own, or another root that it names,
+                // would declare dependencies that these checks do not read.
+                if table.contains_key("workspace") {
+                    problems.insert(format!(
+                        "{manifest}: the crate {name} may not declare [workspace]; it is a member of the root of its workspace"
+                    ));
+                }
+                if table
+                    .get("package")
+                    .is_some_and(|package| package.get("workspace").is_some())
+                {
+                    problems.insert(format!(
+                        "{manifest}: the crate {name} may not set package.workspace; it is a member of the root of its workspace"
                     ));
                 }
             }
@@ -1550,6 +1607,7 @@ fn check_crate<'a>(
     if krate.pure_core {
         check_pure_sources(tree, place, repo::parent(&root.manifest), table, problems);
     }
+    check_platform(tree, place, manifest, table, problems);
     if let Some(version) = version {
         match package_field(table, "version", root.workspace).and_then(Value::as_str) {
             Some(own) if own == version => {}
@@ -1769,6 +1827,73 @@ fn check_pure_sources(
                     found.line, found.path
                 ));
             }
+        }
+    }
+}
+
+/// Whether the package in `dir` with the manifest `table` has a library
+/// target: a `[lib]` table, or a tracked `src/lib.rs` that `autolib` does
+/// not turn off.
+fn has_library(tree: &Tree, dir: &str, table: &Table) -> bool {
+    let autolib = table
+        .get("package")
+        .and_then(|package| package.get("autolib"))
+        .and_then(Value::as_bool);
+    table.contains_key("lib")
+        || (autolib != Some(false) && tree.exists(&format!("{dir}/src/lib.rs")))
+}
+
+/// The platform boundary of a library crate: no Rust file under its `src/`
+/// uses a forbidden path, macro or type that its platform categories do
+/// not allow; a crate without a library target registers no category. A
+/// UTF-8 file whose tokens cannot be read is reported by the repository
+/// boundary instead; the compiler rejects a file that is not UTF-8.
+fn check_platform(
+    tree: &Tree,
+    place: Place,
+    manifest: &str,
+    table: &Table,
+    problems: &mut Problems,
+) {
+    let (name, krate) = (place.name, place.krate);
+    if !has_library(tree, &krate.path, table) {
+        if krate.platform.is_some() {
+            problems.insert(format!(
+                "{manifest}: the crate {name} lists platform categories but has no library target; only a library crate registers them"
+            ));
+        }
+        return;
+    }
+    let registered = krate.platform.as_deref().unwrap_or_default();
+    let categories: Vec<platform::Category> = registered
+        .iter()
+        .filter_map(|category| platform::Category::named(category))
+        .collect();
+    let who = if registered.is_empty() {
+        format!("the core library {name}")
+    } else {
+        format!(
+            "the crate {name}, registered for {},",
+            registered.join(", ")
+        )
+    };
+    let src = format!("{}/src", krate.path);
+    for (path, text) in tree.texts().filter(|(path, _)| is_rust_under(path, &src)) {
+        let Ok(stream) = source::tokens(text) else {
+            continue;
+        };
+        for hit in platform::scan(stream, &categories) {
+            let allowed_by = match hit.category {
+                Some(category) => format!(
+                    "only a crate registered for the platform category {} may",
+                    category.name()
+                ),
+                None => "no platform category allows it".to_string(),
+            };
+            problems.insert(format!(
+                "{path}:{}: {who} may not use {}; {allowed_by}",
+                hit.line, hit.item
+            ));
         }
     }
 }

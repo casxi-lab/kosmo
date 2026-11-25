@@ -14,7 +14,9 @@ job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, and the SDK facade `kosmo-sdk`, which re-exports them;
+history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, and
+part of the shared types in `kosmo-types`: fixed-point geometry, logical
+time, the focus generation and epoch, and the keyboard event records;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -26,7 +28,9 @@ kalyx here means kalyx 0.1.0 from crates.io, which the first release builds
 on. The job-layer thread is the thread that holds the job layer and calls
 its API. The layout table is `layout.toml` at the repository root, which lists
 the workspaces, their layers and every crate that exists (see
-[Source layout](#source-layout)); its platform boundary column is planned.
+[Source layout](#source-layout)); its platform boundary column registers the
+platform categories of the crates at the [platform
+boundary](#platform-boundary).
 [Scope](scope.md) describes what kosmo will provide.
 
 ## Editing structure
@@ -824,24 +828,25 @@ layer and marks: export, facade (an export crate that only re-exports),
 pure core (`no_std` with `alloc`, no unsafe code, no build script, no
 external dependency and no interior mutability), provisional (with the
 condition that ends it), publishable, and whether it may have a build script
-or be a procedural-macro library. The allowed direct external dependencies of
+or be a procedural-macro library, and, for a library crate at the platform
+boundary, its platform categories (see [Platform boundary](#platform-boundary)).
+The allowed direct external dependencies of
 each crate are listed in its entry, and the allowed packages of each
 workspace's `Cargo.lock`, with the license exceptions of the workspace, in the
 allowlist that the workspace's `lock-allowlist` names; the deps step of
 `cargo xtask check` compares both with what Cargo resolves and checks the
 licenses and build scripts of the packages.
 
-Crates and workspaces appear with their first code. So far `framework/` exists,
-with the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
-`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the
-program `kosmo`; the table states the rules of `display/` and lists no crate
-for it. A change that adds a crate
-registers it in the table, and the first crate of a workspace adds the workspace
-root. The layout step of `cargo xtask check` enforces this layout on the tracked
-files, and the deps step on what Cargo resolves; Contributing describes the
-checks of [the layout step](../CONTRIBUTING.md#the-layout-step) and of [the
-fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps) and their
-limits.
+Crates and workspaces appear with their first code. So far `display/` exists,
+with the shared types `kosmo-types`, `framework/`, with the libraries
+`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad` and
+the facade `kosmo-sdk`, and `desktop/`, with the program `kosmo`. A change that
+adds a crate registers it in the table, and the first crate of a workspace adds
+the workspace root. The layout step of `cargo xtask check` enforces this layout
+on the tracked files, and the deps step on what Cargo resolves; Contributing
+describes the checks of [the layout step](../CONTRIBUTING.md#the-layout-step)
+and of [the fetch and deps steps](../CONTRIBUTING.md#the-fetch-and-deps-steps)
+and their limits.
 
 ## Platform boundary
 
@@ -879,15 +884,17 @@ limits.
   crates are registered by the change that creates them; `kosmo-testkit` is
   expected to be a boundary crate, and [host programs](#host-programs) lists the
   boundary crates of the display stack with their categories.
-- The layout step of `cargo xtask check` will gain a static check that
-  parses core libraries' `src/`, expands `use` trees and reports every
-  forbidden path, macro and type with file and line, and checks that
-  registered crates use only their category's types. Any hit fails the check;
-  negative fixtures are kept in the repository. Its limits, macro-generated
-  paths and uses inside dependencies, will be stated in
-  [Contributing](../CONTRIBUTING.md). The check and the column arrive with the
-  framework runtime; earlier crates rely on review. The column does not change
-  the workspace's layering rules.
+- The layout step of `cargo xtask check` parses the Rust files under the
+  `src/` of every library crate, unit tests included, expands `use` trees and
+  reports every forbidden path, macro and type with file and line, and in a
+  registered crate every one that its categories do not allow. The comments
+  of the layout table list the categories and the items that each allows; a
+  category never allows more, and other categories are added with the first
+  crate registered for them. Any hit fails the check; its negative cases are
+  tests of the layout step. Its limits, among them paths that macros assemble
+  and items reached through other crates, are stated with [the layout
+  step](../CONTRIBUTING.md#the-layout-step). The column does not change the
+  workspace's layering rules.
 
 ## Framework
 

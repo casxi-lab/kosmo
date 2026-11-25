@@ -20,10 +20,10 @@ The last two report whitespace errors in unstaged and staged changes.
 
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
-workspaces `framework/`, with the libraries `kosmo-math-model`, `kosmo-jobs`,
-`kosmo-math-kalyx` and `kosmo-scratchpad` and the facade `kosmo-sdk`, and
-`desktop/`, with the program `kosmo`, and the repository tasks in `xtask/`,
-run as `cargo xtask`.
+workspaces `display/`, with the shared types `kosmo-types`, `framework/`, with
+the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
+`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the program
+`kosmo`, and the repository tasks in `xtask/`, run as `cargo xtask`.
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
 program's line-mode terminal, and `cargo xtask check` runs these steps in
 order and stops at the first one that fails:
@@ -35,7 +35,7 @@ order and stops at the first one that fails:
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
 3. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
    workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask`,
-   `framework` and `desktop`;
+   `display`, `framework` and `desktop`;
 4. `docs`: relative links and anchors in the Markdown files;
 5. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
@@ -61,7 +61,7 @@ check.
 
 Every workspace denies the Clippy lints `unwrap_used`, `expect_used`, `panic`,
 `todo`, `unimplemented` and `allow_attributes_without_reason`, and
-`framework/`, `desktop/` and `xtask/` also forbid unsafe code. The root
+`display/`, `framework/`, `desktop/` and `xtask/` also forbid unsafe code. The root
 `clippy.toml` lets tests unwrap, expect and panic: code in `#[cfg(test)]`
 modules and in `#[test]` functions. `todo!()` is rejected in tests too. A
 helper function in `tests/` outside a `#[test]` function returns a `Result`
@@ -119,11 +119,13 @@ attribute of a library root, do not. It checks:
   layer's workspace, and no two crates share a directory; `uses` names known
   workspaces; a `provisional` condition is not empty; a facade is an export
   crate; no crate of a layer marked `publish = false` is publishable;
-  `same-layer` lists crates of the same layer; no workspace or tool directory
-  is the repository root or lies inside another; each `lock-allowlist` lies
-  inside its workspace; every path is relative to the repository root and
-  written without `.`, `..`, empty parts or a trailing `/`; `targets` lists at
-  least one target platform, each once. The layers of each workspace and their
+  `same-layer` lists crates of the same layer; `platform` lists at least one
+  known platform category, each once, and no pure-core crate has it; no
+  workspace or tool directory is the repository root or lies inside another;
+  each `lock-allowlist` lies inside its workspace; every path is relative to
+  the repository root and written without `.`, `..`, empty parts or a
+  trailing `/`; `targets` lists at least one target platform, each once. The
+  layers of each workspace and their
   order, as the [source layout](docs/architecture.md#source-layout) lists
   them, `uses`, `publish = false` on layers D4 and F4 (conformance and
   integration tests), `facade-only` on layer S1 (first-party applications) and
@@ -141,8 +143,9 @@ attribute of a library root, do not. It checks:
 - members: every tracked file whose name is `Cargo.toml` in any letter case is
   spelled exactly `Cargo.toml` and is a workspace root, a tool manifest or the
   manifest of a crate of the table; each crate of the table has a tracked
-  manifest with the crate's name; the `members` of a root list exactly its
-  crates, without patterns;
+  manifest with the crate's name, which declares neither `[workspace]` nor
+  `package.workspace`, so the crate belongs to the root of its workspace;
+  the `members` of a root list exactly its crates, without patterns;
 - the form of the manifests: members inherit every dependency from the
   `[workspace.dependencies]` of their root with `workspace = true`, adding at
   most `features` and `optional`. There, an external dependency has an exact
@@ -224,6 +227,23 @@ attribute of a library root, do not. It checks:
 - provisional crates: no pure-core crate depends on a crate marked
   `provisional`, through any dependency table;
 - export crates: an export crate has no direct external dependency;
+- the platform boundary: a library crate, one with a `[lib]` table or a
+  tracked `src/lib.rs`, is a core library unless its entry lists platform
+  categories in `platform`, the platform boundary column, which a crate
+  without a library target leaves out. In every Rust file
+  under the `src/` of a library crate, unit tests and inline modules
+  included, no path, macro or type that the
+  [platform boundary](docs/architecture.md#platform-boundary) forbids is
+  used, unless one of the crate's categories allows it; the comments of
+  `layout.toml` list what each category allows. The step expands `use`
+  trees with their renames and glob imports, follows `extern crate` renames,
+  type aliases, paths from the crate root, paths that start with `self` or,
+  in an `impl`, with `Self`, and qualified paths such as
+  `<kalyx::Context>::new`, lets items and `macro_rules!` macros hide the
+  names they define, and reports each use with its file and line: an import
+  of a forbidden item, a path that names one or an item inside one, and a
+  call of a forbidden macro. Compile-time `env!`, comments, doc comments and string
+  literals are not uses;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above to `deny` or `forbid` in
   `[workspace.lints.clippy]` and the `restriction` group that holds them to
@@ -251,9 +271,50 @@ check at all; review covers these.
 What Cargo resolves from the manifests is checked by the deps step, not by this
 one.
 
+The platform boundary check reads tokens, not the names that the compiler
+resolves. It does not find a forbidden item in a path that a macro assembles
+from parts, as in `$krate::fs` in a `macro_rules!` body; in an item that a
+crate reaches through a re-export, whether another crate's or its own, as in
+`clock::Context::new` after `pub use kalyx::Context;` in a module `clock`,
+through a path that starts with `crate` or `super`, through `self::` in a
+block that has an item of that name, which the step reads in the block
+instead of its module, or through a type alias with generic parameters;
+through an `extern crate` rename in another file or an import in the body of
+a macro call; through a glob import whose path goes through another glob
+import of the same module or block, directly or through a rename, as
+`use time::*;` after `use std::*;`; in a path from the crate root right after
+a comparison `>` that follows a `<` in the same statement; or in code that
+`include!` or `#[path]` brings in from outside `src/`. It reads only the
+`src/` of a crate, even when `[lib] path` puts the library root elsewhere,
+and does not check a crate without a library target. A path of one segment
+does not say whether it names a type or a value, so a function, constant or
+static hides a forbidden type of the same name, a module, type or trait
+hides a forbidden value of the same name, as `mod UNIX_EPOCH` beside
+`use std::time::*;`, and an imported name hides a forbidden macro of the
+same name. The other way round, the step reports
+some code that uses no forbidden item. It counts a name that a module
+imports, one by one or with a glob import, also in the modules inside it,
+and does not tell a path from a name that is not one: a variable,
+parameter, field, enum variant or generic parameter with the name of an
+item that an import of its module or of an outer module brings in, as the
+variant `Instant` beside `use std::time::*;`, is reported as that item. It
+does not know the macros that `#[macro_use]` brings out of a module, so a
+call of such a macro with the name of a forbidden macro is reported as that
+macro. Renaming one of them resolves it. Review covers these.
+
+The source layout gives the export crates of `display/` no external
+dependency at all, not even through other crates, and the layout step checks
+only the external dependencies that each crate declares itself. For an export
+crate of `display/` that is pure core, as `kosmo-types` is, the rest follows
+from its checks: a pure-core crate depends only on pure-core crates, and no
+pure-core crate declares an external dependency. For an export crate of
+`display/` that is not pure core, review checks the crates it depends on.
+
 A change that adds a crate registers it in `layout.toml` with its directory,
-layer and marks, adds it to the `members` of its workspace root, and declares
-it in the root's `[workspace.dependencies]` when other crates depend on it.
+layer and marks, and with its platform categories when it is a library crate
+at the platform boundary, adds it to the `members` of its workspace root, and
+declares it in the root's `[workspace.dependencies]` when other crates depend
+on it.
 The first crate of a workspace also adds the workspace's root manifest,
 `Cargo.lock` and allowlist and adds the workspace to `WORKSPACES`.
 
