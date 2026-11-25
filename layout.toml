@@ -21,12 +21,12 @@
 # layout step requires them as they are written here: changing them
 # changes those rules. The layout step also lets no crate other than the
 # kalyx adapter kosmo-math-kalyx, and not the tool workspace xtask, declare
-# the package kalyx. The directory of a crate, the last part of its path, is
-# the crate name without the prefix `kosmo-`, or the whole name when it does
-# not start with the prefix, as `ui` for kosmo-ui and `kosmo` for the
-# program: crate names keep the prefix for publishing, and directories need
-# not. Every path is relative to the repository root and written without
-# `.`, `..` or a trailing `/`.
+# the package kalyx. The name of a crate's directory, the last part of its
+# path, is the crate name without the prefix `kosmo-`, or the whole name
+# when it does not start with the prefix, as `ui` for kosmo-ui and `kosmo`
+# for the program: crate names keep the prefix for publishing, and
+# directories need not. Every path is relative to the repository root and
+# written without `.`, `..` or a trailing `/`.
 #
 # `targets` are the target platforms, at least one and each once, for which
 # the fetch and deps steps resolve the dependencies of the workspace.
