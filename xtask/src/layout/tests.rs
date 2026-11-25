@@ -705,6 +705,27 @@ fn rejects_a_crate_directory_other_than_the_one_its_name_gives() {
             "layout.toml: crates.kosmo-render: the crate belongs in the directory framework/render, its name without the prefix kosmo-, not framework/renderer"
         ]
     );
+    // The directory is the last part of the path, also below a subdirectory
+    // of the workspace, and its case counts.
+    for (path, directory) in [
+        ("framework/extra/kosmo-render", "framework/extra/render"),
+        ("framework/Render", "framework/render"),
+    ] {
+        let found = problems_with(|files| {
+            edit(
+                files,
+                TABLE,
+                "path = \"framework/render\"\n",
+                &format!("path = \"{path}\"\n"),
+            );
+        });
+        assert_eq!(
+            found,
+            [format!(
+                "layout.toml: crates.kosmo-render: the crate belongs in the directory {directory}, its name without the prefix kosmo-, not {path}"
+            )]
+        );
+    }
     // A path without a parent directory is only outside its workspace.
     for path in ["", "desktop"] {
         let found = problems_with(|files| {
@@ -3174,7 +3195,7 @@ fn a_crate_named_like_the_kalyx_adapter_may_not_declare_kalyx() {
         assert_eq!(
             check(&tree(&files), &ALL),
             [declares_kalyx(
-                &format!("{workspace}/{name}/Cargo.toml"),
+                &format!("{workspace}/{}/Cargo.toml", dir_of(name)),
                 "dependencies",
                 "kalyx"
             )]
