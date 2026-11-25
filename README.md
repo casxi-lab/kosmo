@@ -139,7 +139,7 @@ released yet: a release is a tagged commit, and the version that `main` shows
 is not a release until it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
-pure-core crates will use only `core` and `alloc`. Its first releases will run
+pure-core crates use only `core` and `alloc`. Its first releases will run
 only on a host computer: in a terminal in line mode, headless, or in a host
 window through the nested display server. Later, kosmo will run on krepi,
 where its display server will hold krepi's display and input device services
