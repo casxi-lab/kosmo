@@ -89,9 +89,9 @@ lock-allowlist = "xtask/allowlist.toml"
 # `same-layer` lists the crates of the same layer that the crate depends
 # on.
 #
-# `platform`, the platform boundary column, lists the platform categories
-# of a library crate, a crate with a library target, at the platform
-# boundary; a library crate without it is a core library, and a pure-core
+# `platform`, the platform boundary column, lists at least one platform
+# category of a library crate, a crate with a library target, at the
+# platform boundary; a library crate without it is a core library, and a pure-core
 # crate never has it. Each category allows some of the items that core
 # libraries never use: `standard-streams`, all of `std::io` and `print!`,
 # `println!`, `eprint!`, `eprintln!` and `dbg!`; `arguments`,

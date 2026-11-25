@@ -1607,7 +1607,7 @@ fn check_crate<'a>(
     if krate.pure_core {
         check_pure_sources(tree, place, repo::parent(&root.manifest), table, problems);
     }
-    check_platform(tree, place, table, problems);
+    check_platform(tree, place, manifest, table, problems);
     if let Some(version) = version {
         match package_field(table, "version", root.workspace).and_then(Value::as_str) {
             Some(own) if own == version => {}
@@ -1845,11 +1845,23 @@ fn has_library(tree: &Tree, dir: &str, table: &Table) -> bool {
 
 /// The platform boundary of a library crate: no Rust file under its `src/`
 /// uses a forbidden path, macro or type that its platform categories do
-/// not allow. A file whose tokens cannot be read is reported by the
-/// repository boundary instead.
-fn check_platform(tree: &Tree, place: Place, table: &Table, problems: &mut Problems) {
+/// not allow; a crate without a library target registers no category. A
+/// UTF-8 file whose tokens cannot be read is reported by the repository
+/// boundary instead; the compiler rejects a file that is not UTF-8.
+fn check_platform(
+    tree: &Tree,
+    place: Place,
+    manifest: &str,
+    table: &Table,
+    problems: &mut Problems,
+) {
     let (name, krate) = (place.name, place.krate);
     if !has_library(tree, &krate.path, table) {
+        if krate.platform.is_some() {
+            problems.insert(format!(
+                "{manifest}: the crate {name} has no library target, so it registers no platform category"
+            ));
+        }
         return;
     }
     let registered = krate.platform.as_deref().unwrap_or_default();

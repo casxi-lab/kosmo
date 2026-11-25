@@ -119,8 +119,8 @@ attribute of a library root, do not. It checks:
   layer's workspace, and no two crates share a directory; `uses` names known
   workspaces; a `provisional` condition is not empty; a facade is an export
   crate; no crate of a layer marked `publish = false` is publishable;
-  `same-layer` lists crates of the same layer; `platform` lists known
-  platform categories, each once, and no pure-core crate has it; no
+  `same-layer` lists crates of the same layer; `platform` lists at least one
+  known platform category, each once, and no pure-core crate has it; no
   workspace or tool directory is the repository root or lies inside another;
   each `lock-allowlist` lies inside its workspace; every path is relative to
   the repository root and written without `.`, `..`, empty parts or a
@@ -229,7 +229,8 @@ attribute of a library root, do not. It checks:
 - export crates: an export crate has no direct external dependency;
 - the platform boundary: a library crate, one with a `[lib]` table or a
   tracked `src/lib.rs`, is a core library unless its entry lists platform
-  categories in `platform`, the platform boundary column. In every Rust file
+  categories in `platform`, the platform boundary column, which a crate
+  without a library target leaves out. In every Rust file
   under the `src/` of a library crate, unit tests and inline modules
   included, no path, macro or type that the
   [platform boundary](docs/architecture.md#platform-boundary) forbids is

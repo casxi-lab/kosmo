@@ -274,6 +274,13 @@ fn layout_of(crates: &[Spec], declared: &[(&str, &[(&str, &str)])]) -> Files {
             ("src/lib.rs", format!("//! The crate {name}.\n"))
         };
         files.insert(format!("{workspace}/{name}/{source}"), text);
+        if name == PROGRAM {
+            // As in this repository, the program also has a library target.
+            files.insert(
+                format!("{workspace}/{name}/src/lib.rs"),
+                format!("//! The crate {name}.\n"),
+            );
+        }
     }
     files.insert(TABLE.to_string(), table);
     for workspace in ["display", "framework", "desktop"] {
@@ -2492,6 +2499,25 @@ fn a_crate_without_a_library_is_not_checked() {
         );
     });
     assert_eq!(found, Vec::<String>::new());
+    let registered = problems_with(|files| {
+        files.remove("desktop/kosmo-calc/src/lib.rs");
+        files.insert(
+            "desktop/kosmo-calc/src/main.rs".to_string(),
+            "fn main() {}\n".to_string(),
+        );
+        edit(
+            files,
+            TABLE,
+            "[crates.kosmo-calc]\npath = \"desktop/kosmo-calc\"\n",
+            "[crates.kosmo-calc]\npath = \"desktop/kosmo-calc\"\nplatform = [\"threads\"]\n",
+        );
+    });
+    assert_eq!(
+        registered,
+        [
+            "desktop/kosmo-calc/Cargo.toml: the crate kosmo-calc has no library target, so it registers no platform category"
+        ]
+    );
 }
 
 #[test]
