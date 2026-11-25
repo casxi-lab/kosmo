@@ -257,6 +257,41 @@ fn a_round_that_changes_only_presentation_state_skips_the_view() {
 }
 
 #[test]
+fn a_focus_change_before_the_first_view_reaches_no_control() {
+    let mut app = TestApp::default();
+    let mut runtime = Runtime::new();
+    let first = round(
+        &mut runtime,
+        &mut app,
+        0,
+        vec![Event::FocusIn {
+            surface: SURFACE,
+            stamp: stamp(1, 1),
+        }],
+    );
+    assert_eq!(
+        first.record.lines()[1],
+        "focus-in surface 1 epoch 1 generation 1 no-region"
+    );
+    assert_eq!(first.view, ViewPass::Rebuilt);
+
+    // Once a view has been applied, the region's root receives the change.
+    let second = round(
+        &mut runtime,
+        &mut app,
+        1,
+        vec![Event::FocusOut {
+            surface: SURFACE,
+            stamp: stamp(1, 1),
+        }],
+    );
+    assert_eq!(
+        second.record.lines()[1],
+        "focus-out surface 1 epoch 1 generation 1"
+    );
+}
+
+#[test]
 fn a_rejected_view_leaves_the_tree_and_is_recorded() {
     let mut app = TestApp::default();
     let mut runtime = Runtime::new();

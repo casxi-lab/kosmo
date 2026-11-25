@@ -209,10 +209,12 @@ messages in this order:
 5. the due timers.
 
 Platform events are taken in their order, so a focus change applies to the
-key events after it. The update pass then calls `update` once for each
-message. The returned `Round` holds the effects of the event handlers and of
-`update` in the order they were produced; `take_effects` hands them to the
-driver.
+key events after it. A focus change before the first view tree has been
+applied reaches no control, because there is no region's root yet; its
+record line ends with `no-region`. The update pass then calls `update` once
+for each message. The returned `Round` holds the effects of the event
+handlers and of `update` in the order they were produced; `take_effects`
+hands them to the driver.
 
 `Round::finish(app)` runs the view pass: in a round that handled a message,
 and in every round until a view tree has been applied, it calls `view` once
@@ -273,7 +275,10 @@ stay. A periodic timer is registered again by its requester.
 
 Each surface has one region. The focused control that the view marks is the
 region's root or a control below it; a view that marks it outside the region
-is rejected with `RebuildError::FocusOutsideRegion`.
+is rejected with `RebuildError::FocusOutsideRegion`. The region's root learns
+of focus only from the focus changes that arrive while it exists: one before
+the first view tree has been applied reaches no control, and a region's root
+that a later view creates is not told that its surface already holds focus.
 
 For each surface the runtime records the stamp, the epoch and focus
 generation, of its latest `Event::FocusIn`, and whether it holds focus;
@@ -376,8 +381,8 @@ this order:
 | `receipt rejected <rejection>` | A rejection |
 | `cancel answered <answer>` | The answer to a cancellation |
 | `key surface <s> epoch <e> generation <g> <meaning> <action> mods <bits> time <t> <outcome>` | A key event and its outcome, in the order of the platform events |
-| `focus-in surface <s> epoch <e> generation <g>` | A focus in |
-| `focus-out surface <s> epoch <e> generation <g>` | A focus out; `focus-out ignored` for one with another stamp |
+| `focus-in surface <s> epoch <e> generation <g>` | A focus in, followed by `no-region` when no region's root received it |
+| `focus-out surface <s> epoch <e> generation <g>` | A focus out, followed by `no-region` when no region's root received it; `focus-out ignored` for one with another stamp |
 | `report <report>` | A job report |
 | `timer due <requester> deadline <t> label <l>` | A due timer |
 | `timer dropped missing <requester> deadline <t> label <l>` | A due timer of a control that no longer exists |
@@ -432,6 +437,10 @@ wall-clock time; review checks these, as the
 - One region per surface, and the runtime has one control tree for all
   surfaces; focus does not move within a region, and there is no
   region-level focus generation.
+- A region's root is not told the focus that its surface held before it
+  existed: a focus change before the first view tree has been applied
+  reaches no control, and a region's root that a later view creates waits
+  for the next focus change.
 - Only key events are dispatched; there are no pointer events and no
   long-press bindings.
 - The event handling record has no format version, and the debug form of

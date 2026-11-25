@@ -324,13 +324,21 @@ impl<A: App> Runtime<A> {
             }
             Event::FocusIn { surface, stamp } => {
                 self.focus.enter(surface, stamp);
-                record.push(format!("focus-in {}", describe_stamp(surface, stamp)));
-                self.focus_to_region(true, &mut queue.platform, out);
+                let reached = self.focus_to_region(true, &mut queue.platform, out);
+                record.push(format!(
+                    "focus-in {}{}",
+                    describe_stamp(surface, stamp),
+                    no_region(reached)
+                ));
             }
             Event::FocusOut { surface, stamp } => {
                 if self.focus.leave(surface, stamp) {
-                    record.push(format!("focus-out {}", describe_stamp(surface, stamp)));
-                    self.focus_to_region(false, &mut queue.platform, out);
+                    let reached = self.focus_to_region(false, &mut queue.platform, out);
+                    record.push(format!(
+                        "focus-out {}{}",
+                        describe_stamp(surface, stamp),
+                        no_region(reached)
+                    ));
                 } else {
                     record.push(format!(
                         "focus-out ignored {}",
@@ -404,13 +412,21 @@ impl<A: App> Runtime<A> {
         Vec::new()
     }
 
-    /// Hands a focus change to the region's root.
-    fn focus_to_region(&mut self, holds: bool, messages: &mut Vec<Message<A>>, out: &mut Out<A>) {
-        if let Some(region) = self.tree.region() {
-            self.with_control(region, messages, out, |control, cx| {
-                control.focus(holds, cx);
-            });
-        }
+    /// Hands a focus change to the region's root, and says whether one
+    /// received it: before the first view has been applied, there is none.
+    fn focus_to_region(
+        &mut self,
+        holds: bool,
+        messages: &mut Vec<Message<A>>,
+        out: &mut Out<A>,
+    ) -> bool {
+        let Some(region) = self.tree.region() else {
+            return false;
+        };
+        self.with_control(region, messages, out, |control, cx| {
+            control.focus(holds, cx);
+        })
+        .is_some()
     }
 
     /// Takes the due timers: the application's become messages, a
@@ -490,6 +506,12 @@ fn describe(surface: SurfaceId, stamp: Stamp, event: &KeyEvent) -> String {
         event.mods.bits(),
         event.time.as_nanos()
     )
+}
+
+/// The end of the record line of a focus change: ` no-region` when no
+/// region's root received it.
+fn no_region(reached: bool) -> &'static str {
+    if reached { "" } else { " no-region" }
 }
 
 /// The record form of a surface and a stamp.
