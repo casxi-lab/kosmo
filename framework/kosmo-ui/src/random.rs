@@ -7,7 +7,8 @@
 //! nothing has panicked and every invariant of `tree::check` holds; at the
 //! end of each group the tree equals one built once from the last view,
 //! and a second run of the group gives the same identities. A failure
-//! names the seed and the round.
+//! names the seed and the round, or at the end of a group the number of
+//! rounds.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -391,10 +392,10 @@ fn events(rng: &mut SplitMix64, focus: &mut Focus, time: u64) -> Vec<Event> {
     events
 }
 
-/// Runs group `group` and returns the identities of its final tree;
-/// checks the invariants after every round, and at the end compares the
-/// tree with one built once from the last view.
-fn run_group(group: u64) -> Vec<WidgetId> {
+/// Runs group `group` and returns its number of rounds and the identities
+/// of its final tree; checks the invariants after every round, and at the
+/// end compares the tree with one built once from the last view.
+fn run_group(group: u64) -> (usize, Vec<WidgetId>) {
     let seed = SEED.wrapping_add(group);
     let mut rng = SplitMix64::new(seed);
     let mut keys = 0;
@@ -458,29 +459,33 @@ fn run_group(group: u64) -> Vec<WidgetId> {
     match &last_view {
         Some(view) => {
             let mut once: Tree<Model> = Tree::new();
-            assert_eq!(once.rebuild(view), Ok(()), "seed {seed:#x}");
+            assert_eq!(
+                once.rebuild(view),
+                Ok(()),
+                "seed {seed:#x}, {rounds} rounds: the last view is rejected"
+            );
             assert!(
                 same_tree(runtime.tree(), &once),
-                "seed {seed:#x}: not the tree built once"
+                "seed {seed:#x}, {rounds} rounds: not the tree built once"
             );
         }
         None => assert!(
             runtime.tree().is_empty(),
-            "seed {seed:#x}: not the tree built once"
+            "seed {seed:#x}, {rounds} rounds: not the tree built once"
         ),
     }
-    identities(runtime.tree())
+    (rounds, identities(runtime.tree()))
 }
 
 #[test]
 fn random_rounds_keep_the_invariants() {
     for group in 0..GROUPS {
-        let first = run_group(group);
-        let second = run_group(group);
+        let (rounds, first) = run_group(group);
+        let (_, second) = run_group(group);
         assert_eq!(
             first,
             second,
-            "seed {:#x}: other identities",
+            "seed {:#x}, {rounds} rounds: other identities",
             SEED.wrapping_add(group)
         );
     }

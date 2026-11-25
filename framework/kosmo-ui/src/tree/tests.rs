@@ -1,6 +1,6 @@
 use super::check::{Invariant, Violation, breaks, check, depth, identities, same_tree};
 use super::*;
-use crate::testing::{TestApp, Widget, node, widget};
+use crate::testing::{TestApp, Widget, node};
 
 /// A tree rebuilt view by view, with the view it was last rebuilt from and
 /// the identities of the controls that the rebuilds removed.
@@ -234,6 +234,26 @@ fn swapping_two_children_without_the_view_breaks_the_order() {
 }
 
 #[test]
+fn a_root_whose_key_is_not_the_views_breaks_the_order() {
+    let mut rounds = Rounds::new();
+    rounds.round(sequence()[1].clone());
+    let root = rounds.id(&[]);
+    // The view of the tree with another key at the root.
+    let other = node(9, "root", 0)
+        .child(node(1, "a", 0))
+        .child(node(2, "b", 0))
+        .child(node(3, "c", 0));
+    let found = check(&rounds.tree, &other, &rounds.removed);
+    assert_eq!(
+        found,
+        [Violation {
+            invariant: Invariant::ViewOrder,
+            widgets: vec![root],
+        }]
+    );
+}
+
+#[test]
 fn an_old_identity_finds_nothing_when_its_slot_is_used_again() {
     let mut rounds = Rounds::new();
     let views = sequence();
@@ -290,6 +310,44 @@ fn trees_that_differ_in_one_key_are_told_apart() {
     let mut once: Tree<TestApp> = Tree::new();
     once.rebuild(&other).unwrap();
     assert!(!same_tree(&rounds.tree, &once));
+}
+
+#[test]
+fn trees_that_differ_only_in_the_focus_mark_are_told_apart() {
+    // A root with the children 1 and 2, of which `focused` is marked.
+    let marked = |focused: u64| {
+        let mut root = node(0, "root", 0);
+        for key in [1, 2] {
+            let child = node(key, "leaf", 0);
+            root.push(if key == focused {
+                child.focused()
+            } else {
+                child
+            });
+        }
+        root
+    };
+    let mut rounds = Rounds::new();
+    rounds.round(marked(1));
+    assert_eq!(rounds.check(), []);
+    let mut same: Tree<TestApp> = Tree::new();
+    same.rebuild(&marked(1)).unwrap();
+    assert!(same_tree(&rounds.tree, &same));
+    let mut other: Tree<TestApp> = Tree::new();
+    other.rebuild(&marked(2)).unwrap();
+    assert!(!same_tree(&rounds.tree, &other));
+
+    // Against the view that marks the other child, the tree's focused
+    // control is not the view's.
+    let focused = rounds.id(&[1]);
+    let found = check(&rounds.tree, &marked(2), &rounds.removed);
+    assert_eq!(
+        found,
+        [Violation {
+            invariant: Invariant::ViewOrder,
+            widgets: vec![focused],
+        }]
+    );
 }
 
 #[test]
@@ -448,5 +506,4 @@ fn the_drawing_entry_gets_the_identity_and_presentation_state() {
     let state = rounds.tree.state(root).copied().unwrap();
     let cx = crate::app::DrawContext::new(root, &state);
     assert_eq!((cx.id(), *cx.state()), (root, 0));
-    let _: Widget = widget("root", 0);
 }

@@ -178,11 +178,14 @@ The tests check eight properties of the tree:
    `MAX_DEPTH` controls.
 3. Each control is in the tree exactly once: a preorder traversal from the
    root visits each control once, as many as the tree holds.
-4. Traversal follows the children lists, in the order of the view tree.
+4. Traversal follows the children lists, in the order of the view tree,
+   from a root with the view's root key, and the focused control and the
+   region's root are the nodes that the view marks.
 5. An identity of a removed control finds no control, and its slot's
    generation has increased or the slot is retired.
 6. Rebuilding round by round gives the same tree as building it once from
-   the last view: the same keys, kinds, controls and order of children.
+   the last view: the same keys, kinds, controls and order of children, and
+   the same focused control and region's root.
 7. The same sequence of views gives the same identities.
 8. The tree holds at most `MAX_WIDGETS` controls and is at most `MAX_DEPTH`
    deep.
@@ -470,10 +473,12 @@ slot. No test sleeps or reads the wall clock.
    `a_control_taken_out_of_its_parents_children_is_not_in_the_tree`,
    `traversal_follows_the_views_order_after_a_reorder`,
    `swapping_two_children_without_the_view_breaks_the_order`,
+   `a_root_whose_key_is_not_the_views_breaks_the_order`,
    `an_old_identity_finds_nothing_when_its_slot_is_used_again`,
    `a_removal_that_keeps_the_generation_lets_an_old_identity_find_a_control`,
    `a_tree_built_once_equals_the_tree_built_round_by_round`,
    `trees_that_differ_in_one_key_are_told_apart`,
+   `trees_that_differ_only_in_the_focus_mark_are_told_apart`,
    `the_same_sequence_gives_the_same_identities`,
    `sequences_that_differ_in_one_removal_give_other_identities`.
 2. A view of exactly 4,096 controls, or exactly 64 deep, is built; one

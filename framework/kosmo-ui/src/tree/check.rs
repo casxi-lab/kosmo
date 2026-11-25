@@ -8,19 +8,23 @@
 //!   most `MAX_DEPTH` controls.
 //! - Each control is in the tree exactly once: a preorder traversal from
 //!   the root visits each control once and as many as the tree holds.
-//! - Traversal follows the children lists in view order: each control's
-//!   children have the keys of the view node's children, in the same order.
+//! - Traversal follows the children lists in view order: the root has the
+//!   key of the view's root, each control's children have the keys of the
+//!   view node's children, in the same order, and the tree marks a focused
+//!   control and a region's root exactly where the view marks them: live
+//!   controls at the key paths of the marked nodes.
 //! - An identity of a removed control finds no control, and its slot's
 //!   generation has increased or the slot is retired.
 //! - Building the tree once from the last view gives the same tree as
 //!   rebuilding it round by round: the same keys, kinds, controls and
-//!   children order, whatever the identities and presentation states.
+//!   children order, and the focused control and the region's root at the
+//!   same key paths, whatever the identities and presentation states.
 //! - The same sequence of rebuilds gives the same identities.
 //! - Bounds: at most `MAX_WIDGETS` controls, at most `MAX_DEPTH` deep.
 
 use std::collections::BTreeSet;
 
-use super::{Node, Tree, View, WidgetId};
+use super::{Key, Node, Tree, View, WidgetId};
 use crate::app::{App, Control};
 use crate::tree::{MAX_DEPTH, MAX_WIDGETS};
 
@@ -59,8 +63,9 @@ fn live<A: App>(tree: &Tree<A>) -> Vec<(WidgetId, &Node<A>)> {
         .collect()
 }
 
-/// Checks every invariant but the two comparisons against `view`, the view that the tree was last
-/// rebuilt from, and `removed`, identities of removed controls. Each
+/// Checks every invariant against `view`, the view that the tree was last
+/// rebuilt from, and `removed`, the identities of removed controls, except
+/// the two comparisons between trees, `same_tree` and `identities`. Each
 /// violation names the controls that break the invariant.
 pub(crate) fn check<A: App>(
     tree: &Tree<A>,
@@ -125,8 +130,17 @@ pub(crate) fn check<A: App>(
         report(Invariant::OncePerControl, unreached);
     }
 
-    // Traversal follows the view order.
+    // Traversal follows the view order, and the marks are the view's.
     if let Some(root) = tree.root {
+        if tree.key(root) != Some(view.key) {
+            report(Invariant::ViewOrder, vec![root]);
+        }
+        let (focused, region) = marked_paths(view);
+        for (mark, expected) in [(tree.focused, focused), (tree.region, region)] {
+            if mark.map(|id| key_path(tree, id)) != expected.map(Some) {
+                report(Invariant::ViewOrder, vec![mark.unwrap_or(root)]);
+            }
+        }
         let mut pairs = vec![(root, view)];
         while let Some((id, view)) = pairs.pop() {
             let keys: Vec<_> = tree.children(id).iter().map(|&c| tree.key(c)).collect();
@@ -179,12 +193,61 @@ pub(crate) fn breaks(found: &[Violation], invariant: Invariant) -> bool {
         .any(|violation| violation.invariant == invariant)
 }
 
+/// The keys from the root down to the control `id`, both included; `None`
+/// when `id` finds no control or following parents does not reach the root
+/// within `MAX_DEPTH` controls.
+fn key_path<A: App>(tree: &Tree<A>, id: WidgetId) -> Option<Vec<Key>> {
+    let mut path = Vec::new();
+    let mut at = Some(id);
+    while let Some(id) = at {
+        if path.len() >= MAX_DEPTH {
+            return None;
+        }
+        let node = tree.node(id)?;
+        path.push(node.key);
+        if node.parent.is_none() && tree.root != Some(id) {
+            return None;
+        }
+        at = node.parent;
+    }
+    path.reverse();
+    Some(path)
+}
+
+/// The key paths, from the root down, of the nodes that `view` marks as
+/// the focused control and as the region's root.
+fn marked_paths<C>(view: &View<C>) -> (Option<Vec<Key>>, Option<Vec<Key>>) {
+    let (mut focused, mut region) = (None, None);
+    let mut stack = vec![(view, vec![view.key])];
+    while let Some((node, path)) = stack.pop() {
+        if node.focused {
+            focused = Some(path.clone());
+        }
+        if node.region {
+            region = Some(path.clone());
+        }
+        for child in node.children.iter().rev() {
+            let mut below = path.clone();
+            below.push(child.key);
+            stack.push((child, below));
+        }
+    }
+    (focused, region)
+}
+
 /// Whether two trees have the same keys, kinds, controls and children
-/// order, whatever their identities and presentation states.
+/// order, and their focused controls and regions' roots at the same key
+/// paths, whatever their identities and presentation states.
 pub(crate) fn same_tree<A: App>(a: &Tree<A>, b: &Tree<A>) -> bool
 where
     A::Control: PartialEq,
 {
+    let marks = |tree: &Tree<A>| {
+        [tree.focused, tree.region()].map(|mark| mark.map(|id| key_path(tree, id)))
+    };
+    if marks(a) != marks(b) {
+        return false;
+    }
     let mut pairs = match (a.root, b.root) {
         (Some(x), Some(y)) => vec![(x, y)],
         (None, None) => return true,

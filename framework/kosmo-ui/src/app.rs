@@ -205,7 +205,6 @@ pub trait App: Sized {
 ///         let _ = cx.id();
 ///     }
 /// }
-/// # let _ = Model { count: 0 }.count;
 /// ```
 ///
 /// ```
