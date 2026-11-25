@@ -61,9 +61,11 @@ pub enum ViewPass {
 pub struct Output {
     /// The event handling record of the round.
     pub record: Record,
-    /// The time by which the next round should run: the earliest timer
-    /// and, while jobs have not ended, the round's time plus
-    /// [`JOB_POLL_INTERVAL`]; `None` when there is neither.
+    /// The time by which the next round should run: the earlier of the
+    /// earliest timer and, while jobs have not ended, the round's time plus
+    /// [`JOB_POLL_INTERVAL`]; `None` when there is neither. A driver that
+    /// holds receipts of this round's effects runs the next round without
+    /// waiting, whatever the deadline.
     pub next_deadline: Option<MonoTime>,
     /// What the view pass did.
     pub view: ViewPass,

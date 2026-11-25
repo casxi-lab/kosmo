@@ -224,9 +224,11 @@ and in every round until a view tree has been applied, it calls `view` once
 and applies its tree; a round in which only presentation state changed
 skips it. It returns an `Output` with
 the round's record, what the view pass did, as `ViewPass::Rebuilt`,
-`Skipped` or `Rejected`, and the `next_deadline`: the earliest timer and,
-while `unfinished_jobs` is above 0, the round's time plus
-`JOB_POLL_INTERVAL`, 16 ms; `None` when there is neither.
+`Skipped` or `Rejected`, and the `next_deadline`: the earlier of the
+earliest timer and, while `unfinished_jobs` is above 0, the round's time
+plus `JOB_POLL_INTERVAL`, 16 ms; `None` when there is neither. A driver that
+holds receipts of the round's effects runs the next round at once, without
+waiting for the deadline.
 
 ## Effects and the execution port
 
@@ -272,7 +274,9 @@ an application's timer as `Message::Timer` and a control's through its
 `timer` handler. A timer of a control that no longer exists is dropped and
 counted. The table holds at most `TIMER_CAPACITY`, 64, timers; a request to a
 full table is refused, recorded and counted, and the timers already there
-stay. A periodic timer is registered again by its requester.
+stay. The requester is not told: neither `update` nor the control receives
+a message for the refusal. A periodic timer is registered again by its
+requester.
 
 ## Focus
 
@@ -375,7 +379,13 @@ holds no wall-clock time, no address and nothing in hash order, so the same
 rounds give the same record byte for byte. Values of the application's
 types, such as requests and reports, appear in their debug form, with line
 feeds and carriage returns written as `\n` and `\r`. A round's lines come in
-this order:
+groups, in this order, and within a group in the order of the input or of
+production: the round line; the receipts; the platform events, key and
+focus lines as they were delivered; the job reports; the due timers,
+`timer due` or `timer dropped missing`, by deadline and then by
+registration; the effects; the timer requests, `timer set` or
+`timer refused full`; then the view line and the deadline line. The lines
+are of these kinds:
 
 | Line | Meaning |
 | --- | --- |
@@ -383,30 +393,34 @@ this order:
 | `receipt accepted <submission>` | An acceptance |
 | `receipt rejected <rejection>` | A rejection |
 | `cancel answered <answer>` | The answer to a cancellation |
-| `key surface <s> epoch <e> generation <g> <meaning> <action> mods <bits> time <t> <outcome>` | A key event and its outcome, in the order of the platform events |
+| `key surface <s> epoch <e> generation <g> <meaning> <action> mods <bits> time <t> <outcome>` | A key event and its outcome |
 | `focus-in surface <s> epoch <e> generation <g>` | A focus in, followed by `no-region` when no region's root received it |
 | `focus-out surface <s> epoch <e> generation <g>` | A focus out, followed by `no-region` when no region's root received it; `focus-out ignored` for one with another stamp |
 | `report <report>` | A job report |
 | `timer due <requester> deadline <t> label <l>` | A due timer |
 | `timer dropped missing <requester> deadline <t> label <l>` | A due timer of a control that no longer exists |
-| `effect submit <request>`, `effect cancel <submission>` | An effect, in the order they were produced |
+| `effect submit <request>`, `effect cancel <submission>` | An effect |
 | `timer set <requester> deadline <t> label <l>` | A registered timer |
 | `timer refused full <requester> deadline <t> label <l>` | A request to a full timer table |
 | `view rebuilt controls <n>`, `view rejected <error>`, `view skipped` | What the view pass did |
 | `deadline <t>`, `deadline none` | The next deadline |
 
-In a key line, `<meaning>` is `named <number>` or `char '<c>'`, `<action>` is
-`press`, `release`, `repeat` or `long-press`, followed by `synthetic` for a
-release that the display server made up, and `<bits>` is the whole `ModSet`
-in hexadecimal, such as `0x0002`. `<outcome>` is `dropped epoch`,
+In a key line, `<meaning>` is `named <number>` or `char <c>`, `<action>` is
+`press`, `release`, `repeat` or `long-press`, and `other` for an action that
+a later version of the key event adds, followed by `synthetic` for a release
+that the display server made up, and `<bits>` is the whole `ModSet` in
+hexadecimal, such as `0x0002`. `<outcome>` is `dropped epoch`,
 `dropped generation`, `dropped no-focus`, `unhandled` for a key without a
 command, `unhandled <command>` for a command that nobody handled,
 `handled <command> by control <slot>:<generation>` or
-`handled <command> by app`. A command is written `<namespace>.<name>`,
-followed by the character in quotes for `kosmo.InsertText`. A requester is
-`app` or `control <slot>:<generation>`, and a view error is
-`too-many-controls`, `too-deep`, `duplicate-key <key>`, `second-focus`,
-`second-region` or `focus-outside-region`. For example:
+`handled <command> by app`. A command is written `<namespace>.<name>`, and
+a command that carries a character, whichever binding gave it, is followed
+by that character, as in `kosmo.InsertText '1'`. Characters, `<c>` and
+those of commands, are written in Rust's debug form: in single quotes, with
+escapes such as `'\''` and `'\u{301}'`. A requester is `app` or
+`control <slot>:<generation>`, and a view error is `too-many-controls`,
+`too-deep`, `duplicate-key <key>`, `second-focus`, `second-region` or
+`focus-outside-region`. For example:
 
 ```text
 round 8 time 8000000
@@ -440,6 +454,10 @@ wall-clock time; review checks these, as the
 - One region per surface, and the runtime has one control tree for all
   surfaces; focus does not move within a region, and there is no
   region-level focus generation.
+- The runtime keeps the focus stamp of every surface that ever gained focus,
+  and the region's root learns the focus changes of every surface without
+  telling them apart; several surfaces with regions of their own come with
+  two-level focus.
 - A region's root is not told the focus that its surface held before it
   existed: a focus change before the first view tree has been applied
   reaches no control, and a region's root that a later view creates waits
@@ -581,8 +599,8 @@ slot. No test sleeps or reads the wall clock.
 12. Timers: due timers come by deadline and then by registration order; a
     full table refuses the next timer distinctly and keeps the others; a
     timer of a removed control is dropped and counted; the next deadline is
-    the round's time plus 16 ms while jobs are unfinished, otherwise the
-    earliest timer, otherwise none. Tests:
+    the earlier of the earliest timer and, while jobs are unfinished, the
+    round's time plus 16 ms, and none when there is neither. Tests:
     `timer::tests::due_timers_come_by_deadline_then_by_registration_order`,
     `timer::tests::a_full_table_refuses_a_timer_and_keeps_the_others`,
     `round::tests::a_full_timer_table_refuses_the_next_timer_distinctly`,
@@ -599,4 +617,8 @@ slot. No test sleeps or reads the wall clock.
     `cargo test` runs; `tree::tests::the_drawing_entry_gets_the_identity_and_presentation_state`.
 15. `kosmo-ui` is a core library: the layout step of `cargo xtask check`
     reads its `src/` for the items that the platform boundary forbids, and
-    the crate forbids unsafe code.
+    the crate forbids unsafe code. The layout step checks this on every run
+    of `cargo xtask check`; its negative case for a core library is in
+    `xtask/src/layout/tests.rs`: `a_core_library_may_not_use_standard_io`.
+    `#![forbid(unsafe_code)]` is in `src/lib.rs`, beside the `unsafe_code`
+    lint of the workspace.

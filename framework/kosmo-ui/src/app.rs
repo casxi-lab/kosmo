@@ -367,6 +367,8 @@ impl<A: App> Out<A> {
 
     /// Requests a timer that fires once, in the first round whose time is
     /// not earlier than `deadline`, as a [`Message::Timer`] with `label`.
+    /// A request to a full timer table is refused and recorded, and
+    /// `update` receives no message for the refusal.
     pub fn timer(&mut self, deadline: MonoTime, label: TimerLabel) {
         self.timers.push(TimerRequest {
             deadline,
@@ -420,7 +422,8 @@ impl<A: App, S> Context<'_, A, S> {
 
     /// Requests a timer for the control, which its [`Control::timer`]
     /// receives when it is due; it is dropped if the control no longer
-    /// exists then.
+    /// exists then. A request to a full timer table is refused and
+    /// recorded, and the control receives nothing for the refusal.
     pub fn timer(&mut self, deadline: MonoTime, label: TimerLabel) {
         self.out.timers.push(TimerRequest {
             deadline,
