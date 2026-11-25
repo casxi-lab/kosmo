@@ -4023,7 +4023,7 @@ A component is a unit with its own role, contract and level.
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/kosmo-scratchpad/src/` and `framework/kosmo-scratchpad/tests/` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/kosmo-sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
-| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | `planned` |
+| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/kosmo-ui/src/` and `framework/kosmo-ui/tests/` |
 | Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
 | Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | `planned` |
