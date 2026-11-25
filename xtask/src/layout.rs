@@ -1859,7 +1859,7 @@ fn check_platform(
     if !has_library(tree, &krate.path, table) {
         if krate.platform.is_some() {
             problems.insert(format!(
-                "{manifest}: the crate {name} has no library target, so it registers no platform category"
+                "{manifest}: the crate {name} lists platform categories but has no library target; only a library crate registers them"
             ));
         }
         return;

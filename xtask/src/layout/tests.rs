@@ -2499,6 +2499,10 @@ fn a_crate_without_a_library_is_not_checked() {
         );
     });
     assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn a_crate_without_a_library_registers_no_platform_category() {
     let registered = problems_with(|files| {
         files.remove("desktop/kosmo-calc/src/lib.rs");
         files.insert(
@@ -2515,7 +2519,7 @@ fn a_crate_without_a_library_is_not_checked() {
     assert_eq!(
         registered,
         [
-            "desktop/kosmo-calc/Cargo.toml: the crate kosmo-calc has no library target, so it registers no platform category"
+            "desktop/kosmo-calc/Cargo.toml: the crate kosmo-calc lists platform categories but has no library target; only a library crate registers them"
         ]
     );
 }
