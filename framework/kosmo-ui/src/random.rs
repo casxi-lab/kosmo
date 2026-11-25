@@ -9,6 +9,8 @@
 //! and a second run of the group gives the same identities. A failure
 //! names the seed and the round.
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use kosmo_types::{
     Epoch, FocusGen, HidUsage, KeyAction, KeyEvent, KeyMeaning, ModSet, MonoTime, NamedKey,
 };
@@ -432,7 +434,13 @@ fn run_group(group: u64) -> Vec<WidgetId> {
         app.too_deep = rng.below(16) == 0;
 
         let before = runtime.tree().preorder();
-        let output = runtime.round(&mut app, input).finish(&app);
+        // A panic of the round fails the test with the seed and the round.
+        let ran = catch_unwind(AssertUnwindSafe(|| {
+            runtime.round(&mut app, input).finish(&app)
+        }));
+        let Ok(output) = ran else {
+            panic!("seed {seed:#x}, round {round}: the round panicked");
+        };
         if output.view == ViewPass::Rebuilt {
             last_view = Some(app.view());
         }
