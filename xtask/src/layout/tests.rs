@@ -157,27 +157,27 @@ const DECLARED: [(&str, &[(&str, &str)]); 3] = [
     (
         "display",
         &[
-            ("kosmo-types", "kosmo-types"),
-            ("kosmo-proto", "kosmo-proto"),
-            ("kosmo-scene", "kosmo-scene"),
+            ("kosmo-types", "types"),
+            ("kosmo-proto", "proto"),
+            ("kosmo-scene", "scene"),
         ],
     ),
     (
         "framework",
         &[
-            ("kosmo-math-model", "kosmo-math-model"),
-            ("kosmo-render", "kosmo-render"),
-            ("kosmo-ui", "kosmo-ui"),
-            ("kosmo-proto", "../display/kosmo-proto"),
-            ("kosmo-types", "../display/kosmo-types"),
+            ("kosmo-math-model", "math-model"),
+            ("kosmo-render", "render"),
+            ("kosmo-ui", "ui"),
+            ("kosmo-proto", "../display/proto"),
+            ("kosmo-types", "../display/types"),
         ],
     ),
     (
         "desktop",
         &[
-            ("kosmo-calc", "kosmo-calc"),
-            ("kosmo-sdk", "../framework/kosmo-sdk"),
-            ("kosmo-client", "../framework/kosmo-client"),
+            ("kosmo-calc", "calc"),
+            ("kosmo-sdk", "../framework/sdk"),
+            ("kosmo-client", "../framework/client"),
         ],
     ),
 ];
@@ -204,11 +204,17 @@ const DESKTOP_ONLY: [&str; 2] = ["xtask", "desktop"];
 /// Files by path.
 type Files = BTreeMap<String, String>;
 
+/// The directory of the crate `name` inside its workspace: the name without
+/// the prefix `kosmo-`, or the name itself when it has no such prefix.
+fn dir_of(name: &str) -> &str {
+    name.strip_prefix("kosmo-").unwrap_or(name)
+}
+
 fn root_manifest(workspace: &str, crates: &[Spec], declared: &[(&str, &[(&str, &str)])]) -> String {
     let members: Vec<String> = crates
         .iter()
         .filter(|(_, owner, ..)| *owner == workspace)
-        .map(|(name, ..)| format!("\"{name}\""))
+        .map(|(name, ..)| format!("\"{}\"", dir_of(name)))
         .collect();
     let declared = declared
         .iter()
@@ -251,8 +257,8 @@ fn layout_of(crates: &[Spec], declared: &[(&str, &[(&str, &str)])]) -> Files {
     let mut table = WORKSPACES_TABLE.to_string();
     for &(name, workspace, layer, marks, dependencies) in crates {
         let pure = marks.contains("pure-core = true");
-        let mut entry =
-            format!("\n[crates.{name}]\npath = \"{workspace}/{name}\"\nlayer = \"{layer}\"\n");
+        let dir = format!("{workspace}/{}", dir_of(name));
+        let mut entry = format!("\n[crates.{name}]\npath = \"{dir}\"\nlayer = \"{layer}\"\n");
         if !marks.contains("export = true") {
             entry.push_str("export = false\n");
         }
@@ -263,7 +269,7 @@ fn layout_of(crates: &[Spec], declared: &[(&str, &[(&str, &str)])]) -> Files {
         entry.push_str(marks);
         table.push_str(&entry);
         files.insert(
-            format!("{workspace}/{name}/Cargo.toml"),
+            format!("{dir}/Cargo.toml"),
             crate_manifest(name, dependencies),
         );
         let (source, text) = if name == PROGRAM {
@@ -273,11 +279,11 @@ fn layout_of(crates: &[Spec], declared: &[(&str, &[(&str, &str)])]) -> Files {
         } else {
             ("src/lib.rs", format!("//! The crate {name}.\n"))
         };
-        files.insert(format!("{workspace}/{name}/{source}"), text);
+        files.insert(format!("{dir}/{source}"), text);
         if name == PROGRAM {
             // As in this repository, the program also has a library target.
             files.insert(
-                format!("{workspace}/{name}/src/lib.rs"),
+                format!("{dir}/src/lib.rs"),
                 format!("//! The crate {name}.\n"),
             );
         }
@@ -316,7 +322,7 @@ fn valid() -> Files {
     // A pure-core crate may use the standard library in its tests.
     edit(
         &mut files,
-        "display/kosmo-types/src/lib.rs",
+        "display/types/src/lib.rs",
         "extern crate alloc;\n",
         "extern crate alloc;\n#[cfg(test)]\nextern crate std;\n",
     );
@@ -423,14 +429,14 @@ fn rejects_a_dependency_on_a_higher_layer() {
     let found = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dependencies]\nkosmo-ui.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "framework/kosmo-math-model/Cargo.toml: [dependencies] kosmo-ui: a crate of layer F0 may not depend on kosmo-ui of the higher layer F1"
+            "framework/math-model/Cargo.toml: [dependencies] kosmo-ui: a crate of layer F0 may not depend on kosmo-ui of the higher layer F1"
         ]
     );
 }
@@ -441,18 +447,18 @@ fn rejects_a_dependency_against_the_workspace_direction() {
         declare(
             files,
             "display",
-            "kosmo-ui = { path = \"../framework/kosmo-ui\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-ui = { path = \"../framework/ui\", version = \"=0.1.0-dev.1\" }",
         );
         append(
             files,
-            "display/kosmo-server/Cargo.toml",
+            "display/server/Cargo.toml",
             "kosmo-ui.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "display/kosmo-server/Cargo.toml: [dependencies] kosmo-ui: crates of display may not depend on crates of framework"
+            "display/server/Cargo.toml: [dependencies] kosmo-ui: crates of display may not depend on crates of framework"
         ]
     );
 }
@@ -462,16 +468,14 @@ fn rejects_interior_mutability_in_a_pure_core_crate() {
     let found = problems_with(|files| {
         edit(
             files,
-            "display/kosmo-scene/src/lib.rs",
+            "display/scene/src/lib.rs",
             "extern crate alloc;\n",
             "use core::cell::RefCell;\nextern crate alloc;\n",
         );
     });
     assert_eq!(
         found,
-        [
-            "display/kosmo-scene/src/lib.rs:4: the pure-core crate kosmo-scene may not use cell, RefCell"
-        ]
+        ["display/scene/src/lib.rs:4: the pure-core crate kosmo-scene may not use cell, RefCell"]
     );
 }
 
@@ -480,14 +484,14 @@ fn rejects_a_pure_core_dependency_on_a_provisional_crate() {
     let found = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/Cargo.toml",
+            "display/scene/Cargo.toml",
             "kosmo-proto.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "display/kosmo-scene/Cargo.toml: [dependencies] kosmo-proto: the pure-core crate kosmo-scene may not depend on the provisional crate kosmo-proto"
+            "display/scene/Cargo.toml: [dependencies] kosmo-proto: the pure-core crate kosmo-scene may not depend on the provisional crate kosmo-proto"
         ]
     );
 }
@@ -496,13 +500,13 @@ fn rejects_a_pure_core_dependency_on_a_provisional_crate() {
 fn rejects_a_crate_missing_from_the_layout_table() {
     let found = problems_with(|files| {
         files.insert(
-            "desktop/kosmo-extra/Cargo.toml".to_string(),
+            "desktop/extra/Cargo.toml".to_string(),
             crate_manifest("kosmo-extra", &[]),
         );
     });
     assert_eq!(
         found,
-        ["desktop/kosmo-extra/Cargo.toml: kosmo-extra is not a crate of the layout table"]
+        ["desktop/extra/Cargo.toml: kosmo-extra is not a crate of the layout table"]
     );
 }
 
@@ -511,14 +515,14 @@ fn rejects_kalyx_in_the_dev_dependencies_of_the_math_model() {
     let found = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dev-dependencies]\nkalyx.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "framework/kosmo-math-model/Cargo.toml: [dev-dependencies] kalyx: declares the package kalyx, which only the kalyx adapter kosmo-math-kalyx may declare"
+            "framework/math-model/Cargo.toml: [dev-dependencies] kalyx: declares the package kalyx, which only the kalyx adapter kosmo-math-kalyx may declare"
         ]
     );
 }
@@ -529,7 +533,7 @@ fn a_core_library_may_not_use_standard_io() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-render/src/lib.rs:2: the core library kosmo-render may not use std::io; only a crate registered for the platform category standard-streams may"
+            "framework/render/src/lib.rs:2: the core library kosmo-render may not use std::io; only a crate registered for the platform category standard-streams may"
         ]
     );
 }
@@ -595,14 +599,14 @@ fn rejects_crate_paths_outside_their_workspace_or_shared() {
         edit(
             files,
             TABLE,
-            "path = \"framework/kosmo-render\"\n",
-            "path = \"framework/kosmo-math-model\"\n",
+            "path = \"framework/render\"\n",
+            "path = \"framework/math-model\"\n",
         );
     });
     assert_eq!(
         shared,
         [
-            "layout.toml: crates.kosmo-math-model and crates.kosmo-render share the path framework/kosmo-math-model"
+            "layout.toml: crates.kosmo-math-model and crates.kosmo-render share the path framework/math-model"
         ]
     );
 }
@@ -962,7 +966,7 @@ fn a_root_denies_the_lints_for_members_that_inherit_them() {
         edit(files, "desktop/Cargo.toml", "unwrap_used = \"deny\"\n", "");
         edit(
             files,
-            "desktop/kosmo-shell/Cargo.toml",
+            "desktop/shell/Cargo.toml",
             "\n[lints]\nworkspace = true\n",
             "",
         );
@@ -977,7 +981,7 @@ fn a_root_denies_the_lints_for_members_that_inherit_them() {
         &found,
         &[
             "desktop/Cargo.toml: [workspace.lints.clippy] unwrap_used must be \"deny\"",
-            "desktop/kosmo-shell/Cargo.toml: must set [lints] workspace = true",
+            "desktop/shell/Cargo.toml: must set [lints] workspace = true",
             "desktop/Cargo.toml: the workspace root may not have workspace.exclude",
         ],
     );
@@ -1033,25 +1037,23 @@ fn the_denied_lints_may_be_forbidden_but_not_lowered() {
 #[test]
 fn every_crate_of_the_table_has_a_manifest_with_its_name() {
     let untracked = problems_with(|files| {
-        files.remove("desktop/kosmo-calc/Cargo.toml");
+        files.remove("desktop/calc/Cargo.toml");
     });
     assert_eq!(
         untracked,
-        [
-            "desktop/kosmo-calc/Cargo.toml: is not tracked; the layout table lists the crate kosmo-calc"
-        ]
+        ["desktop/calc/Cargo.toml: is not tracked; the layout table lists the crate kosmo-calc"]
     );
     let renamed = problems_with(|files| {
         edit(
             files,
-            "desktop/kosmo-calc/Cargo.toml",
+            "desktop/calc/Cargo.toml",
             "name = \"kosmo-calc\"",
             "name = \"calc\"",
         );
     });
     assert_eq!(
         renamed,
-        ["desktop/kosmo-calc/Cargo.toml: the package is named calc, not kosmo-calc"]
+        ["desktop/calc/Cargo.toml: the package is named calc, not kosmo-calc"]
     );
 }
 
@@ -1062,20 +1064,20 @@ fn a_crate_of_the_table_belongs_to_the_root_of_its_workspace() {
     let own = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "\n[workspace]\n\n[workspace.dependencies]\nkalyx = \"=0.1.0\"\n",
         );
     });
     assert_eq!(
         own,
         [
-            "framework/kosmo-render/Cargo.toml: the crate kosmo-render may not declare [workspace]; it is a member of the root of its workspace"
+            "framework/render/Cargo.toml: the crate kosmo-render may not declare [workspace]; it is a member of the root of its workspace"
         ]
     );
     let named = problems_with(|files| {
         edit(
             files,
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "publish = false\n",
             "publish = false\nworkspace = \"..\"\n",
         );
@@ -1083,7 +1085,7 @@ fn a_crate_of_the_table_belongs_to_the_root_of_its_workspace() {
     assert_eq!(
         named,
         [
-            "framework/kosmo-render/Cargo.toml: the crate kosmo-render may not set package.workspace; it is a member of the root of its workspace"
+            "framework/render/Cargo.toml: the crate kosmo-render may not set package.workspace; it is a member of the root of its workspace"
         ]
     );
 }
@@ -1094,21 +1096,21 @@ fn members_list_exactly_the_crates_of_the_workspace() {
         edit(
             files,
             "desktop/Cargo.toml",
-            "members = [\"kosmo-shell\", \"kosmo-calc\", \"kosmo\"]",
-            "members = [\"kosmo-shell\", \"kosmo\"]",
+            "members = [\"shell\", \"calc\", \"kosmo\"]",
+            "members = [\"shell\", \"kosmo\"]",
         );
     });
     assert_eq!(
         missing,
         [
-            "desktop/Cargo.toml: members must be exactly the crates of the workspace in the layout table: kosmo, kosmo-calc, kosmo-shell"
+            "desktop/Cargo.toml: members must be exactly the crates of the workspace in the layout table: calc, kosmo, shell"
         ]
     );
     let pattern = problems_with(|files| {
         edit(
             files,
             "desktop/Cargo.toml",
-            "members = [\"kosmo-shell\", \"kosmo-calc\", \"kosmo\"]",
+            "members = [\"shell\", \"calc\", \"kosmo\"]",
             "members = [\"*\"]",
         );
     });
@@ -1122,13 +1124,13 @@ fn members_list_exactly_the_crates_of_the_workspace() {
 fn a_manifest_in_any_letter_case_must_be_a_crate_of_the_table() {
     let found = problems_with(|files| {
         files.insert(
-            "desktop/kosmo-x/cargo.toml".to_string(),
+            "desktop/x/cargo.toml".to_string(),
             crate_manifest("kosmo-x", &[]),
         );
     });
     assert_eq!(
         found,
-        ["desktop/kosmo-x/cargo.toml: kosmo-x is not a crate of the layout table"]
+        ["desktop/x/cargo.toml: kosmo-x is not a crate of the layout table"]
     );
 }
 
@@ -1208,14 +1210,14 @@ fn internal_dependencies_have_the_common_version() {
         edit(
             files,
             "framework/Cargo.toml",
-            "kosmo-render = { path = \"kosmo-render\", version = \"=0.1.0-dev.1\" }",
-            "kosmo-render = { path = \"kosmo-render\" }",
+            "kosmo-render = { path = \"render\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-render = { path = \"render\" }",
         );
         edit(
             files,
             "framework/Cargo.toml",
-            "kosmo-math-model = { path = \"kosmo-math-model\", version = \"=0.1.0-dev.1\" }",
-            "kosmo-math-model = { path = \"kosmo-math-model\", version = \"=0.1.0\" }",
+            "kosmo-math-model = { path = \"math-model\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-math-model = { path = \"math-model\", version = \"=0.1.0\" }",
         );
     });
     assert_problems(
@@ -1294,7 +1296,7 @@ fn crates_of_the_table_are_declared_only_with_their_path() {
         declare(files, "desktop", "kosmo-server = \"=0.1.0-dev.1\"");
         append(
             files,
-            "desktop/kosmo-shell/Cargo.toml",
+            "desktop/shell/Cargo.toml",
             "kosmo-server.workspace = true\n",
         );
         append(files, "xtask/Cargo.toml", "kosmo = \"=0.1.0-dev.1\"\n");
@@ -1318,7 +1320,7 @@ fn same_layer_dependencies_are_listed_and_used() {
     assert_eq!(
         unlisted,
         [
-            "framework/kosmo-jobs/Cargo.toml: [dependencies] kosmo-math-model: kosmo-math-model is in the same layer F0 and is not listed in same-layer of kosmo-jobs"
+            "framework/jobs/Cargo.toml: [dependencies] kosmo-math-model: kosmo-math-model is in the same layer F0 and is not listed in same-layer of kosmo-jobs"
         ]
     );
     let unused = problems_with(|files| {
@@ -1343,18 +1345,18 @@ fn other_workspaces_are_reached_only_through_export_crates() {
         declare(
             files,
             "framework",
-            "kosmo-server = { path = \"../display/kosmo-server\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-server = { path = \"../display/server\", version = \"=0.1.0-dev.1\" }",
         );
         append(
             files,
-            "framework/kosmo-ui/Cargo.toml",
+            "framework/ui/Cargo.toml",
             "kosmo-server.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "framework/kosmo-ui/Cargo.toml: [dependencies] kosmo-server: kosmo-server is not an export crate of the workspace display"
+            "framework/ui/Cargo.toml: [dependencies] kosmo-server: kosmo-server is not an export crate of the workspace display"
         ]
     );
 }
@@ -1364,13 +1366,13 @@ fn the_desktop_reaches_only_export_crates_of_the_framework() {
     for (dependency, path, expected) in [
         (
             "kosmo-ui",
-            "../framework/kosmo-ui",
-            "desktop/kosmo-calc/Cargo.toml: [dependencies] kosmo-ui: kosmo-ui is not an export crate of the workspace framework",
+            "../framework/ui",
+            "desktop/calc/Cargo.toml: [dependencies] kosmo-ui: kosmo-ui is not an export crate of the workspace framework",
         ),
         (
             "kosmo-types",
-            "../display/kosmo-types",
-            "desktop/kosmo-calc/Cargo.toml: [dependencies] kosmo-types: crates of desktop may not depend on crates of display",
+            "../display/types",
+            "desktop/calc/Cargo.toml: [dependencies] kosmo-types: crates of desktop may not depend on crates of display",
         ),
     ] {
         let found = problems_with(|files| {
@@ -1381,7 +1383,7 @@ fn the_desktop_reaches_only_export_crates_of_the_framework() {
             );
             append(
                 files,
-                "desktop/kosmo-calc/Cargo.toml",
+                "desktop/calc/Cargo.toml",
                 &format!("{dependency}.workspace = true\n"),
             );
         });
@@ -1395,37 +1397,37 @@ fn pure_core_crates_depend_only_on_pure_core_crates() {
         append(
             files,
             TABLE,
-            "\n[crates.kosmo-d0]\npath = \"display/kosmo-d0\"\nlayer = \"D0\"\nexport = false\npure-core = false\npublish = false\n",
+            "\n[crates.kosmo-d0]\npath = \"display/d0\"\nlayer = \"D0\"\nexport = false\npure-core = false\npublish = false\n",
         );
         edit(
             files,
             "display/Cargo.toml",
             "members = [",
-            "members = [\"kosmo-d0\", ",
+            "members = [\"d0\", ",
         );
         declare(
             files,
             "display",
-            "kosmo-d0 = { path = \"kosmo-d0\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-d0 = { path = \"d0\", version = \"=0.1.0-dev.1\" }",
         );
         files.insert(
-            "display/kosmo-d0/Cargo.toml".to_string(),
+            "display/d0/Cargo.toml".to_string(),
             crate_manifest("kosmo-d0", &[]),
         );
         files.insert(
-            "display/kosmo-d0/src/lib.rs".to_string(),
+            "display/d0/src/lib.rs".to_string(),
             "//! A crate that is not pure core.\n".to_string(),
         );
         append(
             files,
-            "display/kosmo-scene/Cargo.toml",
+            "display/scene/Cargo.toml",
             "kosmo-d0.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "display/kosmo-scene/Cargo.toml: [dependencies] kosmo-d0: the pure-core crate kosmo-scene may depend only on pure-core crates; kosmo-d0 is not one"
+            "display/scene/Cargo.toml: [dependencies] kosmo-d0: the pure-core crate kosmo-scene may depend only on pure-core crates; kosmo-d0 is not one"
         ]
     );
 }
@@ -1436,24 +1438,24 @@ fn rejects_a_cycle_through_a_dev_dependency() {
         edit(
             files,
             TABLE,
-            "[crates.kosmo-math-model]\npath = \"framework/kosmo-math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\n",
-            "[crates.kosmo-math-model]\npath = \"framework/kosmo-math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\nsame-layer = [\"kosmo-jobs\"]\n",
+            "[crates.kosmo-math-model]\npath = \"framework/math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\n",
+            "[crates.kosmo-math-model]\npath = \"framework/math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\nsame-layer = [\"kosmo-jobs\"]\n",
         );
         declare(
             files,
             "framework",
-            "kosmo-jobs = { path = \"kosmo-jobs\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-jobs = { path = \"jobs\", version = \"=0.1.0-dev.1\" }",
         );
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dev-dependencies]\nkosmo-jobs.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "framework/kosmo-jobs/Cargo.toml: the internal dependency graph has a cycle: kosmo-jobs -> kosmo-math-model -> kosmo-jobs"
+            "framework/jobs/Cargo.toml: the internal dependency graph has a cycle: kosmo-jobs -> kosmo-math-model -> kosmo-jobs"
         ]
     );
 }
@@ -1464,14 +1466,14 @@ fn target_and_build_dependencies_follow_the_directions() {
         let found = problems_with(|files| {
             append(
                 files,
-                "framework/kosmo-math-model/Cargo.toml",
+                "framework/math-model/Cargo.toml",
                 &format!("\n[{table}]\nkosmo-ui.workspace = true\n"),
             );
         });
         assert_eq!(
             found,
             [format!(
-                "framework/kosmo-math-model/Cargo.toml: [{table}] kosmo-ui: a crate of layer F0 may not depend on kosmo-ui of the higher layer F1"
+                "framework/math-model/Cargo.toml: [{table}] kosmo-ui: a crate of layer F0 may not depend on kosmo-ui of the higher layer F1"
             )]
         );
     }
@@ -1500,7 +1502,7 @@ fn rejects_krepi_packages() {
         declare(files, "desktop", "krepi-abi = \"=0.1.0\"");
         append(
             files,
-            "desktop/kosmo-shell/Cargo.toml",
+            "desktop/shell/Cargo.toml",
             "krepi-abi.workspace = true\n",
         );
         append(files, "xtask/Cargo.toml", "krepi_sys = \"=0.1.0\"\n");
@@ -1658,8 +1660,8 @@ fn paths_do_not_pass_through_symbolic_links() {
     edit(
         &mut files,
         "desktop/Cargo.toml",
-        "kosmo-calc = { path = \"kosmo-calc\"",
-        "kosmo-calc = { path = \"kosmo/src/up/kosmo-calc\"",
+        "kosmo-calc = { path = \"calc\"",
+        "kosmo-calc = { path = \"kosmo/src/up/calc\"",
     );
     let mut tree = tree(&files);
     // The link itself stays inside desktop/.
@@ -1673,7 +1675,7 @@ fn paths_do_not_pass_through_symbolic_links() {
         check(&tree, &ALL),
         [
             format!(
-                "desktop/Cargo.toml: [workspace.dependencies] kosmo-calc: the path kosmo/src/up/kosmo-calc {rule}"
+                "desktop/Cargo.toml: [workspace.dependencies] kosmo-calc: the path kosmo/src/up/calc {rule}"
             ),
             format!("desktop/kosmo/Cargo.toml: the target path src/up/../other.rs {rule}"),
             format!("desktop/kosmo/far: the symbolic link to src/up/../x {rule}"),
@@ -1776,7 +1778,7 @@ fn a_pure_core_crate_is_unconditionally_no_std() {
     let found = problems_with(|files| {
         edit(
             files,
-            "display/kosmo-types/src/lib.rs",
+            "display/types/src/lib.rs",
             "#![no_std]",
             "#![cfg_attr(not(test), no_std)]",
         );
@@ -1784,7 +1786,7 @@ fn a_pure_core_crate_is_unconditionally_no_std() {
     assert_eq!(
         found,
         [
-            "display/kosmo-types/src/lib.rs: the pure-core crate kosmo-types must have an unconditional #![no_std]"
+            "display/types/src/lib.rs: the pure-core crate kosmo-types must have an unconditional #![no_std]"
         ]
     );
 }
@@ -1794,7 +1796,7 @@ fn a_pure_core_crate_forbids_unsafe_code() {
     let found = problems_with(|files| {
         edit(
             files,
-            "display/kosmo-types/src/lib.rs",
+            "display/types/src/lib.rs",
             "#![forbid(unsafe_code)]\n",
             "",
         );
@@ -1802,7 +1804,7 @@ fn a_pure_core_crate_forbids_unsafe_code() {
     assert_eq!(
         found,
         [
-            "display/kosmo-types/src/lib.rs: the pure-core crate kosmo-types must have #![forbid(unsafe_code)]"
+            "display/types/src/lib.rs: the pure-core crate kosmo-types must have #![forbid(unsafe_code)]"
         ]
     );
 }
@@ -1811,21 +1813,19 @@ fn a_pure_core_crate_forbids_unsafe_code() {
 fn a_pure_core_crate_has_no_build_script_even_when_marked() {
     let found = problems_with(|files| {
         files.insert(
-            "display/kosmo-types/build.rs".to_string(),
+            "display/types/build.rs".to_string(),
             "fn main() {}\n".to_string(),
         );
         edit(
             files,
             TABLE,
-            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\n",
-            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\nbuild-script = true\n",
+            "[crates.kosmo-types]\npath = \"display/types\"\n",
+            "[crates.kosmo-types]\npath = \"display/types\"\nbuild-script = true\n",
         );
     });
     assert_eq!(
         found,
-        [
-            "display/kosmo-types/Cargo.toml: the pure-core crate kosmo-types may not have a build script"
-        ]
+        ["display/types/Cargo.toml: the pure-core crate kosmo-types may not have a build script"]
     );
 }
 
@@ -1835,14 +1835,14 @@ fn a_pure_core_crate_has_no_external_dependencies() {
         declare(files, "display", "foo = \"=1.0.0\"");
         append(
             files,
-            "display/kosmo-scene/Cargo.toml",
+            "display/scene/Cargo.toml",
             "\n[dev-dependencies]\nfoo.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "display/kosmo-scene/Cargo.toml: [dev-dependencies] foo: the pure-core crate kosmo-scene may not have external dependencies"
+            "display/scene/Cargo.toml: [dev-dependencies] foo: the pure-core crate kosmo-scene may not have external dependencies"
         ]
     );
 }
@@ -1852,7 +1852,7 @@ fn interior_mutability_is_found_in_macros_and_raw_identifiers() {
     let found = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/src/lib.rs",
+            "display/scene/src/lib.rs",
             "use core::sync::atomic;\nm!(Cell::new(1));\npub fn f(r#OnceCell: u8) {}\npub type U = UnsafeCell<u8>;\n",
         );
     });
@@ -1860,10 +1860,10 @@ fn interior_mutability_is_found_in_macros_and_raw_identifiers() {
     assert_eq!(
         found,
         [
-            format!("display/kosmo-scene/src/lib.rs:7: {rule} atomic"),
-            format!("display/kosmo-scene/src/lib.rs:8: {rule} Cell"),
-            format!("display/kosmo-scene/src/lib.rs:9: {rule} OnceCell"),
-            format!("display/kosmo-scene/src/lib.rs:10: {rule} UnsafeCell"),
+            format!("display/scene/src/lib.rs:7: {rule} atomic"),
+            format!("display/scene/src/lib.rs:8: {rule} Cell"),
+            format!("display/scene/src/lib.rs:9: {rule} OnceCell"),
+            format!("display/scene/src/lib.rs:10: {rule} UnsafeCell"),
         ]
     );
 }
@@ -1871,16 +1871,12 @@ fn interior_mutability_is_found_in_macros_and_raw_identifiers() {
 #[test]
 fn a_pure_core_crate_uses_std_only_in_tests() {
     let found = problems_with(|files| {
-        append(
-            files,
-            "display/kosmo-scene/src/lib.rs",
-            "extern crate std;\n",
-        );
+        append(files, "display/scene/src/lib.rs", "extern crate std;\n");
     });
     assert_eq!(
         found,
         [
-            "display/kosmo-scene/src/lib.rs:7: the pure-core crate kosmo-scene may not use extern crate std outside #[cfg(test)]; the attribute stands directly on the extern crate item"
+            "display/scene/src/lib.rs:7: the pure-core crate kosmo-scene may not use extern crate std outside #[cfg(test)]; the attribute stands directly on the extern crate item"
         ]
     );
 }
@@ -1890,36 +1886,36 @@ fn a_pure_core_crate_keeps_its_code_under_src() {
     let root = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/Cargo.toml",
+            "display/scene/Cargo.toml",
             "\n[lib]\npath = \"lib.rs\"\n",
         );
         let text = files
-            .remove("display/kosmo-scene/src/lib.rs")
+            .remove("display/scene/src/lib.rs")
             .expect("the library root exists");
         files.insert(
-            "display/kosmo-scene/lib.rs".to_string(),
+            "display/scene/lib.rs".to_string(),
             format!("{text}use core::cell::RefCell;\n"),
         );
     });
     assert_eq!(
         root,
         [
-            "display/kosmo-scene/Cargo.toml: the library root display/kosmo-scene/lib.rs of the pure-core crate kosmo-scene is not a .rs file under display/kosmo-scene/src/"
+            "display/scene/Cargo.toml: the library root display/scene/lib.rs of the pure-core crate kosmo-scene is not a .rs file under display/scene/src/"
         ]
     );
     let included = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/src/lib.rs",
+            "display/scene/src/lib.rs",
             "#[path = \"../imp.rs\"]\nmod imp;\ninclude!(\"../more.rs\");\n#[path = \"inner.rs\"]\nmod inner;\npub const DATA: &str = include_str!(\"../data.txt\");\n",
         );
     });
-    let rule = "the pure-core crate kosmo-scene brings in Rust code only from .rs files under display/kosmo-scene/src/";
+    let rule = "the pure-core crate kosmo-scene brings in Rust code only from .rs files under display/scene/src/";
     assert_eq!(
         included,
         [
-            format!("display/kosmo-scene/src/lib.rs:7: {rule}, not ../imp.rs"),
-            format!("display/kosmo-scene/src/lib.rs:9: {rule}, not ../more.rs"),
+            format!("display/scene/src/lib.rs:7: {rule}, not ../imp.rs"),
+            format!("display/scene/src/lib.rs:9: {rule}, not ../more.rs"),
         ]
     );
     // A #[path] inside an inline module starts from the module's
@@ -1928,31 +1924,29 @@ fn a_pure_core_crate_keeps_its_code_under_src() {
     let modules = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/src/lib.rs",
+            "display/scene/src/lib.rs",
             "mod a {\n    #[path = \"../b.rs\"]\n    mod b;\n}\n#[cfg_attr(all(), path = \"../imp.rs\")]\nmod imp;\n#[path = \"..\"]\nmod up {\n    mod hidden;\n}\n",
         );
-        files.insert("display/kosmo-scene/src/b.rs".to_string(), String::new());
+        files.insert("display/scene/src/b.rs".to_string(), String::new());
     });
     assert_eq!(
         modules,
         [
-            format!("display/kosmo-scene/src/lib.rs:11: {rule}, not ../imp.rs"),
-            format!("display/kosmo-scene/src/lib.rs:13: {rule}, not .."),
+            format!("display/scene/src/lib.rs:11: {rule}, not ../imp.rs"),
+            format!("display/scene/src/lib.rs:13: {rule}, not .."),
         ]
     );
     // A library root outside the workspace is reported only as that.
     let outside = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/Cargo.toml",
-            "\n[lib]\npath = \"../../framework/kosmo-ui/src/lib.rs\"\n",
+            "display/scene/Cargo.toml",
+            "\n[lib]\npath = \"../../framework/ui/src/lib.rs\"\n",
         );
     });
     assert_eq!(
         outside,
-        [
-            "display/kosmo-scene/Cargo.toml: the target path ../../framework/kosmo-ui/src/lib.rs leaves display/"
-        ]
+        ["display/scene/Cargo.toml: the target path ../../framework/ui/src/lib.rs leaves display/"]
     );
 }
 
@@ -1961,18 +1955,18 @@ fn a_pure_core_crate_keeps_code_behind_raw_identifiers_under_src() {
     let found = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/src/lib.rs",
+            "display/scene/src/lib.rs",
             "#[r#path = \"../imp.rs\"]\nmod imp;\nr#include!(\"../more.rs\");\n#[cfg_attr(all(), r#path = \"../cfg.rs\")]\nmod cfg;\n#[r#cfg_attr(all(), path = \"..\")]\nmod up {\n    mod hidden;\n}\n",
         );
     });
-    let rule = "the pure-core crate kosmo-scene brings in Rust code only from .rs files under display/kosmo-scene/src/";
+    let rule = "the pure-core crate kosmo-scene brings in Rust code only from .rs files under display/scene/src/";
     assert_eq!(
         found,
         [
-            format!("display/kosmo-scene/src/lib.rs:7: {rule}, not ../imp.rs"),
-            format!("display/kosmo-scene/src/lib.rs:9: {rule}, not ../more.rs"),
-            format!("display/kosmo-scene/src/lib.rs:10: {rule}, not ../cfg.rs"),
-            format!("display/kosmo-scene/src/lib.rs:12: {rule}, not .."),
+            format!("display/scene/src/lib.rs:7: {rule}, not ../imp.rs"),
+            format!("display/scene/src/lib.rs:9: {rule}, not ../more.rs"),
+            format!("display/scene/src/lib.rs:10: {rule}, not ../cfg.rs"),
+            format!("display/scene/src/lib.rs:12: {rule}, not .."),
         ]
     );
 }
@@ -1982,66 +1976,66 @@ fn a_pure_core_crate_keeps_the_inner_paths_of_inline_modules_under_src() {
     let found = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/src/lib.rs",
+            "display/scene/src/lib.rs",
             "mod a {\n    #![path = \"..\"]\n    mod hidden;\n}\nmod b {\n    #![cfg_attr(all(), path = \"../..\")]\n    mod c {\n        #[path = \"d.rs\"]\n        mod d;\n    }\n}\nmod e {\n    #![path = \"f/h\"]\n    #[path = \"../../g.rs\"]\n    mod g;\n}\n",
         );
     });
     // Under its condition, b reads c from display/, so d.rs may be
     // display/c/d.rs. The unconditional f/h replaces the name e, so g.rs is
     // src/g.rs.
-    let rule = "the pure-core crate kosmo-scene brings in Rust code only from .rs files under display/kosmo-scene/src/";
+    let rule = "the pure-core crate kosmo-scene brings in Rust code only from .rs files under display/scene/src/";
     assert_eq!(
         found,
         [
-            format!("display/kosmo-scene/src/lib.rs:8: {rule}, not .."),
-            format!("display/kosmo-scene/src/lib.rs:12: {rule}, not ../.."),
-            format!("display/kosmo-scene/src/lib.rs:14: {rule}, not d.rs"),
+            format!("display/scene/src/lib.rs:8: {rule}, not .."),
+            format!("display/scene/src/lib.rs:12: {rule}, not ../.."),
+            format!("display/scene/src/lib.rs:14: {rule}, not d.rs"),
         ]
     );
 }
 
 #[test]
 fn a_pure_core_crate_keeps_its_sources_as_regular_files() {
-    let rule = "the pure-core crate kosmo-scene keeps its sources under display/kosmo-scene/src/ as regular files, not symbolic links";
+    let rule = "the pure-core crate kosmo-scene keeps its sources under display/scene/src/ as regular files, not symbolic links";
     let mut files = valid();
     files.insert(
-        "display/kosmo-server/src/cells.rs".to_string(),
+        "display/server/src/cells.rs".to_string(),
         "use core::cell::RefCell;\npub type R = RefCell<u8>;\n".to_string(),
     );
-    append(&mut files, "display/kosmo-scene/src/lib.rs", "mod imp;\n");
+    append(&mut files, "display/scene/src/lib.rs", "mod imp;\n");
     let mut module = tree(&files);
     module.insert(
-        "display/kosmo-scene/src/imp.rs",
-        Entry::Symlink("../../kosmo-server/src/cells.rs".to_string()),
+        "display/scene/src/imp.rs",
+        Entry::Symlink("../../server/src/cells.rs".to_string()),
     );
     assert_eq!(
         check(&module, &ALL),
-        [format!("display/kosmo-scene/src/imp.rs: {rule}")]
+        [format!("display/scene/src/imp.rs: {rule}")]
     );
     let mut files = valid();
     let text = files
-        .remove("display/kosmo-scene/src/lib.rs")
+        .remove("display/scene/src/lib.rs")
         .expect("the library root exists");
-    files.insert("display/kosmo-server/src/core.rs".to_string(), text);
+    files.insert("display/server/src/core.rs".to_string(), text);
     let mut root = tree(&files);
     root.insert(
-        "display/kosmo-scene/src/lib.rs",
-        Entry::Symlink("../../kosmo-server/src/core.rs".to_string()),
+        "display/scene/src/lib.rs",
+        Entry::Symlink("../../server/src/core.rs".to_string()),
     );
     assert_eq!(
         check(&root, &ALL),
-        [format!("display/kosmo-scene/src/lib.rs: {rule}")]
+        [format!("display/scene/src/lib.rs: {rule}")]
     );
     let mut files = valid();
-    files.remove("display/kosmo-scene/src/lib.rs");
+    files.remove("display/scene/src/lib.rs");
     let mut directory = tree(&files);
     directory.insert(
-        "display/kosmo-scene/src",
-        Entry::Symlink("../kosmo-server/src".to_string()),
+        "display/scene/src",
+        Entry::Symlink("../server/src".to_string()),
     );
     assert_eq!(
         check(&directory, &ALL),
-        [format!("display/kosmo-scene/src: {rule}")]
+        [format!("display/scene/src: {rule}")]
     );
 }
 
@@ -2051,14 +2045,14 @@ fn a_pure_core_crate_keeps_its_sources_as_regular_files() {
 fn build_scripts_need_the_mark() {
     let file = problems_with(|files| {
         files.insert(
-            "display/kosmo-server/build.rs".to_string(),
+            "display/server/build.rs".to_string(),
             "fn main() {}\n".to_string(),
         );
     });
     let key = problems_with(|files| {
         edit(
             files,
-            "display/kosmo-server/Cargo.toml",
+            "display/server/Cargo.toml",
             "name = \"kosmo-server\"\n",
             "name = \"kosmo-server\"\nbuild = \"gen.rs\"\n",
         );
@@ -2067,7 +2061,7 @@ fn build_scripts_need_the_mark() {
         assert_eq!(
             found,
             [
-                "display/kosmo-server/Cargo.toml: the crate kosmo-server has a build script, which the layout table does not allow"
+                "display/server/Cargo.toml: the crate kosmo-server has a build script, which the layout table does not allow"
             ]
         );
     }
@@ -2078,21 +2072,21 @@ fn procedural_macros_need_the_mark_and_marks_need_their_target() {
     let proc_macro = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "\n[lib]\nproc-macro = true\n",
         );
     });
     assert_eq!(
         proc_macro,
         [
-            "framework/kosmo-render/Cargo.toml: the crate kosmo-render is a procedural-macro library, which the layout table does not allow"
+            "framework/render/Cargo.toml: the crate kosmo-render is a procedural-macro library, which the layout table does not allow"
         ]
     );
     // The crate type makes a procedural-macro library as well.
     let crate_type = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "\n[lib]\ncrate-type = [\"rlib\", \"proc-macro\"]\n",
         );
     });
@@ -2100,26 +2094,26 @@ fn procedural_macros_need_the_mark_and_marks_need_their_target() {
     let underscore = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "\n[lib]\ncrate_type = [\"rlib\"]\n",
         );
     });
     assert_eq!(
         underscore,
-        ["framework/kosmo-render/Cargo.toml: [lib] crate_type is not allowed; write crate-type"]
+        ["framework/render/Cargo.toml: [lib] crate_type is not allowed; write crate-type"]
     );
     let unused = problems_with(|files| {
         edit(
             files,
             TABLE,
-            "[crates.kosmo-render]\npath = \"framework/kosmo-render\"\n",
-            "[crates.kosmo-render]\npath = \"framework/kosmo-render\"\nbuild-script = true\n",
+            "[crates.kosmo-render]\npath = \"framework/render\"\n",
+            "[crates.kosmo-render]\npath = \"framework/render\"\nbuild-script = true\n",
         );
     });
     assert_eq!(
         unused,
         [
-            "framework/kosmo-render/Cargo.toml: the crate kosmo-render is marked build-script but has no build script"
+            "framework/render/Cargo.toml: the crate kosmo-render is marked build-script but has no build script"
         ]
     );
 }
@@ -2175,14 +2169,14 @@ fn every_crate_has_the_version_of_the_program() {
     let other = problems_with(|files| {
         edit(
             files,
-            "desktop/kosmo-calc/Cargo.toml",
+            "desktop/calc/Cargo.toml",
             "version.workspace = true",
             "version = \"0.1.0\"",
         );
     });
     assert_eq!(
         other,
-        ["desktop/kosmo-calc/Cargo.toml: the version 0.1.0 differs from 0.1.0-dev.1 of kosmo"]
+        ["desktop/calc/Cargo.toml: the version 0.1.0 differs from 0.1.0-dev.1 of kosmo"]
     );
     let without_program = problems_with(|files| {
         edit(
@@ -2236,31 +2230,24 @@ fn the_program_crate_has_a_version() {
 #[test]
 fn publish_agrees_with_the_table() {
     let unset = problems_with(|files| {
-        edit(
-            files,
-            "desktop/kosmo-shell/Cargo.toml",
-            "publish = false\n",
-            "",
-        );
+        edit(files, "desktop/shell/Cargo.toml", "publish = false\n", "");
     });
     assert_eq!(
         unset,
-        [
-            "desktop/kosmo-shell/Cargo.toml: publish must be false, as the layout table marks the crate"
-        ]
+        ["desktop/shell/Cargo.toml: publish must be false, as the layout table marks the crate"]
     );
     let publishable = problems_with(|files| {
         edit(
             files,
             TABLE,
-            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\nlayer = \"D0\"\npublish = false\n",
-            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\nlayer = \"D0\"\npublish = true\n",
+            "[crates.kosmo-types]\npath = \"display/types\"\nlayer = \"D0\"\npublish = false\n",
+            "[crates.kosmo-types]\npath = \"display/types\"\nlayer = \"D0\"\npublish = true\n",
         );
     });
     assert_eq!(
         publishable,
         [
-            "display/kosmo-types/Cargo.toml: publish may not be false; the layout table marks the crate publishable"
+            "display/types/Cargo.toml: publish may not be false; the layout table marks the crate publishable"
         ]
     );
     let never = problems_with(|files| {
@@ -2284,14 +2271,14 @@ fn a_pure_core_crate_does_not_test_with_a_provisional_crate() {
     let found = problems_with(|files| {
         append(
             files,
-            "display/kosmo-scene/Cargo.toml",
+            "display/scene/Cargo.toml",
             "\n[dev-dependencies]\nkosmo-proto.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "display/kosmo-scene/Cargo.toml: [dev-dependencies] kosmo-proto: the pure-core crate kosmo-scene may not depend on the provisional crate kosmo-proto"
+            "display/scene/Cargo.toml: [dev-dependencies] kosmo-proto: the pure-core crate kosmo-scene may not depend on the provisional crate kosmo-proto"
         ]
     );
 }
@@ -2312,7 +2299,7 @@ fn forbidden(file: &str, line: usize, who: &str, item: &str, allowed_by: Option<
 
 /// The library root of the core library `kosmo-render`, whose first line is
 /// its documentation.
-const RENDER_LIB: &str = "framework/kosmo-render/src/lib.rs";
+const RENDER_LIB: &str = "framework/render/src/lib.rs";
 
 /// The problems of `kosmo-render` with `code` after the first line of its
 /// library root, as (line, item, category) of the expected problems.
@@ -2410,7 +2397,7 @@ fn forbidden_macros_types_and_functions_are_found() {
 
 #[test]
 fn kalyx_clocks_are_found() {
-    let lib = "framework/kosmo-math-kalyx/src/lib.rs";
+    let lib = "framework/math-kalyx/src/lib.rs";
     let found = problems_with(|files| {
         append(
             files,
@@ -2430,7 +2417,7 @@ fn kalyx_clocks_are_found() {
 
 #[test]
 fn a_registered_crate_uses_only_what_its_categories_allow() {
-    let lib = "framework/kosmo-jobs/src/lib.rs";
+    let lib = "framework/jobs/src/lib.rs";
     let found = problems_with(|files| {
         append(
             files,
@@ -2492,9 +2479,9 @@ fn core_alloc_and_allowed_std_items_are_not_uses() {
 #[test]
 fn a_crate_without_a_library_is_not_checked() {
     let found = problems_with(|files| {
-        files.remove("desktop/kosmo-calc/src/lib.rs");
+        files.remove("desktop/calc/src/lib.rs");
         files.insert(
-            "desktop/kosmo-calc/src/main.rs".to_string(),
+            "desktop/calc/src/main.rs".to_string(),
             "fn main() {\n    println!(\"{:?}\", std::fs::read(\"x\"));\n}\n".to_string(),
         );
     });
@@ -2504,22 +2491,22 @@ fn a_crate_without_a_library_is_not_checked() {
 #[test]
 fn a_crate_without_a_library_registers_no_platform_category() {
     let registered = problems_with(|files| {
-        files.remove("desktop/kosmo-calc/src/lib.rs");
+        files.remove("desktop/calc/src/lib.rs");
         files.insert(
-            "desktop/kosmo-calc/src/main.rs".to_string(),
+            "desktop/calc/src/main.rs".to_string(),
             "fn main() {}\n".to_string(),
         );
         edit(
             files,
             TABLE,
-            "[crates.kosmo-calc]\npath = \"desktop/kosmo-calc\"\n",
-            "[crates.kosmo-calc]\npath = \"desktop/kosmo-calc\"\nplatform = [\"threads\"]\n",
+            "[crates.kosmo-calc]\npath = \"desktop/calc\"\n",
+            "[crates.kosmo-calc]\npath = \"desktop/calc\"\nplatform = [\"threads\"]\n",
         );
     });
     assert_eq!(
         registered,
         [
-            "desktop/kosmo-calc/Cargo.toml: the crate kosmo-calc lists platform categories but has no library target; only a library crate registers them"
+            "desktop/calc/Cargo.toml: the crate kosmo-calc lists platform categories but has no library target; only a library crate registers them"
         ]
     );
 }
@@ -2545,8 +2532,8 @@ fn the_platform_column_names_known_categories_for_crates_that_are_not_pure_core(
         edit(
             files,
             TABLE,
-            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\n",
-            "[crates.kosmo-types]\npath = \"display/kosmo-types\"\nplatform = [\"threads\"]\n",
+            "[crates.kosmo-types]\npath = \"display/types\"\n",
+            "[crates.kosmo-types]\npath = \"display/types\"\nplatform = [\"threads\"]\n",
         );
     });
     assert_eq!(
@@ -2591,26 +2578,26 @@ fn reports_every_problem_sorted_by_path() {
     let found = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dependencies]\nkosmo-ui.workspace = true\n",
         );
         edit(
             files,
-            "display/kosmo-scene/src/lib.rs",
+            "display/scene/src/lib.rs",
             "extern crate alloc;\n",
             "use core::cell::RefCell;\nextern crate alloc;\n",
         );
         files.insert(
-            "desktop/kosmo-extra/Cargo.toml".to_string(),
+            "desktop/extra/Cargo.toml".to_string(),
             crate_manifest("kosmo-extra", &[]),
         );
     });
     assert_eq!(
         found,
         [
-            "desktop/kosmo-extra/Cargo.toml: kosmo-extra is not a crate of the layout table",
-            "display/kosmo-scene/src/lib.rs:4: the pure-core crate kosmo-scene may not use cell, RefCell",
-            "framework/kosmo-math-model/Cargo.toml: [dependencies] kosmo-ui: a crate of layer F0 may not depend on kosmo-ui of the higher layer F1",
+            "desktop/extra/Cargo.toml: kosmo-extra is not a crate of the layout table",
+            "display/scene/src/lib.rs:4: the pure-core crate kosmo-scene may not use cell, RefCell",
+            "framework/math-model/Cargo.toml: [dependencies] kosmo-ui: a crate of layer F0 may not depend on kosmo-ui of the higher layer F1",
         ]
     );
 }
@@ -2632,22 +2619,22 @@ fn first_party_applications_reach_other_workspaces_only_through_facades() {
     let client = problems_with(|files| {
         append(
             files,
-            "desktop/kosmo-calc/Cargo.toml",
+            "desktop/calc/Cargo.toml",
             "kosmo-client.workspace = true\n",
         );
     });
     assert_eq!(
         client,
         [
-            "desktop/kosmo-calc/Cargo.toml: [dependencies] kosmo-client: a crate of layer S1 depends on other workspaces only through facade crates; kosmo-client is not one"
+            "desktop/calc/Cargo.toml: [dependencies] kosmo-client: a crate of layer S1 depends on other workspaces only through facade crates; kosmo-client is not one"
         ]
     );
     let facade = problems_with(|files| {
         edit(
             files,
             TABLE,
-            "[crates.kosmo-ui]\npath = \"framework/kosmo-ui\"\n",
-            "[crates.kosmo-ui]\npath = \"framework/kosmo-ui\"\nfacade = true\n",
+            "[crates.kosmo-ui]\npath = \"framework/ui\"\n",
+            "[crates.kosmo-ui]\npath = \"framework/ui\"\nfacade = true\n",
         );
     });
     assert_eq!(
@@ -2664,14 +2651,14 @@ fn an_export_crate_has_no_external_dependencies() {
         declare(files, "framework", "foo = \"=1.0.0\"");
         append(
             files,
-            "framework/kosmo-client/Cargo.toml",
+            "framework/client/Cargo.toml",
             "foo.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [
-            "framework/kosmo-client/Cargo.toml: [dependencies] foo: the export crate kosmo-client may not have external dependencies"
+            "framework/client/Cargo.toml: [dependencies] foo: the export crate kosmo-client may not have external dependencies"
         ]
     );
 }
@@ -2691,7 +2678,7 @@ fn the_kalyx_adapter_may_declare_kalyx_in_any_table() {
     let found = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-math-kalyx/Cargo.toml",
+            "framework/math-kalyx/Cargo.toml",
             "\n[dev-dependencies]\nkalyx.workspace = true\n\n[target.'cfg(unix)'.build-dependencies]\nkalyx.workspace = true\n",
         );
     });
@@ -2702,10 +2689,7 @@ fn the_kalyx_adapter_may_declare_kalyx_in_any_table() {
 fn no_other_crate_declares_kalyx_in_any_table() {
     // kosmo-ui is in layer F1, the layer of the kalyx adapter, and already
     // has a [dependencies] table.
-    for manifest in [
-        "framework/kosmo-render/Cargo.toml",
-        "framework/kosmo-ui/Cargo.toml",
-    ] {
+    for manifest in ["framework/render/Cargo.toml", "framework/ui/Cargo.toml"] {
         for table in [
             "dependencies",
             "dev-dependencies",
@@ -2734,15 +2718,15 @@ fn an_export_crate_may_not_declare_kalyx_either() {
     let found = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-client/Cargo.toml",
+            "framework/client/Cargo.toml",
             "kalyx.workspace = true\n",
         );
     });
     assert_problems(
         &found,
         &[
-            &declares_kalyx("framework/kosmo-client/Cargo.toml", "dependencies", "kalyx"),
-            "framework/kosmo-client/Cargo.toml: [dependencies] kalyx: the export crate kosmo-client may not have external dependencies",
+            &declares_kalyx("framework/client/Cargo.toml", "dependencies", "kalyx"),
+            "framework/client/Cargo.toml: [dependencies] kalyx: the export crate kosmo-client may not have external dependencies",
         ],
     );
 }
@@ -2753,14 +2737,14 @@ fn crates_of_other_workspaces_may_not_declare_kalyx() {
         declare(files, "desktop", "kalyx = \"=0.1.0\"");
         append(
             files,
-            "desktop/kosmo-shell/Cargo.toml",
+            "desktop/shell/Cargo.toml",
             "kalyx.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [declares_kalyx(
-            "desktop/kosmo-shell/Cargo.toml",
+            "desktop/shell/Cargo.toml",
             "dependencies",
             "kalyx"
         )]
@@ -2777,7 +2761,7 @@ fn kalyx_is_found_by_its_package_name_when_renamed() {
         );
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dependencies]\ncalc.workspace = true\n",
         );
     });
@@ -2785,30 +2769,22 @@ fn kalyx_is_found_by_its_package_name_when_renamed() {
         &in_the_root,
         &[
             "framework/Cargo.toml: [workspace.dependencies] calc: may not rename a dependency",
-            &declares_kalyx(
-                "framework/kosmo-math-model/Cargo.toml",
-                "dependencies",
-                "calc",
-            ),
+            &declares_kalyx("framework/math-model/Cargo.toml", "dependencies", "calc"),
         ],
     );
     let in_the_crate = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dependencies]\ncalc = { version = \"=0.1.0\", package = \"kalyx\" }\n",
         );
     });
     assert_problems(
         &in_the_crate,
         &[
-            "framework/kosmo-math-model/Cargo.toml: [dependencies] calc: may not rename a dependency",
-            "framework/kosmo-math-model/Cargo.toml: [dependencies] calc: must be inherited with workspace = true from the workspace root",
-            &declares_kalyx(
-                "framework/kosmo-math-model/Cargo.toml",
-                "dependencies",
-                "calc",
-            ),
+            "framework/math-model/Cargo.toml: [dependencies] calc: may not rename a dependency",
+            "framework/math-model/Cargo.toml: [dependencies] calc: must be inherited with workspace = true from the workspace root",
+            &declares_kalyx("framework/math-model/Cargo.toml", "dependencies", "calc"),
         ],
     );
 }
@@ -2823,7 +2799,7 @@ fn an_entry_that_is_not_inherited_is_not_named_by_the_root() {
         );
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dependencies]\ncalc = \"=1.0.0\"\n",
         );
     });
@@ -2831,7 +2807,7 @@ fn an_entry_that_is_not_inherited_is_not_named_by_the_root() {
         &found,
         &[
             "framework/Cargo.toml: [workspace.dependencies] calc: may not rename a dependency",
-            "framework/kosmo-math-model/Cargo.toml: [dependencies] calc: must be inherited with workspace = true from the workspace root",
+            "framework/math-model/Cargo.toml: [dependencies] calc: must be inherited with workspace = true from the workspace root",
         ],
     );
 }
@@ -2842,7 +2818,7 @@ fn a_package_with_a_name_like_kalyx_is_not_kalyx() {
         declare(files, "framework", "kalyx-extra = \"=1.0.0\"");
         append(
             files,
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "\n[dependencies]\nkalyx-extra.workspace = true\n",
         );
     });
@@ -2859,7 +2835,7 @@ fn a_key_named_kalyx_that_renames_another_package_is_not_kalyx() {
         );
         append(
             files,
-            "desktop/kosmo-shell/Cargo.toml",
+            "desktop/shell/Cargo.toml",
             "kalyx.workspace = true\n",
         );
     });
@@ -2876,19 +2852,15 @@ fn an_inherited_kalyx_is_kalyx_whatever_package_the_entry_names() {
     let found = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dependencies]\nkalyx = { workspace = true, package = \"other\" }\n",
         );
     });
     assert_problems(
         &found,
         &[
-            "framework/kosmo-math-model/Cargo.toml: [dependencies] kalyx: may not rename a dependency",
-            &declares_kalyx(
-                "framework/kosmo-math-model/Cargo.toml",
-                "dependencies",
-                "kalyx",
-            ),
+            "framework/math-model/Cargo.toml: [dependencies] kalyx: may not rename a dependency",
+            &declares_kalyx("framework/math-model/Cargo.toml", "dependencies", "kalyx"),
         ],
     );
 }
@@ -2899,13 +2871,13 @@ fn an_inherited_entry_naming_kalyx_is_not_kalyx_when_its_root_declares_another()
         declare(files, "framework", "calc = \"=1.0.0\"");
         append(
             files,
-            "framework/kosmo-math-model/Cargo.toml",
+            "framework/math-model/Cargo.toml",
             "\n[dependencies]\ncalc = { workspace = true, package = \"kalyx\" }\n",
         );
     });
     assert_eq!(
         found,
-        ["framework/kosmo-math-model/Cargo.toml: [dependencies] calc: may not rename a dependency"]
+        ["framework/math-model/Cargo.toml: [dependencies] calc: may not rename a dependency"]
     );
 }
 
@@ -2949,7 +2921,7 @@ fn an_optional_kalyx_is_still_kalyx() {
         // kosmo-ui already has a [dependencies] table.
         edit(
             files,
-            "framework/kosmo-ui/Cargo.toml",
+            "framework/ui/Cargo.toml",
             "\n[dependencies]\n",
             "\n[dependencies]\nkalyx = { workspace = true, optional = true }\n",
         );
@@ -2957,7 +2929,7 @@ fn an_optional_kalyx_is_still_kalyx() {
     assert_problems(
         &found,
         &[&declares_kalyx(
-            "framework/kosmo-ui/Cargo.toml",
+            "framework/ui/Cargo.toml",
             "dependencies",
             "kalyx",
         )],
@@ -2982,15 +2954,15 @@ fn an_inherited_kalyx_that_its_root_does_not_declare_is_still_kalyx() {
     let found = problems_with(|files| {
         append(
             files,
-            "desktop/kosmo-shell/Cargo.toml",
+            "desktop/shell/Cargo.toml",
             "kalyx.workspace = true\n",
         );
     });
     assert_problems(
         &found,
         &[
-            &declares_kalyx("desktop/kosmo-shell/Cargo.toml", "dependencies", "kalyx"),
-            "desktop/kosmo-shell/Cargo.toml: [dependencies] kalyx: desktop/Cargo.toml does not declare it",
+            &declares_kalyx("desktop/shell/Cargo.toml", "dependencies", "kalyx"),
+            "desktop/shell/Cargo.toml: [dependencies] kalyx: desktop/Cargo.toml does not declare it",
         ],
     );
 }
@@ -3002,14 +2974,14 @@ fn kalyx_is_found_in_every_target_table_of_a_manifest() {
     let found = problems_with(|files| {
         append(
             files,
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "\n[target.'cfg(unix)'.dependencies]\nkosmo-types.workspace = true\n\n[target.'cfg(windows)'.dependencies]\nkalyx.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [declares_kalyx(
-            "framework/kosmo-render/Cargo.toml",
+            "framework/render/Cargo.toml",
             "target.'cfg(windows)'.dependencies",
             "kalyx"
         )]
@@ -3018,16 +2990,24 @@ fn kalyx_is_found_in_every_target_table_of_a_manifest() {
 
 #[test]
 fn a_crate_named_like_the_kalyx_adapter_may_not_declare_kalyx() {
-    // Names that end with the adapter's name, or with which it ends.
-    for name in ["extra-kosmo-math-kalyx", "math-kalyx"] {
+    // Names that end with the adapter's name, or with which it ends. In
+    // `framework/`, `math-kalyx` would have the adapter's directory, so it is
+    // a crate of `display/`.
+    for (name, workspace, layer) in [
+        ("extra-kosmo-math-kalyx", "framework", "F1"),
+        ("math-kalyx", "display", "D3"),
+    ] {
         let mut crates = CRATES.to_vec();
-        crates.push((name, "framework", "F1", "", &["kalyx"]));
+        crates.push((name, workspace, layer, "", &["kalyx"]));
         let mut files = layout_of(&crates, &DECLARED);
         declare(&mut files, "framework", "kalyx = \"=0.1.0\"");
+        if workspace != "framework" {
+            declare(&mut files, workspace, "kalyx = \"=0.1.0\"");
+        }
         assert_eq!(
             check(&tree(&files), &ALL),
             [declares_kalyx(
-                &format!("framework/{name}/Cargo.toml"),
+                &format!("{workspace}/{name}/Cargo.toml"),
                 "dependencies",
                 "kalyx"
             )]
@@ -3041,14 +3021,14 @@ fn crates_of_the_display_workspace_may_not_declare_kalyx() {
         declare(files, "display", "kalyx = \"=0.1.0\"");
         append(
             files,
-            "display/kosmo-server/Cargo.toml",
+            "display/server/Cargo.toml",
             "kalyx.workspace = true\n",
         );
     });
     assert_eq!(
         found,
         [declares_kalyx(
-            "display/kosmo-server/Cargo.toml",
+            "display/server/Cargo.toml",
             "dependencies",
             "kalyx"
         )]
@@ -3061,11 +3041,11 @@ fn crates_may_reach_kalyx_through_the_adapter() {
         declare(
             files,
             "framework",
-            "kosmo-math-kalyx = { path = \"kosmo-math-kalyx\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-math-kalyx = { path = \"math-kalyx\", version = \"=0.1.0-dev.1\" }",
         );
         append(
             files,
-            "framework/kosmo-sdk/Cargo.toml",
+            "framework/sdk/Cargo.toml",
             "kosmo-math-kalyx.workspace = true\n",
         );
     });

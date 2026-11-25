@@ -16,7 +16,7 @@ use support::Checked;
 use support::jobs::{FakeClock, KalyxJobs, Typed, typed};
 
 /// The manifest of the job layer's crate.
-const JOBS_MANIFEST: &str = include_str!("../../kosmo-jobs/Cargo.toml");
+const JOBS_MANIFEST: &str = include_str!("../../jobs/Cargo.toml");
 
 /// What the contract saw of a job that ran to its end and of a job that was
 /// cancelled while queued.

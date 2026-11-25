@@ -50,7 +50,7 @@ when it runs, with the value `2*x` at the versions 3, 0 and 0.
 
 On its own, the host stub runs one job at a time in submission order, so the
 old job always finishes first. Two test gates in
-`framework/kosmo-scratchpad/tests/support/gates.rs` arrange the other
+`framework/scratchpad/tests/support/gates.rs` arrange the other
 orders. They implement only the public ports of the job layer, so neither the
 job layer nor the host stub changes for the test:
 
@@ -115,7 +115,7 @@ order of the deliveries:
 The last line of each order writes `shown` and the shown result, or `shown -`
 when no delivery was judged current. The context version is always 0 and is
 not written. The checked-in record,
-`framework/kosmo-scratchpad/tests/data/resubmitted-input.txt`, is:
+`framework/scratchpad/tests/data/resubmitted-input.txt`, is:
 
 ```text
 cancel: job 1 diff x x^2: stale: cancelled (source 3, settings 0)
@@ -153,8 +153,8 @@ change of the expected record is a change of the file under review.
 ## Requirements
 
 The tests are integration tests: `tests/resubmitted_input.rs` in
-`framework/kosmo-scratchpad` and `tests/derivative_by_structure.rs` in
-`framework/kosmo-math-kalyx`, named here with their file. Both run jobs on
+`framework/scratchpad` and `tests/derivative_by_structure.rs` in
+`framework/math-kalyx`, named here with their file. Both run jobs on
 the host stub with the kalyx runner and a clock that always reads 0, and no
 test sleeps or reads the wall clock.
 

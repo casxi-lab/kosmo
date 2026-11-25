@@ -3,7 +3,7 @@
 # conformance tests. It depends on no other product workspace.
 [workspace]
 resolver = "3"
-members = ["kosmo-types"]
+members = ["types"]
 
 [workspace.package]
 version = "0.1.0-dev.1"

@@ -75,28 +75,28 @@ lock-allowlist = "xtask/allowlist.toml"
 /// `kosmo-render` and `kosmo-ui`.
 const CRATES: &str = r#"
 [crates.kosmo-types]
-path = "display/kosmo-types"
+path = "display/types"
 layer = "D0"
 export = true
 pure-core = true
 publish = false
 
 [crates.kosmo-server]
-path = "display/kosmo-server"
+path = "display/server"
 layer = "D3"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-math-model]
-path = "framework/kosmo-math-model"
+path = "framework/math-model"
 layer = "F0"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-jobs]
-path = "framework/kosmo-jobs"
+path = "framework/jobs"
 layer = "F0"
 export = false
 pure-core = false
@@ -104,7 +104,7 @@ publish = false
 same-layer = ["kosmo-math-model"]
 
 [crates.kosmo-render]
-path = "framework/kosmo-render"
+path = "framework/render"
 layer = "F0"
 export = false
 pure-core = false
@@ -118,7 +118,7 @@ features = ["x"]
 resolved-features = ["x"]
 
 [crates.kosmo-ui]
-path = "framework/kosmo-ui"
+path = "framework/ui"
 layer = "F1"
 export = false
 pure-core = false
@@ -133,7 +133,7 @@ features = []
 resolved-features = ["default"]
 
 [crates.kosmo-calc]
-path = "desktop/kosmo-calc"
+path = "desktop/calc"
 layer = "S1"
 export = false
 pure-core = false
@@ -535,13 +535,13 @@ pub struct Model {
 
 /// The valid model, with crates in all three product workspaces.
 pub fn valid() -> Model {
-    let render = Pkg::member("framework/kosmo-render", "kosmo-render")
+    let render = Pkg::member("framework/render", "kosmo-render")
         .dep(Dep::new("foo@1.0.0", "=1.0.0").features(false, &["x"]));
-    let ui = Pkg::member("framework/kosmo-ui", "kosmo-ui")
+    let ui = Pkg::member("framework/ui", "kosmo-ui")
         .dep(Dep::new("kosmo-render@0.1.0-dev.1", "=0.1.0-dev.1"))
         .dep(Dep::new("kosmo-types@0.1.0-dev.1", "=0.1.0-dev.1"))
         .dep(Dep::new("qa@0.3.0", "=0.3.0").kind("dev"));
-    let types_dir = format!("{ROOT}/display/kosmo-types");
+    let types_dir = format!("{ROOT}/display/types");
     let workspaces = vec![
         Ws {
             dir: "xtask".to_string(),
@@ -554,16 +554,16 @@ pub fn valid() -> Model {
         Ws {
             dir: "display".to_string(),
             packages: vec![
-                Pkg::member("display/kosmo-types", "kosmo-types"),
-                Pkg::member("display/kosmo-server", "kosmo-server")
+                Pkg::member("display/types", "kosmo-types"),
+                Pkg::member("display/server", "kosmo-server")
                     .dep(Dep::new("kosmo-types@0.1.0-dev.1", "=0.1.0-dev.1")),
             ],
         },
         Ws {
             dir: "framework".to_string(),
             packages: vec![
-                Pkg::member("framework/kosmo-math-model", "kosmo-math-model"),
-                Pkg::member("framework/kosmo-jobs", "kosmo-jobs")
+                Pkg::member("framework/math-model", "kosmo-math-model"),
+                Pkg::member("framework/jobs", "kosmo-jobs")
                     .dep(Dep::new("kosmo-math-model@0.1.0-dev.1", "=0.1.0-dev.1")),
                 render,
                 ui,
@@ -582,7 +582,7 @@ pub fn valid() -> Model {
         Ws {
             dir: "desktop".to_string(),
             packages: vec![
-                Pkg::member("desktop/kosmo-calc", "kosmo-calc"),
+                Pkg::member("desktop/calc", "kosmo-calc"),
                 Pkg::member("desktop/kosmo", "kosmo")
                     .dep(Dep::new("kosmo-calc@0.1.0-dev.1", "=0.1.0-dev.1")),
             ],

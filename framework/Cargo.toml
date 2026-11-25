@@ -4,12 +4,12 @@
 [workspace]
 resolver = "3"
 members = [
-    "kosmo-jobs",
-    "kosmo-math-kalyx",
-    "kosmo-math-model",
-    "kosmo-scratchpad",
-    "kosmo-sdk",
-    "kosmo-ui",
+    "jobs",
+    "math-kalyx",
+    "math-model",
+    "scratchpad",
+    "sdk",
+    "ui",
 ]
 
 [workspace.package]
@@ -20,11 +20,11 @@ rust-version = "1.99"
 
 [workspace.dependencies]
 kalyx = "=0.1.0"
-kosmo-jobs = { path = "kosmo-jobs", version = "=0.1.0-dev.1" }
-kosmo-math-kalyx = { path = "kosmo-math-kalyx", version = "=0.1.0-dev.1" }
-kosmo-math-model = { path = "kosmo-math-model", version = "=0.1.0-dev.1" }
-kosmo-scratchpad = { path = "kosmo-scratchpad", version = "=0.1.0-dev.1" }
-kosmo-types = { path = "../display/kosmo-types", version = "=0.1.0-dev.1" }
+kosmo-jobs = { path = "jobs", version = "=0.1.0-dev.1" }
+kosmo-math-kalyx = { path = "math-kalyx", version = "=0.1.0-dev.1" }
+kosmo-math-model = { path = "math-model", version = "=0.1.0-dev.1" }
+kosmo-scratchpad = { path = "scratchpad", version = "=0.1.0-dev.1" }
+kosmo-types = { path = "../display/types", version = "=0.1.0-dev.1" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

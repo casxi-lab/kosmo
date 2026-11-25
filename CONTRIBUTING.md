@@ -608,7 +608,7 @@ used. kalyx 0.1.0 comes from crates.io too, and only the kalyx adapter crate
 `kosmo-math-kalyx` declares it, as the layout step checks. A change that moves
 kosmo to another kalyx version also replaces the copy of kalyx's answer
 vectors that
-[`framework/kosmo-math-kalyx/tests/data/README.md`](framework/kosmo-math-kalyx/tests/data/README.md)
+[`framework/math-kalyx/tests/data/README.md`](framework/math-kalyx/tests/data/README.md)
 describes; no step of the check compares the copy byte for byte with the
 package.
 

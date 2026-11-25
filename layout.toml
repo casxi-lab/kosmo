@@ -121,21 +121,21 @@ lock-allowlist = "xtask/allowlist.toml"
 # resolves, the deps step prints all the entries that the crate should have,
 # or, when it should have none, says that they all go.
 [crates.kosmo-types]
-path = "display/kosmo-types"
+path = "display/types"
 layer = "D0"
 export = true
 pure-core = true
 publish = false
 
 [crates.kosmo-math-model]
-path = "framework/kosmo-math-model"
+path = "framework/math-model"
 layer = "F0"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-jobs]
-path = "framework/kosmo-jobs"
+path = "framework/jobs"
 layer = "F0"
 export = false
 pure-core = false
@@ -144,7 +144,7 @@ same-layer = ["kosmo-math-model"]
 platform = ["threads"]
 
 [crates.kosmo-math-kalyx]
-path = "framework/kosmo-math-kalyx"
+path = "framework/math-kalyx"
 layer = "F1"
 export = false
 pure-core = false
@@ -158,21 +158,21 @@ features = []
 resolved-features = []
 
 [crates.kosmo-ui]
-path = "framework/kosmo-ui"
+path = "framework/ui"
 layer = "F1"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-scratchpad]
-path = "framework/kosmo-scratchpad"
+path = "framework/scratchpad"
 layer = "F3"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-sdk]
-path = "framework/kosmo-sdk"
+path = "framework/sdk"
 layer = "F3"
 export = true
 facade = true
