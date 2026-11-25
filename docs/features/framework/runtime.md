@@ -289,11 +289,11 @@ generation, of its latest `Event::FocusIn`, and whether it holds focus;
 another stamp is ignored. A key event is checked once, in one place, before
 dispatch, and is dropped with its reason when:
 
-| `Dropped` | When |
+| Reason in the record | When |
 | --- | --- |
-| `Epoch` | its epoch differs from the epoch of the surface's latest focus in |
-| `Generation` | its focus generation differs from that of the latest focus in |
-| `NoFocus` | its surface does not hold focus |
+| `epoch` | its epoch differs from the epoch of the surface's latest focus in |
+| `generation` | its focus generation differs from that of the latest focus in |
+| `no-focus` | its surface does not hold focus |
 
 So a key of an earlier focus generation never reaches the new view.
 `Runtime::counts` gives the number of drops for each reason.

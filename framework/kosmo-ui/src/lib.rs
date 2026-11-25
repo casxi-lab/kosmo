@@ -130,13 +130,13 @@ pub use command::{
     Binding, CANCEL_JOB, Command, CommandId, Conflict, DELETE_BACKWARD, EVALUATE_SELECTION,
     INSERT_TEXT, MINIMAL_KEY_MAP, MOVE_LEFT, MOVE_RIGHT, Mods, Trigger, check_table, resolve,
 };
-pub use focus::{Dropped, Event, Stamp, SurfaceId};
+pub use focus::{Event, Stamp, SurfaceId};
 pub use hit::{LayoutBox, LayoutError, LayoutResult, hit_test};
 pub use port::{Effect, JobPort, Receipt, execute};
 pub use record::Record;
 pub use round::{Counts, Input, Output, Round, Runtime, ViewPass};
 pub use slot::{Delivered, ResultSlot, Shown, Tagged};
-pub use timer::{Requester, TIMER_CAPACITY, TimerLabel};
+pub use timer::{TIMER_CAPACITY, TimerLabel};
 pub use tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, RebuildError, Tree, View, WidgetId};
 
 /// The longest that the event loop waits while jobs that it submitted have

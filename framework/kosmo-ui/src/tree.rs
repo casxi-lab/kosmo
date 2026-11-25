@@ -247,19 +247,6 @@ pub struct Tree<A: App> {
     live: usize,
 }
 
-impl<A: App> Default for Tree<A> {
-    fn default() -> Self {
-        Tree {
-            slots: Vec::new(),
-            free: Vec::new(),
-            root: None,
-            focused: None,
-            region: None,
-            live: 0,
-        }
-    }
-}
-
 /// One node of a planned rebuild, in view preorder.
 struct Planned<'v, C> {
     view: &'v View<C>,
@@ -271,8 +258,15 @@ struct Planned<'v, C> {
 
 impl<A: App> Tree<A> {
     /// An empty tree.
-    pub fn new() -> Tree<A> {
-        Tree::default()
+    pub(crate) fn new() -> Tree<A> {
+        Tree {
+            slots: Vec::new(),
+            free: Vec::new(),
+            root: None,
+            focused: None,
+            region: None,
+            live: 0,
+        }
     }
 
     /// The number of controls.

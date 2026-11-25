@@ -70,7 +70,7 @@ pub enum Event {
 
 /// Why the focus check dropped a key event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Dropped {
+pub(crate) enum Dropped {
     /// Its epoch differs from the epoch of the surface's latest focus in.
     Epoch,
     /// Its focus generation differs from the generation of the surface's

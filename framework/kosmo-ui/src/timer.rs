@@ -29,7 +29,7 @@ impl TimerLabel {
 
 /// Who requested a timer: the application or a control.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Requester {
+pub(crate) enum Requester {
     /// The application, which receives the timer as a message.
     App,
     /// A control, which receives the timer if it still exists.
