@@ -39,6 +39,8 @@ pub const PROGRAM: &str = "kosmo";
 const KALYX: &str = "kalyx";
 /// The kalyx adapter, the only crate that declares a dependency on kalyx.
 const KALYX_ADAPTER: &str = "kosmo-math-kalyx";
+/// The prefix of crate names that the directories of crates leave out.
+const CRATE_PREFIX: &str = "kosmo-";
 /// The only Cargo configuration file.
 pub const CARGO_CONFIG: &str = ".cargo/config.toml";
 /// The only alias that the Cargo configuration defines.
@@ -582,6 +584,23 @@ impl<'a> Index<'a> {
                     krate.path
                 ));
             }
+            // A path without a parent directory is never inside a workspace,
+            // which is reported below instead.
+            let directory = directory_name(name);
+            if let Some((parent, last)) = krate.path.rsplit_once('/')
+                && normalized
+                && last != directory
+            {
+                let rule = if directory == name {
+                    "its name".to_string()
+                } else {
+                    format!("its name without the prefix {CRATE_PREFIX}")
+                };
+                problems.push(format!(
+                    "{at}: the crate belongs in the directory {parent}/{directory}, {rule}, not {}",
+                    krate.path
+                ));
+            }
             if krate
                 .provisional
                 .as_ref()
@@ -735,6 +754,14 @@ fn validate_platform(at: &str, krate: &Crate, problems: &mut Vec<String>) {
             problems.push(format!("{at}: platform lists {category} twice"));
         }
     }
+}
+
+/// The name of the directory of the crate `name`, the last part of its path:
+/// the name without the prefix `kosmo-`, or the name itself when it does not
+/// start with the prefix. Crate names keep the prefix for publishing; their
+/// directories need not.
+fn directory_name(name: &str) -> &str {
+    name.strip_prefix(CRATE_PREFIX).unwrap_or(name)
 }
 
 /// Whether `path` is written as the layout step compares paths: relative to

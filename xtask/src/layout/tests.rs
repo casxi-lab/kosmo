@@ -353,6 +353,28 @@ fn append(files: &mut Files, path: &str, text: &str) {
     files.get_mut(path).expect("the file exists").push_str(text);
 }
 
+/// Moves the files under the directory `from` to the directory `to` and
+/// changes the path of the crate in the table from `from` to `to`.
+fn move_crate(files: &mut Files, from: &str, to: &str) {
+    let inside = format!("{from}/");
+    let moved: Vec<String> = files
+        .keys()
+        .filter(|path| path.starts_with(&inside))
+        .cloned()
+        .collect();
+    for path in moved {
+        let text = files.remove(&path).expect("the file exists");
+        let rest = path.strip_prefix(from).expect("the file is inside `from`");
+        files.insert(format!("{to}{rest}"), text);
+    }
+    edit(
+        files,
+        TABLE,
+        &format!("path = \"{from}\"\n"),
+        &format!("path = \"{to}\"\n"),
+    );
+}
+
 /// Adds `entry` at the start of the `[workspace.dependencies]` of the root
 /// of `workspace`.
 fn declare(files: &mut Files, workspace: &str, entry: &str) {
@@ -417,12 +439,13 @@ fn this_repository_passes() {
     assert_eq!(check(&tree, &check::WORKSPACES), Vec::<String>::new());
 }
 
-// The seven cases below are the main failures that the layout step exists
+// The eight cases below are the main failures that the layout step exists
 // to catch: a dependency against the layer order, a dependency against the
 // workspace direction, interior mutability in a pure-core crate, a
 // pure-core crate that depends on a provisional crate, a crate that the
 // layout table does not list, a crate other than the kalyx adapter that
-// declares kalyx, and a core library that uses the standard streams.
+// declares kalyx, a core library that uses the standard streams, and a
+// crate whose directory keeps the prefix kosmo- of its name.
 
 #[test]
 fn rejects_a_dependency_on_a_higher_layer() {
@@ -538,6 +561,31 @@ fn a_core_library_may_not_use_standard_io() {
     );
 }
 
+#[test]
+fn rejects_a_crate_directory_that_keeps_the_prefix() {
+    let found = problems_with(|files| {
+        move_crate(files, "framework/render", "framework/kosmo-render");
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "\"jobs\", \"render\"",
+            "\"jobs\", \"kosmo-render\"",
+        );
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "path = \"render\"",
+            "path = \"kosmo-render\"",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "layout.toml: crates.kosmo-render: the crate belongs in the directory framework/render, its name without the prefix kosmo-, not framework/kosmo-render"
+        ]
+    );
+}
+
 // The layout table itself.
 
 #[test]
@@ -603,12 +651,131 @@ fn rejects_crate_paths_outside_their_workspace_or_shared() {
             "path = \"framework/math-model\"\n",
         );
     });
+    assert_problems(
+        &shared,
+        &[
+            "layout.toml: crates.kosmo-math-model and crates.kosmo-render share the path framework/math-model",
+            "layout.toml: crates.kosmo-render: the crate belongs in the directory framework/render, its name without the prefix kosmo-, not framework/math-model",
+        ],
+    );
+}
+
+#[test]
+fn a_crate_directory_is_its_name_without_the_prefix() {
+    for (name, directory) in [
+        ("kosmo-types", "types"),
+        ("kosmo-math-kalyx", "math-kalyx"),
+        ("kosmo", "kosmo"),
+        ("kosmonaut", "kosmonaut"),
+        ("kosmo-kosmo-ui", "kosmo-ui"),
+        ("extra-kosmo-ui", "extra-kosmo-ui"),
+        ("Kosmo-ui", "Kosmo-ui"),
+    ] {
+        assert_eq!(directory_name(name), directory, "{name}");
+    }
+}
+
+#[test]
+fn rejects_a_crate_directory_other_than_the_one_its_name_gives() {
+    let program = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "path = \"desktop/kosmo\"\n",
+            "path = \"desktop/program\"\n",
+        );
+    });
     assert_eq!(
-        shared,
+        program,
         [
-            "layout.toml: crates.kosmo-math-model and crates.kosmo-render share the path framework/math-model"
+            "layout.toml: crates.kosmo: the crate belongs in the directory desktop/kosmo, its name, not desktop/program"
         ]
     );
+    let renamed = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "path = \"framework/render\"\n",
+            "path = \"framework/renderer\"\n",
+        );
+    });
+    assert_eq!(
+        renamed,
+        [
+            "layout.toml: crates.kosmo-render: the crate belongs in the directory framework/render, its name without the prefix kosmo-, not framework/renderer"
+        ]
+    );
+    // A path without a parent directory is only outside its workspace.
+    for path in ["", "desktop"] {
+        let found = problems_with(|files| {
+            edit(
+                files,
+                TABLE,
+                "path = \"desktop/kosmo\"\n",
+                &format!("path = \"{path}\"\n"),
+            );
+        });
+        assert_eq!(
+            found,
+            [format!(
+                "layout.toml: crates.kosmo: the path {path} is not inside the workspace desktop"
+            )]
+        );
+    }
+}
+
+#[test]
+fn a_wrong_crate_directory_is_reported_with_the_other_problems_of_the_table() {
+    let found = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "path = \"display/scene\"\n",
+            "path = \"display/kosmo-scene\"\n",
+        );
+        edit(
+            files,
+            TABLE,
+            "provisional = \"until the protocol is reviewed\"\n",
+            "provisional = \"\"\n",
+        );
+        edit(
+            files,
+            TABLE,
+            "path = \"framework/render\"\n",
+            "path = \"framework/render/\"\n",
+        );
+    });
+    // The table is not consistent, so the crates are not checked further;
+    // a path that is not normalized is not checked for its directory.
+    assert_problems(
+        &found,
+        &[
+            "layout.toml: crates.kosmo-scene: the crate belongs in the directory display/scene, its name without the prefix kosmo-, not display/kosmo-scene",
+            "layout.toml: crates.kosmo-proto: the provisional condition is empty",
+            "layout.toml: crates.kosmo-render: the path framework/render/ is not a normalized path inside the repository",
+        ],
+    );
+}
+
+#[test]
+fn only_the_last_part_of_a_crate_path_is_its_directory() {
+    let found = problems_with(|files| {
+        move_crate(files, "framework/render", "framework/extra/render");
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "\"jobs\", \"render\"",
+            "\"jobs\", \"extra/render\"",
+        );
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "path = \"render\"",
+            "path = \"extra/render\"",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
 }
 
 #[test]
