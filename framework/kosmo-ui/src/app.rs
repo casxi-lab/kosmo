@@ -304,7 +304,10 @@ pub trait Control<A: App>: Clone {
     }
 
     /// Learns that the surface gained focus, when `holds` is true, or lost
-    /// it. Only the region's root receives this. Does nothing by default.
+    /// it. Only the region's root receives this, and only the changes that
+    /// arrive while it is the region's root, of every surface alike; a
+    /// region's root that a later view creates is not told that its surface
+    /// already holds focus. Does nothing by default.
     fn focus(&self, holds: bool, cx: &mut Context<'_, A, Self::State>) {
         let _ = (holds, cx);
     }

@@ -96,6 +96,10 @@ impl Kind {
 /// A node of a view tree: a key, the control that the view gives, its
 /// children in order, and whether it is the focused control or the
 /// region's root.
+///
+/// Dropping a view uses a bounded stack whatever its depth; cloning,
+/// comparing and the debug form recurse once per level, so they are meant
+/// for views within [`MAX_DEPTH`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View<C> {
     key: Key,
