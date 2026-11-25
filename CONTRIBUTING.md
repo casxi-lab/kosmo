@@ -21,9 +21,9 @@ The last two report whitespace errors in unstaged and staged changes.
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
 workspaces `display/`, with the shared types `kosmo-types`, `framework/`, with
-the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and
-`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the program
-`kosmo`, and the repository tasks in `xtask/`, run as `cargo xtask`.
+the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx`, `kosmo-ui`
+and `kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the
+program `kosmo`, and the repository tasks in `xtask/`, run as `cargo xtask`.
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
 program's line-mode terminal, and `cargo xtask check` runs these steps in
 order and stops at the first one that fails:
@@ -300,7 +300,11 @@ item that an import of its module or of an outer module brings in, as the
 variant `Instant` beside `use std::time::*;`, is reported as that item. It
 does not know the macros that `#[macro_use]` brings out of a module, so a
 call of such a macro with the name of a forbidden macro is reported as that
-macro. Renaming one of them resolves it. Review covers these.
+macro. Renaming one of them resolves it. Review covers these. The step
+reads nested brackets with one level of recursion for each level of
+nesting, so a file whose brackets nest some thousands of levels deep stops
+the check with a stack overflow, which fails the check rather than passing
+it.
 
 The source layout gives the export crates of `display/` no external
 dependency at all, not even through other crates, and the layout step checks

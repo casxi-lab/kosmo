@@ -14,9 +14,12 @@ job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, and
-part of the shared types in `kosmo-types`: fixed-point geometry, logical
-time, the focus generation and epoch, and the keyboard event records;
+history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, part
+of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
+focus generation and epoch, and the keyboard event records, and part of the
+framework core in `kosmo-ui`: the control tree, the event, update and view
+passes of a round, result slots, timers, dispatch with the focus check, the
+minimal key map and hit testing;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -839,8 +842,9 @@ licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `display/` exists,
 with the shared types `kosmo-types`, `framework/`, with the libraries
-`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad` and
-the facade `kosmo-sdk`, and `desktop/`, with the program `kosmo`. A change that
+`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx`, `kosmo-ui` and
+`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the program
+`kosmo`. A change that
 adds a crate registers it in the table, and the first crate of a workspace adds
 the workspace root. The layout step of `cargo xtask check` enforces this layout
 on the tracked files, and the deps step on what Cargo resolves; Contributing
