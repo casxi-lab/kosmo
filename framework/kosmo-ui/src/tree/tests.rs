@@ -366,6 +366,22 @@ fn one_control_beyond_a_bound_leaves_the_tree_as_it_was() {
 }
 
 #[test]
+fn a_view_far_deeper_than_the_bound_is_rejected_and_dropped() {
+    let mut rounds = run_sequence();
+    let before = identities(&rounds.tree);
+    let mut reference: Tree<TestApp> = Tree::new();
+    reference.rebuild(&rounds.view).unwrap();
+
+    // Built and dropped on the test thread's stack, without recursion.
+    let deep = chain(100_000);
+    assert_eq!(rounds.tree.rebuild(&deep), Err(RebuildError::TooDeep));
+    drop(deep);
+    assert_eq!(identities(&rounds.tree), before);
+    assert!(same_tree(&rounds.tree, &reference));
+    assert_eq!(rounds.check(), []);
+}
+
+#[test]
 fn a_slot_at_its_last_generation_is_retired() {
     let mut rounds = Rounds::new();
     rounds.round(node(0, "root", 0).child(node(1, "a", 0)));

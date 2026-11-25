@@ -171,6 +171,17 @@ impl<C> View<C> {
     }
 }
 
+/// Drops the nodes of a view one by one, so that dropping a view of any
+/// depth uses a bounded stack.
+impl<C> Drop for View<C> {
+    fn drop(&mut self) {
+        let mut pending = std::mem::take(&mut self.children);
+        while let Some(mut node) = pending.pop() {
+            pending.append(&mut node.children);
+        }
+    }
+}
+
 /// Why a view rebuild was rejected. The round leaves the control tree as
 /// it was.
 #[non_exhaustive]

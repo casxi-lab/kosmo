@@ -469,11 +469,13 @@ slot. No test sleeps or reads the wall clock.
    `sequences_that_differ_in_one_removal_give_other_identities`.
 2. A view of exactly 4,096 controls, or exactly 64 deep, is built; one
    control more, or one level deeper, gives its distinct error and leaves
-   the tree as it was, without panicking; repeated keys, second marks and a
-   focused control outside the region are rejected; a slot at its last
-   generation is retired. Tests:
+   the tree as it was, without panicking, and so does a view 100,000 deep,
+   which is also dropped without overflowing the stack; repeated keys,
+   second marks and a focused control outside the region are rejected; a
+   slot at its last generation is retired. Tests:
    `tree::tests::a_tree_exactly_at_its_bounds_is_built`,
    `tree::tests::one_control_beyond_a_bound_leaves_the_tree_as_it_was`,
+   `tree::tests::a_view_far_deeper_than_the_bound_is_rejected_and_dropped`,
    `tree::tests::views_with_repeated_keys_or_marks_are_rejected`,
    `tree::tests::a_slot_at_its_last_generation_is_retired`,
    `tree::tests::identities_fit_in_64_bits`,
