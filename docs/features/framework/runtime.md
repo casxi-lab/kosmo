@@ -497,6 +497,7 @@ slot. No test sleeps or reads the wall clock.
    `a_tree_built_once_equals_the_tree_built_round_by_round`,
    `trees_that_differ_in_one_key_are_told_apart`,
    `trees_that_differ_only_in_the_focus_mark_are_told_apart`,
+   `trees_that_differ_only_in_the_region_mark_are_told_apart`,
    `the_same_sequence_gives_the_same_identities`,
    `sequences_that_differ_in_one_removal_give_other_identities`.
 2. A view of exactly 4,096 controls, or exactly 64 deep, is built; one
@@ -551,14 +552,17 @@ slot. No test sleeps or reads the wall clock.
 8. A command goes to the focused control, then bubbles to the parent, the
    region's root and the application, and the first handler ends dispatch;
    a command that nobody handles is unhandled; a key of another epoch or for
-   a surface without focus is dropped and counted. Tests: `tests/dispatch.rs`:
+   a surface without focus is dropped and counted; a focus change before the
+   first view tree has been applied reaches no control, and its record line
+   ends with `no-region`. Tests: `tests/dispatch.rs`:
    `the_focused_control_handles_its_command`,
    `an_unhandled_command_bubbles_to_the_parent`,
    `an_unhandled_command_bubbles_to_the_regions_root`,
    `an_unhandled_command_bubbles_to_the_application`,
    `a_command_that_nobody_handles_is_unhandled`,
    `a_key_of_another_epoch_is_dropped`,
-   `a_key_for_a_surface_without_focus_is_dropped`.
+   `a_key_for_a_surface_without_focus_is_dropped`;
+   `round::tests::a_focus_change_before_the_first_view_reaches_no_control`.
 9. A key of an earlier focus generation never reaches the new view: it is
    dropped before dispatch, `update` does not receive it and the view stays
    as it was. Test: `tests/dispatch.rs`:
@@ -605,7 +609,7 @@ slot. No test sleeps or reads the wall clock.
     `timer::tests::a_full_table_refuses_a_timer_and_keeps_the_others`,
     `round::tests::a_full_timer_table_refuses_the_next_timer_distinctly`,
     `round::tests::a_timer_of_a_removed_control_is_dropped_and_counted`,
-    `round::tests::the_next_deadline_follows_unfinished_jobs_then_timers`.
+    `round::tests::the_next_deadline_is_the_earlier_of_polling_and_the_timers`.
 13. A round in which only presentation state changed does not call `view`
     and leaves the tree as it was. Test:
     `round::tests::a_round_that_changes_only_presentation_state_skips_the_view`.

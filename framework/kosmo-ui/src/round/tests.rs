@@ -128,7 +128,7 @@ fn a_full_timer_table_refuses_the_next_timer_distinctly() {
 }
 
 #[test]
-fn the_next_deadline_follows_unfinished_jobs_then_timers() {
+fn the_next_deadline_is_the_earlier_of_polling_and_the_timers() {
     let mut app = TestApp {
         view: Some(focused_view(Reply::Timer(500))),
         ..TestApp::default()
@@ -165,6 +165,26 @@ fn the_next_deadline_follows_unfinished_jobs_then_timers() {
     assert_eq!(due.next_deadline, None);
     assert_eq!(due.record.lines().last().unwrap(), "deadline none");
     assert!(app.log.contains(&Logged::Own(Note::ControlTimer(500))));
+
+    // The polling deadline is earlier than a distant timer.
+    let mut out: Out<TestApp> = Out::new();
+    out.timer(
+        MonoTime::from_nanos(1_000_000_000),
+        crate::TimerLabel::new(9),
+    );
+    for request in out.timers {
+        let _ = runtime.timers.register(request);
+    }
+    assert_eq!(runtime.timers.len(), 1);
+    let mut both = input(700);
+    both.unfinished_jobs = 1;
+    let both = runtime.round(&mut app, both).finish(&app);
+    let polling = 700 + crate::JOB_POLL_INTERVAL;
+    assert_eq!(both.next_deadline, Some(MonoTime::from_nanos(polling)));
+    assert_eq!(
+        *both.record.lines().last().unwrap(),
+        format!("deadline {polling}")
+    );
 }
 
 #[test]

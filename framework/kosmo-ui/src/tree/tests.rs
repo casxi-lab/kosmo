@@ -351,6 +351,40 @@ fn trees_that_differ_only_in_the_focus_mark_are_told_apart() {
 }
 
 #[test]
+fn trees_that_differ_only_in_the_region_mark_are_told_apart() {
+    // A root with the children 1 and 2, of which `region` is marked.
+    let marked = |region: u64| {
+        let mut root = node(0, "root", 0);
+        for key in [1, 2] {
+            let child = node(key, "leaf", 0);
+            root.push(if key == region { child.region() } else { child });
+        }
+        root
+    };
+    let mut rounds = Rounds::new();
+    rounds.round(marked(1));
+    assert_eq!(rounds.check(), []);
+    let mut same: Tree<TestApp> = Tree::new();
+    same.rebuild(&marked(1)).unwrap();
+    assert!(same_tree(&rounds.tree, &same));
+    let mut other: Tree<TestApp> = Tree::new();
+    other.rebuild(&marked(2)).unwrap();
+    assert!(!same_tree(&rounds.tree, &other));
+
+    // Against the view that marks the other child, the tree's region's
+    // root is not the view's.
+    let region = rounds.id(&[1]);
+    let found = check(&rounds.tree, &marked(2), &rounds.removed);
+    assert_eq!(
+        found,
+        [Violation {
+            invariant: Invariant::ViewOrder,
+            widgets: vec![region],
+        }]
+    );
+}
+
+#[test]
 fn the_same_sequence_gives_the_same_identities() {
     let (mut first, mut second) = (Rounds::new(), Rounds::new());
     for view in sequence() {
