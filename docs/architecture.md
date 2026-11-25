@@ -799,6 +799,15 @@ The repository tasks are the separate `xtask/` workspace, outside the product
 workspaces and without path dependencies. Layer identifiers, directory names
 and crate names are provisional.
 
+The directory of a crate is named after the crate without the prefix
+`kosmo-`, and a crate whose name does not start with the prefix has a
+directory of the same name: the framework core `kosmo-ui` lies in
+`framework/ui`, and the program `kosmo` in `desktop/kosmo`. Crate names keep
+the prefix because a published crate keeps its name on crates.io, where the
+names of all projects share one namespace; the name of its directory is not
+part of a published crate, so it needs no prefix. The layout step checks the
+last part of the path of every crate in the layout table.
+
 Crates of the repository depend on each other through `path` dependencies,
 only in these directions:
 
