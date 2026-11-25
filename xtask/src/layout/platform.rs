@@ -8,13 +8,16 @@
 //! like any other tokens. It follows the names that `use` declarations,
 //! `extern crate` items and type aliases bring into a module or block, with
 //! their renames and glob imports, into the blocks and modules inside it,
-//! paths from the crate root written with a leading `::`, and qualified
-//! paths such as `<kalyx::Context>::new`. As in Rust, an item hides a name
-//! that a glob import or an outer module or block brings in, and a
-//! `macro_rules!` macro hides the macro of the same name after its
-//! definition. A name imported in a module also counts in the modules
-//! inside it, which Rust does not do, so a variable, parameter or field
-//! there with the name of such an import is read as the import.
+//! paths from the crate root written with a leading `::`, paths that start
+//! with `self`, `Self` in an `impl` for the type it implements, and
+//! qualified paths such as `<kalyx::Context>::new`. An item hides a name
+//! that a glob import or an outer module or block brings in, a module or
+//! type for any path and a function, constant or static for a path of one
+//! segment, and a `macro_rules!` macro hides the macro of the same name
+//! after its definition. The scan counts a name imported in a module also
+//! in the modules inside it, which Rust does not do, and reads names that
+//! are not paths, such as variables, fields and enum variants, as paths; a
+//! name of either kind that equals an import's is read as the import.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -240,11 +243,17 @@ struct Scope {
     /// The depth of this module or block.
     depth: usize,
     /// The paths from a crate root that each imported name may stand for,
-    /// with the depth of the module or block that imports it.
+    /// with the depth of the module or block that imports it. Inside an
+    /// `impl`, `Self` stands for the type that it implements.
     names: BTreeMap<String, (usize, BTreeSet<Vec<String>>)>,
-    /// The names that items define in the type and value namespaces, with
-    /// the depth of the innermost module or block that defines each.
+    /// The names that items define in the type namespace, of modules,
+    /// types and traits, with the depth of the innermost module or block
+    /// that defines each.
     items: BTreeMap<String, usize>,
+    /// The names that items define in the value namespace, of functions,
+    /// constants, statics and the constructors of structs, with depths as
+    /// for `items`.
+    values: BTreeMap<String, usize>,
     /// The paths from a crate root whose items glob imports bring in,
     /// when those paths are not forbidden items themselves, with the depth
     /// of the innermost module or block that imports each.
@@ -254,12 +263,32 @@ struct Scope {
     macros: BTreeSet<String>,
 }
 
+/// Where a path is read, which decides what may hide its first segment
+/// and which glob imports it goes through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Site {
+    /// In code. A path of one segment may name a value, which a function,
+    /// constant or static hides; a longer path starts with a module, a type
+    /// or a crate.
+    Code,
+    /// In an import other than a glob import, whose path starts with a
+    /// module, a type or a crate.
+    Import,
+    /// In a glob import, which does not go through the glob imports of its
+    /// own module or block: they would only extend one another.
+    Glob,
+}
+
 impl Scope {
-    /// The paths from a crate root that `segments` may stand for: none for
-    /// a path to the crate's own items or to a crate the scan does not
-    /// follow. An import or an item that defines the first segment hides
-    /// the glob imports of the modules and blocks around its own.
-    fn resolve(&self, segments: &[String], rooted: bool) -> BTreeSet<Vec<String>> {
+    /// The paths from a crate root that `segments`, read at `site`, may
+    /// stand for. A path that starts with `crate`, `super` or `Self`
+    /// outside an `impl` stands for none; `self::rest` stands for what
+    /// `rest` does here. An import or an item that defines the first
+    /// segment hides the glob imports of its own module or block and of
+    /// those around it; a first segment that nothing hides goes through
+    /// every glob import, and also stands for itself when it names a crate
+    /// that the scan follows.
+    fn resolve(&self, segments: &[String], rooted: bool, site: Site) -> BTreeSet<Vec<String>> {
         let Some(first) = segments.first() else {
             return BTreeSet::new();
         };
@@ -269,16 +298,30 @@ impl Scope {
         if rooted {
             return BTreeSet::from([segments.to_vec()]);
         }
-        if LOCAL.contains(&first.as_str()) {
-            return BTreeSet::new();
+        if first == "self" && segments.len() > 1 {
+            // The scope of a block stands in for that of its module.
+            return self.resolve(&segments[1..], false, site);
         }
         let imported = self.names.get(first);
-        let defined = self.items.get(first).copied();
+        if imported.is_none() && LOCAL.contains(&first.as_str()) {
+            return BTreeSet::new();
+        }
+        let mut defined = self.items.get(first).copied();
+        if site == Site::Code && segments.len() == 1 {
+            defined = defined.max(self.values.get(first).copied());
+        }
         let hidden_to = imported.map(|(depth, _)| *depth).max(defined);
+        let globs_below = if site == Site::Glob {
+            self.depth
+        } else {
+            usize::MAX
+        };
         let mut targets: BTreeSet<Vec<String>> = self
             .globs
             .iter()
-            .filter(|(_, depth)| hidden_to.is_none_or(|hidden| **depth > hidden))
+            .filter(|(_, depth)| {
+                **depth < globs_below && hidden_to.is_none_or(|hidden| **depth > hidden)
+            })
             .map(|(glob, _)| joined(glob, segments))
             .collect();
         match imported {
@@ -314,8 +357,10 @@ struct Declarations {
     /// Which tokens the scan skips: those of the imports, and the names
     /// that items define.
     taken: Vec<bool>,
-    /// The names that items define in the type and value namespaces.
+    /// The names that items define in the type namespace.
     items: BTreeSet<String>,
+    /// The names that items define in the value namespace.
+    values: BTreeSet<String>,
     /// The macros that `macro_rules!` defines, with the index of the
     /// definition's first token.
     macros: Vec<(usize, String)>,
@@ -398,16 +443,43 @@ fn starts_item(trees: &[TokenTree], at: usize) -> bool {
     }
 }
 
-/// Whether the `{ ... }` at `at` holds the associated items of an `impl`
-/// or a trait, whose names are not in scope inside it.
-fn is_associated_body(trees: &[TokenTree], at: usize) -> bool {
-    let start = trees[..at]
-        .iter()
-        .rposition(|tree| {
-            is_punct(Some(tree), ';')
-                || matches!(tree, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
-        })
-        .map_or(0, |boundary| boundary + 1);
+/// What a `{ ... }` is the body of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Body {
+    /// A block, a module or an item whose names are in scope inside it.
+    Block,
+    /// A trait, whose associated items are not in scope inside it.
+    Trait,
+    /// An `impl`, whose associated items are not in scope inside it, with
+    /// the index of its keyword `impl`.
+    Impl(usize),
+}
+
+/// What the `{ ... }` at `at` is the body of.
+fn body_of(trees: &[TokenTree], at: usize) -> Body {
+    // The item starts after the `;` or the `{ ... }` before it; a `{ ... }`
+    // inside angle brackets, as in `impl W<{ 1 }>`, is a generic argument.
+    let mut angles = 0_usize;
+    let mut start = 0;
+    for before in (0..at).rev() {
+        match &trees[before] {
+            TokenTree::Punct(punct) if punct.as_char() == '>' && !is_arrow(trees, before) => {
+                angles += 1;
+            }
+            TokenTree::Punct(punct) if punct.as_char() == '<' => {
+                angles = angles.saturating_sub(1);
+            }
+            TokenTree::Punct(punct) if punct.as_char() == ';' => {
+                start = before + 1;
+                break;
+            }
+            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace && angles == 0 => {
+                start = before + 1;
+                break;
+            }
+            _ => {}
+        }
+    }
     let mut at = start;
     loop {
         match trees.get(at) {
@@ -426,9 +498,52 @@ fn is_associated_body(trees: &[TokenTree], at: usize) -> bool {
                 }
             }
             Some(TokenTree::Ident(_)) if is_keyword(trees, at, &QUALIFIERS) => at += 1,
-            _ => return is_keyword(trees, at, &["impl", "trait"]),
+            _ if is_keyword(trees, at, &["impl"]) => return Body::Impl(at),
+            _ if is_keyword(trees, at, &["trait"]) => return Body::Trait,
+            _ => return Body::Block,
         }
     }
+}
+
+/// The path of the type that the `impl` whose keyword is at `keyword` and
+/// whose body is at `body` implements, and whether it starts with `::`:
+/// the path after `for`, or after the generic parameters without a trait.
+fn self_type(trees: &[TokenTree], keyword: usize, body: usize) -> Option<(Vec<String>, bool)> {
+    let mut at = keyword + 1;
+    if is_punct(trees.get(at), '<') {
+        // The generic parameters, `impl<...>`.
+        let mut angles = 0_usize;
+        while at < body {
+            match &trees[at] {
+                TokenTree::Punct(punct) if punct.as_char() == '<' => angles += 1,
+                TokenTree::Punct(punct) if punct.as_char() == '>' && !is_arrow(trees, at) => {
+                    angles = angles.saturating_sub(1);
+                    if angles == 0 {
+                        at += 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            at += 1;
+        }
+    }
+    let mut start = at;
+    let mut angles = 0_usize;
+    for index in at..body {
+        match &trees[index] {
+            TokenTree::Punct(punct) if punct.as_char() == '<' => angles += 1,
+            TokenTree::Punct(punct) if punct.as_char() == '>' && !is_arrow(trees, index) => {
+                angles = angles.saturating_sub(1);
+            }
+            TokenTree::Ident(ident) if angles == 0 && ident == "for" => start = index + 1,
+            TokenTree::Ident(ident) if angles == 0 && ident == "where" => break,
+            _ => {}
+        }
+    }
+    let rooted = is_separator(trees, start);
+    let (segments, _, _) = path_at(trees, if rooted { start + 2 } else { start })?;
+    Some((segments, rooted))
 }
 
 /// The imports of the `use` tree `trees`, under `prefix`.
@@ -514,6 +629,7 @@ fn declarations(trees: &[TokenTree], associated: bool) -> Declarations {
         imports: Vec::new(),
         taken: vec![false; trees.len()],
         items: BTreeSet::new(),
+        values: BTreeSet::new(),
         macros: Vec::new(),
     };
     let mut at = 0;
@@ -597,7 +713,12 @@ fn declarations(trees: &[TokenTree], associated: bool) -> Declarations {
                     continue;
                 }
                 if !associated {
-                    found.items.insert(name);
+                    if matches!(keyword.as_str(), "fn" | "const" | "static" | "struct") {
+                        found.values.insert(name.clone());
+                    }
+                    if !matches!(keyword.as_str(), "fn" | "const" | "static") {
+                        found.items.insert(name);
+                    }
                 }
             }
             _ => {}
@@ -616,6 +737,9 @@ fn enter(outer: &Scope, found: &Declarations) -> Scope {
     for name in &found.items {
         base.items.insert(name.clone(), depth);
     }
+    for name in &found.values {
+        base.values.insert(name.clone(), depth);
+    }
     for name in found
         .imports
         .iter()
@@ -625,12 +749,13 @@ fn enter(outer: &Scope, found: &Declarations) -> Scope {
     }
     let mut scope = base.clone();
     // Each pass resolves one more import of a chain of imports through one
-    // another; the bound ends cycles, which only code that does not compile
-    // has.
+    // another. Glob imports do not go through the glob imports of their own
+    // module or block, so the passes settle; the bound ends the cycles of
+    // imports, which only code that does not compile has.
     for _ in 0..=found.imports.len() {
         let mut next = base.clone();
         for import in &found.imports {
-            let targets = scope.resolve(&import.segments, import.rooted);
+            let targets = import_targets(&scope, outer, import);
             if import.glob {
                 for target in targets {
                     if item_of_path(&target).is_none() {
@@ -652,6 +777,31 @@ fn enter(outer: &Scope, found: &Declarations) -> Scope {
         }
     }
     scope
+}
+
+/// The paths from a crate root that `import`, of a module or block with
+/// the scope `scope` inside `outer`, may stand for. An import whose path
+/// starts with the name it brings in, as `use time::Instant as time;`,
+/// reads that name as it is around the module or block.
+fn import_targets(scope: &Scope, outer: &Scope, import: &Import) -> BTreeSet<Vec<String>> {
+    let site = if import.glob {
+        Site::Glob
+    } else {
+        Site::Import
+    };
+    let own = import
+        .name
+        .as_ref()
+        .filter(|name| !import.rooted && import.segments.first() == Some(*name));
+    let Some(name) = own else {
+        return scope.resolve(&import.segments, import.rooted, site);
+    };
+    let mut around = scope.clone();
+    match outer.names.get(name) {
+        Some(entry) => around.names.insert(name.clone(), entry.clone()),
+        None => around.names.remove(name),
+    };
+    around.resolve(&import.segments, false, site)
 }
 
 /// Records `item`, used at `line`, unless `allowed` allows it.
@@ -687,8 +837,8 @@ fn path_at(trees: &[TokenTree], at: usize) -> Option<(Vec<String>, usize, usize)
 
 /// Whether the `::` at `at` starts a path from a crate root rather than
 /// continuing one, as after generic arguments: it does after a keyword, a
-/// lifetime, `->`, `=>` and the generic parameters of an `impl` or a
-/// `for<...>`.
+/// lifetime, `->`, `=>`, the generic parameters of an `impl` or a
+/// `for<...>`, and a comparison or shift `>`.
 fn starts_rooted(trees: &[TokenTree], at: usize) -> bool {
     let token = |back: usize| at.checked_sub(back).and_then(|before| trees.get(before));
     match token(1) {
@@ -696,7 +846,7 @@ fn starts_rooted(trees: &[TokenTree], at: usize) -> bool {
             BEFORE_ROOTED.contains(&ident.to_string().as_str()) || is_punct(token(2), '\'')
         }
         Some(TokenTree::Punct(punct)) if punct.as_char() == '>' => {
-            is_arrow(trees, at - 1) || closes_parameters(trees, at - 1)
+            is_arrow(trees, at - 1) || roots_after_angle(trees, at - 1)
         }
         _ => true,
     }
@@ -711,9 +861,11 @@ fn is_arrow(trees: &[TokenTree], at: usize) -> bool {
     )
 }
 
-/// Whether the `>` at `close` ends the generic parameters of an `impl` or
-/// the lifetimes of a `for<...>`.
-fn closes_parameters(trees: &[TokenTree], close: usize) -> bool {
+/// Whether a `::` after the `>` at `close` starts a path from the crate
+/// root: it does when the `>` ends the generic parameters of an `impl` or
+/// a `for<...>`, or when no `<` before it in the statement matches it, as
+/// after a comparison or a shift, and does not after generic arguments.
+fn roots_after_angle(trees: &[TokenTree], close: usize) -> bool {
     let mut depth = 0_usize;
     for at in (0..=close).rev() {
         match &trees[at] {
@@ -728,12 +880,12 @@ fn closes_parameters(trees: &[TokenTree], close: usize) -> bool {
                         .is_some_and(|before| is_keyword(trees, before, &["impl", "for"]));
                 }
             }
-            TokenTree::Punct(punct) if punct.as_char() == ';' => return false,
-            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => return false,
+            TokenTree::Punct(punct) if punct.as_char() == ';' => return true,
+            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => return true,
             _ => {}
         }
     }
-    false
+    true
 }
 
 /// Whether the identifier at `at` starts a path: it is not one of the
@@ -762,7 +914,7 @@ fn level(
     let found = declarations(&trees, associated);
     let scope = enter(outer, &found);
     for import in &found.imports {
-        for target in scope.resolve(&import.segments, import.rooted) {
+        for target in import_targets(&scope, outer, import) {
             let item = if import.glob {
                 item_of_path(&target)
             } else {
@@ -787,9 +939,27 @@ fn level(
         while let Some((_, name)) = definitions.next_if(|(index, _)| *index < at) {
             inner.to_mut().macros.insert(name.clone());
         }
-        if let (TokenTree::Group(group), false) = (tree, found.taken[at]) {
-            let body = group.delimiter() == Delimiter::Brace && is_associated_body(&trees, at);
-            level(group.stream(), &inner, body, allowed, hits);
+        let (TokenTree::Group(group), false) = (tree, found.taken[at]) else {
+            continue;
+        };
+        let body = if group.delimiter() == Delimiter::Brace {
+            body_of(&trees, at)
+        } else {
+            Body::Block
+        };
+        match body {
+            Body::Block => level(group.stream(), &inner, false, allowed, hits),
+            Body::Trait => level(group.stream(), &inner, true, allowed, hits),
+            Body::Impl(keyword) => {
+                // Inside the `impl`, `Self` stands for the type it implements.
+                let targets = self_type(&trees, keyword, at)
+                    .map(|(segments, rooted)| inner.resolve(&segments, rooted, Site::Import))
+                    .unwrap_or_default();
+                let mut own = Scope::clone(&inner);
+                own.names
+                    .insert("Self".to_string(), (inner.depth + 1, targets));
+                level(group.stream(), &own, true, allowed, hits);
+            }
         }
     }
     let mut at = 0;
@@ -831,7 +1001,7 @@ fn level(
         }
         let called = is_punct(trees.get(end), '!')
             && matches!(trees.get(end + 1), Some(TokenTree::Group(_)));
-        let mut targets = scope.resolve(&segments, rooted);
+        let mut targets = scope.resolve(&segments, rooted, Site::Code);
         if called
             && !rooted
             && segments.len() == 1
@@ -1030,6 +1200,85 @@ mod tests {
         // not.
         let text = "fn early() {\n    dbg!(1);\n}\nmacro_rules! dbg {\n    ($value:expr) => {\n        $value\n    };\n}\nfn late() {\n    dbg!(1);\n}\nstruct print;\nfn f() {\n    print!(\"x\");\n}\n";
         assert_eq!(hits(text, &[]), [at(2, "dbg!"), at(14, "print!")]);
+    }
+
+    #[test]
+    fn glob_imports_of_one_level_do_not_extend_one_another() {
+        let mut text = String::from("use std::collections::*;\nuse std::vec::*;\nuse kalyx::*;\n");
+        for index in 0..12 {
+            text.push_str(&format!("use other::item{index};\n"));
+        }
+        text.push_str("fn f() {\n    let _ = Context::new(l, c);\n}\n");
+        assert_eq!(hits(&text, &[]), [at(17, "kalyx::Context::new")]);
+    }
+
+    #[test]
+    fn chains_of_imports_resolve_to_their_end_and_cycles_end() {
+        let renames: Vec<String> = (0..12)
+            .map(|index| match index {
+                0 => "use std as s0;\n".to_string(),
+                _ => format!("use s{} as s{index};\n", index - 1),
+            })
+            .collect();
+        let call = "fn f() {\n    s11::fs::read(\"x\");\n}\n";
+        let forward = format!("{}{call}", renames.concat());
+        let backward: String = renames.iter().rev().cloned().collect();
+        assert_eq!(hits(&forward, &[]), [at(14, "std::fs")]);
+        assert_eq!(hits(&format!("{backward}{call}"), &[]), [at(14, "std::fs")]);
+        let cycle = "use a as b;\nuse b as a;\nfn f() {\n    a::fs::read(\"x\");\n}\n";
+        assert_eq!(hits(cycle, &[]), Vec::<(usize, String)>::new());
+    }
+
+    #[test]
+    fn functions_constants_and_statics_hide_only_values() {
+        let text = "use std::fs;\nfn std() {}\npub fn f() {\n    let _ = fs::read(\"x\");\n    let _ = std::env::var(\"X\");\n    let _ = std();\n}\nfn kalyx() {}\nfn g() {\n    let _ = kalyx::Context::new(l, c);\n}\n";
+        assert_eq!(
+            hits(text, &[]),
+            [
+                at(1, "std::fs"),
+                at(4, "std::fs"),
+                at(5, "std::env"),
+                at(10, "kalyx::Context::new")
+            ]
+        );
+    }
+
+    #[test]
+    fn an_impl_with_a_block_among_its_generic_arguments_has_associated_items() {
+        let text = "use std::time::*;\nstruct W<const N: u8>;\nimpl W<{ 1 }> {\n    pub const UNIX_EPOCH: u8 = 0;\n    pub fn g() {\n        let _ = UNIX_EPOCH;\n    }\n}\n";
+        assert_eq!(hits(text, &[]), [at(6, "std::time::UNIX_EPOCH")]);
+    }
+
+    #[test]
+    fn paths_through_self_and_the_self_type_of_an_impl_are_followed() {
+        let text = "use kalyx::context::CancelFlag;\nuse kalyx::{Context, Limits};\nuse std::time::*;\npub struct Settings(pub Limits, pub CancelFlag);\nimpl From<Settings> for Context {\n    fn from(settings: Settings) -> Self {\n        let _ = <Self>::new(settings.0, settings.1);\n        Self::new(settings.0, settings.1)\n    }\n}\nimpl Settings {\n    fn made() -> Self {\n        Self::new()\n    }\n}\npub fn f() {\n    let _ = self::Context::new(l, c);\n    let _ = self::Instant::now();\n}\n";
+        assert_eq!(
+            hits(text, &[]),
+            [
+                at(7, "kalyx::Context::new"),
+                at(8, "kalyx::Context::new"),
+                at(17, "kalyx::Context::new"),
+                at(18, "std::time::Instant")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_path_from_the_root_after_a_comparison_or_a_shift_is_read() {
+        let text = "pub fn f(n: usize) -> bool {\n    n > ::std::env::args().count()\n}\npub fn g(n: u32) -> u32 {\n    n >> ::std::process::id()\n}\n";
+        assert_eq!(
+            hits(text, &[]),
+            [at(2, "std::env::args"), at(5, "std::process")]
+        );
+    }
+
+    #[test]
+    fn an_import_that_reuses_its_own_name_reads_the_name_around_it() {
+        let text = "use std::time;\npub fn f() {\n    use time::Instant as time;\n    let _ = time::now();\n}\n";
+        assert_eq!(
+            hits(text, &[]),
+            [at(3, "std::time::Instant"), at(4, "std::time::Instant")]
+        );
     }
 
     #[test]
