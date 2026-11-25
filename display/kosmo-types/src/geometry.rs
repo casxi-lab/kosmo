@@ -14,8 +14,8 @@ use core::cmp::{max, min};
 /// Layout coordinates, text positions and sizes and the geometry of display
 /// lists use it. Addition and subtraction are exact. Multiplication and
 /// division go through `i64` intermediate values and round their exact
-/// result by the rule of [`round`]. Every operation returns `None` instead
-/// of a result outside the range of `i32`.
+/// result through [`round`]. Every operation returns `None` instead of a
+/// result outside the range of `i32`.
 ///
 /// ```
 /// use kosmo_types::Fx;
@@ -72,16 +72,19 @@ impl Fx {
         }
     }
 
-    /// `self * other`, rounded to a unit by the rule of [`round`], or `None`
-    /// when the product does not fit.
+    /// `self * other`, rounded to a unit through [`round`], or `None` when
+    /// the product does not fit.
     pub fn checked_mul(self, other: Fx) -> Option<Fx> {
         // At most 2^62 in magnitude, so the product fits in an i64.
         let product = i64::from(self.0) * i64::from(other.0);
-        Fx::from_ratio(product, i64::from(Fx::UNITS_PER_PIXEL))
+        round(Ratio {
+            numerator: product,
+            denominator: i64::from(Fx::UNITS_PER_PIXEL),
+        })
     }
 
-    /// `self / other`, rounded to a unit by the rule of [`round`], or `None`
-    /// when `other` is zero or the quotient does not fit.
+    /// `self / other`, rounded to a unit through [`round`], or `None` when
+    /// `other` is zero or the quotient does not fit.
     pub fn checked_div(self, other: Fx) -> Option<Fx> {
         // At most 2^37 in magnitude, so both fit in an i64 with their signs
         // changed.
@@ -89,19 +92,15 @@ impl Fx {
         let denominator = i64::from(other.0);
         match denominator {
             0 => None,
-            _ if denominator < 0 => Fx::from_ratio(-numerator, -denominator),
-            _ => Fx::from_ratio(numerator, denominator),
+            _ if denominator < 0 => round(Ratio {
+                numerator: -numerator,
+                denominator: -denominator,
+            }),
+            _ => round(Ratio {
+                numerator,
+                denominator,
+            }),
         }
-    }
-
-    /// The units nearest to `numerator / denominator`, ties toward positive
-    /// infinity, for a positive `denominator`.
-    fn from_ratio(numerator: i64, denominator: i64) -> Option<Fx> {
-        let floor = numerator.div_euclid(denominator);
-        // The exact fraction is `rest / denominator`, in [0, 1).
-        let rest = numerator.rem_euclid(denominator);
-        let units = floor + i64::from(2 * rest >= denominator);
-        i32::try_from(units).ok().map(Fx)
     }
 }
 
@@ -305,12 +304,24 @@ pub fn round<V: Round>(value: V) -> V::Rounded {
 }
 
 /// What [`round`] takes: an [`Fx`], or an `f32` count of 1/64-pixel units.
-/// Only this crate implements it.
+/// Only this crate implements it; inside it, the exact results of
+/// [`Fx::checked_mul`] and [`Fx::checked_div`] are rounded through it too.
 pub trait Round: Copy + sealed::Rounding {}
 
 impl Round for Fx {}
 
 impl Round for f32 {}
+
+impl Round for Ratio {}
+
+/// The exact value `numerator / denominator` in 1/64-pixel units, for a
+/// positive `denominator`: the result of a multiplication or division of
+/// [`Fx`] values before it is rounded.
+#[derive(Clone, Copy)]
+struct Ratio {
+    numerator: i64,
+    denominator: i64,
+}
 
 mod sealed {
     /// The rounding of one kind of value, which [`super::round`] calls.
@@ -331,6 +342,18 @@ impl sealed::Rounding for Fx {
         // is at least one half: `(x + 32) >> 6` without the overflow of
         // `x + 32`.
         (self.0 >> 6) + i32::from(self.0 & 63 >= 32)
+    }
+}
+
+impl sealed::Rounding for Ratio {
+    type Rounded = Option<Fx>;
+
+    fn nearest(self) -> Option<Fx> {
+        let floor = self.numerator.div_euclid(self.denominator);
+        // The exact fraction is `rest / denominator`, in [0, 1).
+        let rest = self.numerator.rem_euclid(self.denominator);
+        let units = floor + i64::from(2 * rest >= self.denominator);
+        i32::try_from(units).ok().map(Fx)
     }
 }
 
