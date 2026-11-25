@@ -9,6 +9,7 @@ members = [
     "kosmo-math-model",
     "kosmo-scratchpad",
     "kosmo-sdk",
+    "kosmo-ui",
 ]
 
 [workspace.package]
