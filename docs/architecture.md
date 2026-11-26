@@ -857,8 +857,9 @@ licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `display/` exists,
 with the shared types `kosmo-types`, `framework/`, with the libraries
-`kosmo-math-model`, `kosmo-jobs`, `kosmo-render`, `kosmo-math-kalyx`,
-`kosmo-ui` and `kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`,
+`kosmo-math-model`, `kosmo-jobs`, `kosmo-render`, `kosmo-platform`,
+`kosmo-math-kalyx`, `kosmo-ui` and `kosmo-scratchpad` and the facade
+`kosmo-sdk`, and `desktop/`,
 with the program `kosmo`. A change that
 adds a crate registers it in the table, and the first crate of a workspace adds
 the workspace root. The layout step of `cargo xtask check` enforces this layout
@@ -899,8 +900,8 @@ and their limits.
 - First-release registration: `kosmo` is a boundary crate for standard
   streams, arguments, exit code and the real clock, and `kosmo-jobs` for
   threads; `kosmo-types`, `kosmo-math-model`, `kosmo-math-kalyx`,
-  `kosmo-render`, `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui` are core
-  libraries. Other crates are registered by the change that creates them;
+  `kosmo-render`, `kosmo-platform`, `kosmo-scratchpad`, `kosmo-sdk` and
+  `kosmo-ui` are core libraries. Other crates are registered by the change that creates them;
   `kosmo-testkit` is expected to be a boundary crate, and [host
   programs](#host-programs) lists the boundary crates of the display stack with
   their categories.
@@ -1835,7 +1836,8 @@ Besides the rules above:
 
 The libraries chosen above enter as these direct external dependencies, which
 the layout table lists for their crates; so far it lists those of
-`kosmo-render`, and the others are added with their crates:
+`kosmo-render` and `kosmo-platform`, and the others are added with their
+crates:
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |

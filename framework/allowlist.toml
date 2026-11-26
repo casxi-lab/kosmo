@@ -10,6 +10,15 @@
 # and the rules.
 
 [[package]]
+name = "accesskit"
+version = "0.25.2"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["kosmo-platform"]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "crates.io"
@@ -344,6 +353,15 @@ license = "(MIT OR Apache-2.0) AND Unicode-3.0"
 build-script = false
 features = []
 crates = ["kosmo-render"]
+
+[[package]]
+name = "uuid"
+version = "1.29.2"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = []
+crates = ["kosmo-platform"]
 
 [[package]]
 name = "vello_common"

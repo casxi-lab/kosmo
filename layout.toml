@@ -181,6 +181,20 @@ default-features = false
 features = ["libm", "u8_pipeline"]
 resolved-features = ["libm", "u8_pipeline"]
 
+[crates.kosmo-platform]
+path = "framework/platform"
+layer = "F0"
+export = false
+pure-core = false
+publish = false
+
+[[crates.kosmo-platform.external]]
+name = "accesskit"
+version = "=0.25.2"
+default-features = false
+features = []
+resolved-features = []
+
 [crates.kosmo-math-kalyx]
 path = "framework/math-kalyx"
 layer = "F1"

@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "accesskit"
+version = "0.25.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e883d1d28c5fd5568c79ed2d2bd48d9f2fd3945c8974ed0f53690ceddb051be"
+dependencies = [
+ "uuid",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -164,6 +173,14 @@ name = "kosmo-math-model"
 version = "0.1.0-dev.1"
 
 [[package]]
+name = "kosmo-platform"
+version = "0.1.0-dev.1"
+dependencies = [
+ "accesskit",
+ "kosmo-types",
+]
+
+[[package]]
 name = "kosmo-render"
 version = "0.1.0-dev.1"
 dependencies = [
@@ -200,6 +217,7 @@ name = "kosmo-ui"
 version = "0.1.0-dev.1"
 dependencies = [
  "kosmo-math-model",
+ "kosmo-platform",
  "kosmo-render",
  "kosmo-types",
 ]
@@ -409,6 +427,12 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "uuid"
+version = "1.29.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c"
 
 [[package]]
 name = "vello_common"

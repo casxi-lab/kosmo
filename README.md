@@ -111,7 +111,9 @@ jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 [display lists](docs/features/framework/rendering.md), the renderer
 interface, the rasterizer on vello_cpu that draws display lists on the CPU
 and the wrapper of the transcendental functions that rendering and layout
-are to call, `kosmo-math-kalyx`, which
+are to call, `kosmo-platform`, the platform interface through which the
+framework is to reach surfaces, input, its clock, resources and the
+accessibility tree, with AccessKit re-exported, `kosmo-math-kalyx`, which
 [converts](docs/features/math/formula-conversion.md) the input into the text
 that kalyx reads and runs the jobs with kalyx, `kosmo-scratchpad`, the
 [Scratchpad](docs/features/framework/scratchpad.md), which keeps a history of
@@ -119,10 +121,10 @@ the submissions of a line with their results and reuses their inputs and
 results in the line, the framework core `kosmo-ui`, which holds an
 application's [control tree](docs/features/framework/runtime.md) and runs
 the rounds of its event loop with result slots, timers, focus checks and
-the dispatch of commands, so far without layout or a platform interface and
-with a drawing pass that rounds do not run yet, and the facade `kosmo-sdk`,
-which re-exports all of them but
-`kosmo-render` and `kosmo-ui` and through which the `desktop/` workspace
+the dispatch of commands, so far without layout or a shell that drives the
+platform interface and with a drawing pass that rounds do not run yet, and
+the facade `kosmo-sdk`, which re-exports all of them but `kosmo-render`,
+`kosmo-platform` and `kosmo-ui` and through which the `desktop/` workspace
 uses them. The
 `desktop/` workspace has the `kosmo` program. CI runs the repository checks on every pull request to
 `main` and every push to `main`. These commands run from the repository root:
@@ -134,6 +136,7 @@ cargo test --locked --manifest-path desktop/Cargo.toml -p kosmo
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-model
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-jobs
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-render
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-platform --features test-hooks
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-scratchpad
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-ui
@@ -145,10 +148,11 @@ cargo xtask check
 The first runs two derivatives and lists the history in the terminal; without
 the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo`
 reads the lines that you type. The second prints `kosmo` and its version. The
-next nine run the tests of the terminal, of the editing structure, of the job
+next ten run the tests of the terminal, of the editing structure, of the job
 layer, of rendering, with its pixel goldens and the wrapper of transcendental
-functions, of formula conversion with the kalyx runner, of the Scratchpad, of
-the framework core, of the facade and of the shared types, and the last runs
+functions, of the platform interface with its test hooks, of formula
+conversion with the kalyx runner, of the Scratchpad, of the framework core,
+of the facade and of the shared types, and the last runs
 the repository checks. No version has been released yet: a release is a tagged
 commit, and the version that `main` shows is not a release until it is
 tagged.

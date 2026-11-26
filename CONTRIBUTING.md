@@ -22,7 +22,8 @@ The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
 workspaces `display/`, with the shared types `kosmo-types`, `framework/`, with
 the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-render`,
-`kosmo-math-kalyx`, `kosmo-ui` and `kosmo-scratchpad` and the facade
+`kosmo-platform`, `kosmo-math-kalyx`, `kosmo-ui` and `kosmo-scratchpad` and
+the facade
 `kosmo-sdk`, and `desktop/`, with the program `kosmo`, and the repository tasks
 in `xtask/`, run as `cargo xtask`.
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
