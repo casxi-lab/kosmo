@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 kosmo-math-model.workspace = true
+kosmo-render.workspace = true
 kosmo-types.workspace = true
 
 [lints]

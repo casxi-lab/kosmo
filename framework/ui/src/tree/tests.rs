@@ -538,6 +538,11 @@ fn the_drawing_entry_gets_the_identity_and_presentation_state() {
     rounds.round(node(0, "root", 0));
     let root = rounds.id(&[]);
     let state = rounds.tree.state(root).copied().unwrap();
-    let cx = crate::app::DrawContext::new(root, &state);
-    assert_eq!((cx.id(), *cx.state()), (root, 0));
+    let mut list = kosmo_render::ListBuilder::new();
+    let canvas = crate::app::Canvas::new(&mut list, kosmo_types::Rect::default());
+    let cx = crate::app::DrawContext::new(root, &state, kosmo_types::Size::ZERO, canvas);
+    assert_eq!(
+        (cx.id(), *cx.state(), cx.size()),
+        (root, 0, kosmo_types::Size::ZERO)
+    );
 }

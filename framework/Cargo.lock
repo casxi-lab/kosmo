@@ -200,6 +200,7 @@ name = "kosmo-ui"
 version = "0.1.0-dev.1"
 dependencies = [
  "kosmo-math-model",
+ "kosmo-render",
  "kosmo-types",
 ]
 
