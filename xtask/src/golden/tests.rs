@@ -586,6 +586,28 @@ fn a_test_that_runs_only_under_a_cfg_is_reported() {
     assert_eq!(problems(&tree).0, [message("draws")]);
     let tree = valid_with("pub mod support;\n", "#![cfg(any())]\n\npub mod support;\n");
     assert_eq!(problems(&tree).0, [message("crate")]);
+    let inner = "#![cfg_attr(target_os = \"linux\", cfg(any()))]";
+    let tree = valid_with(
+        "pub mod support;\n",
+        &format!("{inner}\n\npub mod support;\n"),
+    );
+    assert_eq!(problems(&tree).0, [message("crate")]);
+    let tree = valid_with("pub mod support;\n", "#[cfg(any())]\npub mod support;\n");
+    assert_eq!(problems(&tree).0, [message("support")]);
+}
+
+#[test]
+fn a_comparison_outside_a_test_is_reported() {
+    let tree = valid_with(
+        "#[test]\nfn draws()",
+        "#[allow(dead_code, reason = \"r\")]\nfn draws()",
+    );
+    assert_eq!(
+        problems(&tree).0,
+        [format!(
+            "{TESTS}:9: golden fill-rect is compared in a function that is not a test"
+        )]
+    );
 }
 
 #[test]

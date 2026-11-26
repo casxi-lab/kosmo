@@ -379,7 +379,8 @@ by line number:
   directory but `MANIFEST`;
 - a line of `MANIFEST` that is not a digest of 64 lowercase hexadecimal
   digits, two spaces and a name, a name listed twice and lines out of order;
-- a call of `matches_golden` with a name that `MANIFEST` does not list;
+- a call of `matches_golden` with a name that `MANIFEST` does not list, and
+  a call in `tests/golden.rs` inside a function that is not a test;
 - a crate with goldens whose `tests/golden.rs` lacks the ignored tests
   `write_goldens` and `redraw_goldens`, ignores another test, or has a
   `cfg` or `cfg_attr` attribute on itself, a function or a module, since

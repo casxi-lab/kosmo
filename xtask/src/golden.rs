@@ -11,7 +11,8 @@
 //! integration test `tests/golden.rs` holds the ignored tests
 //! `write_goldens` and `redraw_goldens`, which the command runs, no other
 //! ignored test, and no `cfg` or `cfg_attr` attribute on itself, its
-//! functions or its modules, so that its tests run on every target.
+//! functions or its modules, so that its tests run on every target; it
+//! compares goldens only inside its tests.
 //!
 //! The goldens step reads only tracked files and does not run Cargo. It
 //! reports every problem it finds, one per line as `<path>[:<line>]:
@@ -217,7 +218,7 @@ fn references(tree: &Tree, dir: &str) -> Vec<(String, usize, String)> {
 /// and `#[ignore]`, and the names of its functions and modules with a `cfg`
 /// or `cfg_attr` attribute, `crate` standing for the file itself; none when
 /// it does not parse.
-fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>) {
+fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>, Vec<(usize, usize)>) {
     let Ok(file) = syn::parse_file(text) else {
         return Default::default();
     };
@@ -226,7 +227,8 @@ fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>) {
             .iter()
             .any(|attr| names.iter().any(|name| attr.path().is_ident(name)))
     };
-    let (mut ignored, mut conditional) = (BTreeSet::new(), BTreeSet::new());
+    let (mut ignored, mut conditional, mut untested) =
+        (BTreeSet::new(), BTreeSet::new(), Vec::new());
     if has(&file.attrs, &["cfg", "cfg_attr"]) {
         conditional.insert("crate".to_string());
     }
@@ -239,11 +241,16 @@ fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>) {
         if has(attrs, &["cfg", "cfg_attr"]) {
             conditional.insert(name.clone());
         }
-        if matches!(item, syn::Item::Fn(_)) && has(attrs, &["test"]) && has(attrs, &["ignore"]) {
-            ignored.insert(name);
+        if let syn::Item::Fn(function) = item {
+            if !has(attrs, &["test"]) {
+                let first = function.sig.fn_token.span.start().line;
+                untested.push((first, function.block.brace_token.span.close().end().line));
+            } else if has(attrs, &["ignore"]) {
+                ignored.insert(name);
+            }
         }
     }
-    (ignored, conditional)
+    (ignored, conditional, untested)
 }
 
 fn scan(stream: TokenStream, found: &mut dyn FnMut(usize, String)) {
@@ -358,7 +365,17 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
         }
     }
     let tests = format!("{}/tests/{TEST}.rs", set.dir);
-    let (ignored, conditional) = tree.text(&tests).map(ignored_tests).unwrap_or_default();
+    let (ignored, conditional, untested) = tree.text(&tests).map(ignored_tests).unwrap_or_default();
+    for (path, line, name) in &references {
+        if *path == tests
+            && untested
+                .iter()
+                .any(|&(first, last)| (first..=last).contains(line))
+        {
+            let message = format!("golden {name} is compared in a function that is not a test");
+            problems.add(&tests, *line, message);
+        }
+    }
     for name in &conditional {
         let message = format!(
             "compiles `{name}` only under a `cfg`; the tests of the goldens run on every target"
