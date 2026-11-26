@@ -14,12 +14,14 @@ job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, part
+history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, the
+wrapper of transcendental functions in `kosmo-render`, part
 of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
-focus generation and epoch, and the keyboard event records, and part of the
-framework core in `kosmo-ui`: the control tree, the event, update and view
-passes of a round, result slots, timers, dispatch with the focus check, the
-minimal key map and hit testing;
+focus generation and epoch, the keyboard event records, pixel formats, buffer
+descriptions with the conversion of pixels between them, and damage regions,
+and part of the framework core in `kosmo-ui`: the control tree, the event,
+update and view passes of a round, result slots, timers, dispatch with the
+focus check, the minimal key map and hit testing;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -851,9 +853,9 @@ licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `display/` exists,
 with the shared types `kosmo-types`, `framework/`, with the libraries
-`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx`, `kosmo-ui` and
-`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the program
-`kosmo`. A change that
+`kosmo-math-model`, `kosmo-jobs`, `kosmo-render`, `kosmo-math-kalyx`,
+`kosmo-ui` and `kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`,
+with the program `kosmo`. A change that
 adds a crate registers it in the table, and the first crate of a workspace adds
 the workspace root. The layout step of `cargo xtask check` enforces this layout
 on the tracked files, and the deps step on what Cargo resolves; Contributing
@@ -893,10 +895,11 @@ and their limits.
 - First-release registration: `kosmo` is a boundary crate for standard
   streams, arguments, exit code and the real clock, and `kosmo-jobs` for
   threads; `kosmo-types`, `kosmo-math-model`, `kosmo-math-kalyx`,
-  `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui` are core libraries. Other
-  crates are registered by the change that creates them; `kosmo-testkit` is
-  expected to be a boundary crate, and [host programs](#host-programs) lists the
-  boundary crates of the display stack with their categories.
+  `kosmo-render`, `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui` are core
+  libraries. Other crates are registered by the change that creates them;
+  `kosmo-testkit` is expected to be a boundary crate, and [host
+  programs](#host-programs) lists the boundary crates of the display stack with
+  their categories.
 - The layout step of `cargo xtask check` parses the Rust files under the
   `src/` of every library crate, unit tests included, expands `use` trees and
   reports every forbidden path, macro and type with file and line, and in a
@@ -1524,11 +1527,11 @@ pub trait Rasterizer {
   use library functions that detect the level themselves; the shared [conversion
   function](#pixel-formats-and-buffers) converts.
 - vello_cpu's sizes are `u16`, so a buffer is at most 65,535 pixels wide and
-  high, and the buffer limit of `kosmo-render` lies within that.
+  high, and the [buffer limit](#pixel-formats-and-buffers) lies within that.
 - guillotiere 0.7.0, a dependency of vello_cpu that cannot be turned off, states
   its license as `MIT/Apache-2.0`, which is not a valid SPDX expression, so the
   deps step requires a license exception for it: the allowlist of the framework
-  will list one that reads it as `MIT OR Apache-2.0`, with its reason.
+  lists one that reads it as `MIT OR Apache-2.0`, with its reason.
 
 ### Glyphs
 
@@ -1636,7 +1639,12 @@ is a design change.
   `y * stride + x * bpp`, and row 0 is at the top. Construction checks that the
   width and the height are at least 1, that `stride` is at least `width * bpp`,
   and that `stride * height` neither overflows `u32` nor exceeds the buffer
-  limit of `kosmo-render`. Rotation is not part of the description.
+  limit. Rotation is not part of the description.
+- The buffer limit is two constants of `kosmo-types`: the width and the height
+  are at most `MAX_BUFFER_SIDE`, 8,192 pixels, and `stride * height` is at most
+  `MAX_BUFFER_BYTES`, $2^{26}$ bytes (64 MiB). `kosmo-types` checks them when a
+  description is built, and the previous frame of `kosmo-render` stays within
+  the same constants.
 - `kosmo-render` keeps the previous frame as a tightly packed `Rgba8Premul`
   buffer and, before presentation, converts each damage rectangle into the
   target buffer. Repainting by buffer age for double buffering is done on the
@@ -1679,7 +1687,7 @@ and uses integer arithmetic only:
 - Fixed-point values meet external libraries only at these points. Into the
   raster library, `v as f32 / 64.0` is exact up to $2^{24}$ units, and
   conversion to `f64`, the type of vello_cpu's coordinates, is always exact; the
-  buffer limit of `kosmo-render` stays within that range. Glyph outlines enter
+  buffer limit stays within that range. Glyph outlines enter
   as [glyphs](#glyphs) describes. parley's `f32` positions are multiplied by 64,
   which is exact, and rounded once by the rule above; widths passed to parley
   are converted to `f32` exactly. Accessibility bounding boxes are converted
@@ -1804,7 +1812,8 @@ Besides the rules above:
 ### External dependencies
 
 The libraries chosen above enter as these direct external dependencies, which
-the layout table will list for their crates:
+the layout table lists for their crates; so far it lists those of
+`kosmo-render`, and the others are added with their crates:
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
 [package]
 name = "kosmo-types"
-description = "The shared types of kosmo: fixed-point geometry, logical time, focus generations and epochs, and keyboard event records"
+description = "The shared types of kosmo: fixed-point geometry, logical time, focus generations and epochs, keyboard event records, pixel formats, buffer descriptions and their conversion, and damage regions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

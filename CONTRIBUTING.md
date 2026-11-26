@@ -21,9 +21,10 @@ The last two report whitespace errors in unstaged and staged changes.
 The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
 workspaces `display/`, with the shared types `kosmo-types`, `framework/`, with
-the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx`, `kosmo-ui`
-and `kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the
-program `kosmo`, and the repository tasks in `xtask/`, run as `cargo xtask`.
+the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-render`,
+`kosmo-math-kalyx`, `kosmo-ui` and `kosmo-scratchpad` and the facade
+`kosmo-sdk`, and `desktop/`, with the program `kosmo`, and the repository tasks
+in `xtask/`, run as `cargo xtask`.
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
 program's line-mode terminal, and `cargo xtask check` runs these steps in
 order and stops at the first one that fails:
@@ -428,7 +429,7 @@ of its members, `<workspace>_exports`, of its export crates in the table,
 repository, counted once per kind.
 
 An allow entry is a `[[crates.<name>.external]]` table in `layout.toml`. For
-example, the planned crate `kosmo-render` will have this entry for `libm`:
+example, the crate `kosmo-render` has this entry for `libm`:
 
 ```toml
 [[crates.kosmo-render.external]]
@@ -577,7 +578,13 @@ The fetch and deps steps have limits:
   the resolved features include those that only features off by default turn
   on. Resolved features are those that Cargo's resolver gives a package for
   all its dependents in the resolution together, dev-dependencies included,
-  so they can be more than a normal build turns on.
+  so they can be more than a normal build turns on. The resolution also has
+  an optional dependency of a crates.io package that only a weak dependency
+  feature of the package names, such as `glifo?/libm` in the `libm` feature
+  of vello_cpu, although no feature turns the dependency on: the allowlist
+  lists it and the packages that only it brings in, the features that they
+  turn on count in the resolved features of the packages they depend on,
+  and the build compiles none of those packages.
 - `cargo xtask` downloads and builds xtask before any step runs, outside the
   fetch step, so the build scripts and procedural macros of xtask's own
   dependencies run before the check reads `xtask/allowlist.toml` and checks
@@ -633,12 +640,13 @@ Security advisories are checked by hand before each version is tagged,
 pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
 crates.io packages in every `Cargo.lock` of the repository against the RustSec
 advisory database and records, with the release decision, the commit of the
-advisory database that was used. A weekly advisory job will be added once the
-allowlists of the product workspaces together list more than about 20 distinct
-packages, each name and version counted once however many allowlists list it,
-which is expected with the framework's text stack. The packages of the tool
-workspace `xtask` do not count. The job will not be required for merging and
-will change neither the `cargo xtask check` job nor the branch rules of `main`.
+advisory database that was used. A weekly advisory job, not required for
+merging, will be added with the framework's text stack; with the framework's
+raster library, the allowlists of the product workspaces together list more
+than about 20 distinct packages, each name and version counted once however
+many allowlists list it, the packages of the tool workspace `xtask` not
+counted. The job will change neither the `cargo xtask check` job nor the
+branch rules of `main`.
 
 ## Commit messages
 
