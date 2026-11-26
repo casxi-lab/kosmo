@@ -4167,12 +4167,74 @@ fn default_features_are_expanded_through_the_feature_table() {
     });
     let at = "framework/sdk/Cargo.toml: the default features turn on";
     let off = "call probes and test hooks stay off by default";
+    // probes and hooks are features of their own as well.
+    let other = "framework/sdk/Cargo.toml: the feature";
+    let only = "only call-probes and test-hooks turn them on";
     assert_eq!(
         found,
         [
             format!("{at} kosmo-ui/call-probes through probes; {off}"),
             format!("{at} kosmo-x?/test-hooks through probes; {off}"),
             format!("{at} test-hooks through probes; {off}"),
+            format!("{other} hooks turns on kosmo-x?/test-hooks; {only}"),
+            format!("{other} hooks turns on test-hooks; {only}"),
+            format!("{other} probes turns on kosmo-ui/call-probes; {only}"),
+            format!("{other} probes turns on kosmo-x?/test-hooks through hooks; {only}"),
+            format!("{other} probes turns on test-hooks through hooks; {only}"),
+        ]
+    );
+}
+
+#[test]
+fn features_other_than_call_probes_and_test_hooks_do_not_turn_them_on() {
+    let found = probes_with(|files| {
+        // A dependency that turns on another feature of the platform
+        // interface, which turns on its test hooks.
+        append(
+            files,
+            "framework/platform/Cargo.toml",
+            "all = [\"test-hooks\"]\n",
+        );
+        // A program that turns on a feature of the facade, which turns on
+        // features of kosmo-x that turn on its call probes and the test
+        // hooks of the platform interface.
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ncall-probes = [\"dep:kosmo-testkit\"]\nextra = [\"call-probes\"]\nhooks = [\"kosmo-platform/test-hooks\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\nkosmo-platform = { workspace = true, features = [\"all\"] }\n",
+        );
+        declare(
+            files,
+            "framework",
+            "kosmo-x = { path = \"x\", version = \"=0.1.0-dev.1\" }",
+        );
+        edit(
+            files,
+            "framework/sdk/Cargo.toml",
+            "[dependencies]\n",
+            "[dependencies]\nkosmo-x.workspace = true\n",
+        );
+        append(
+            files,
+            "framework/sdk/Cargo.toml",
+            "\n[features]\nextra = [\"kosmo-x/extra\", \"kosmo-x/hooks\"]\n",
+        );
+        edit(
+            files,
+            "desktop/calc/Cargo.toml",
+            "kosmo-sdk.workspace = true\n",
+            "kosmo-sdk = { workspace = true, features = [\"extra\"] }\n",
+        );
+    });
+    let only = "only call-probes and test-hooks turn them on";
+    assert_eq!(
+        found,
+        [
+            format!("framework/platform/Cargo.toml: the feature all turns on test-hooks; {only}"),
+            format!("framework/x/Cargo.toml: the feature extra turns on call-probes; {only}"),
+            format!(
+                "framework/x/Cargo.toml: the feature hooks turns on kosmo-platform/test-hooks; {only}"
+            ),
         ]
     );
 }

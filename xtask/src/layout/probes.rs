@@ -3,7 +3,8 @@
 //! `call-probes`; no dependency declaration turns on the `call-probes` of a
 //! crate, and none but a dev-dependency, or the dependency of
 //! `kosmo-testkit` on `kosmo-platform`, turns on the `test-hooks` of the
-//! platform interface or of a backend; and no default features turn on
+//! platform interface or of a backend; and no feature of a crate but
+//! `call-probes` and `test-hooks`, its default features included, turns on
 //! either.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,6 +28,9 @@ const PLATFORM: &str = "kosmo-platform";
 
 /// What the default features may not turn on.
 const OFF_BY_DEFAULT: &str = "call probes and test hooks stay off by default";
+
+/// What the other features may not turn on.
+const ONLY_THEIR_OWN: &str = "only call-probes and test-hooks turn them on";
 
 /// Whether the crate `name` has test hooks: the platform interface or a
 /// backend.
@@ -90,8 +94,8 @@ pub fn check_root(manifest: &str, workspace: &Table, problems: &mut Problems) {
     }
 }
 
-/// The dependencies and the default features of the crate `name` with the
-/// manifest `table` at `manifest`.
+/// The dependencies and the features of the crate `name` with the manifest
+/// `table` at `manifest`.
 pub fn check_crate(manifest: &str, name: &str, table: &Table, problems: &mut Problems) {
     let features: BTreeMap<&str, Vec<&str>> = table
         .get("features")
@@ -135,40 +139,55 @@ pub fn check_crate(manifest: &str, name: &str, table: &Table, problems: &mut Pro
             }
         }
     }
-    check_default(manifest, &features, problems);
+    for start in features.keys() {
+        if *start != PROBES && *start != HOOKS {
+            check_expansion(manifest, start, &features, problems);
+        }
+    }
 }
 
-/// The default features of a crate, expanded through its feature table
-/// `features`: they turn on neither its `call-probes` or `test-hooks` nor
-/// `kosmo-testkit` or the `call-probes` or `test-hooks` of a dependency.
-fn check_default(manifest: &str, features: &BTreeMap<&str, Vec<&str>>, problems: &mut Problems) {
+/// The feature `start` of a crate, other than `call-probes` and
+/// `test-hooks`, expanded through its feature table `features`: it turns on
+/// neither its `call-probes` or `test-hooks` nor the `call-probes` or
+/// `test-hooks` of a dependency, and the default features do not turn on
+/// `kosmo-testkit` either. The dependency on `kosmo-testkit` reports the
+/// other features that turn it on.
+fn check_expansion(
+    manifest: &str,
+    start: &str,
+    features: &BTreeMap<&str, Vec<&str>>,
+    problems: &mut Problems,
+) {
+    let default = start == "default";
     let report = |value: &str, through: Option<&str>, problems: &mut Problems| {
         let through = through
             .map(|feature| format!(" through {feature}"))
             .unwrap_or_default();
-        problems.insert(format!(
-            "{manifest}: the default features turn on {value}{through}; {OFF_BY_DEFAULT}"
-        ));
+        problems.insert(if default {
+            format!("{manifest}: the default features turn on {value}{through}; {OFF_BY_DEFAULT}")
+        } else {
+            format!("{manifest}: the feature {start} turns on {value}{through}; {ONLY_THEIR_OWN}")
+        });
     };
     let mut seen = BTreeSet::new();
-    let mut work = vec![("default", None)];
+    let mut work = vec![(start, None)];
     while let Some((feature, through)) = work.pop() {
         if !seen.insert(feature) {
             continue;
         }
-        if feature == PROBES || feature == HOOKS || feature == TESTKIT {
+        if feature == PROBES || feature == HOOKS || (default && feature == TESTKIT) {
             report(feature, through, problems);
             continue;
         }
-        let through = through.or((feature != "default").then_some(feature));
+        let through = through.or((feature != start).then_some(feature));
         for value in features.get(feature).into_iter().flatten() {
             if let Some(dependency) = value.strip_prefix("dep:") {
-                if dependency == TESTKIT {
+                if default && dependency == TESTKIT {
                     report(value, through, problems);
                 }
             } else if let Some((dependency, feature)) = value.split_once('/') {
                 let dependency = dependency.trim_end_matches('?');
-                if dependency == TESTKIT || feature == PROBES || feature == HOOKS {
+                if (default && dependency == TESTKIT) || feature == PROBES || feature == HOOKS {
                     report(value, through, problems);
                 }
             } else {

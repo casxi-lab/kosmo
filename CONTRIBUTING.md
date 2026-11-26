@@ -323,12 +323,18 @@ attribute of a library root, do not. It checks:
   `features = ["call-probes"]` or `features = ["kosmo-ui/call-probes"]`
   would; none but a dev-dependency, and the dependency of `kosmo-testkit` on
   `kosmo-platform`, turns on the `test-hooks` of `kosmo-platform` or of a
-  backend, a crate whose name starts with `kosmo-backend-`; and the default
-  features of a crate, expanded through its feature table, turn on neither
-  its own `call-probes` or `test-hooks` nor `kosmo-testkit` or the
-  `call-probes` or `test-hooks` of a dependency. So call probes are
-  compiled only when the command line turns them on, and test hooks only
-  then and in tests;
+  backend, a crate whose name starts with `kosmo-backend-`; no feature of a
+  crate other than `call-probes` and `test-hooks`, its default features
+  included, expanded through its feature table, turns on its own
+  `call-probes` or `test-hooks` or the `call-probes` or `test-hooks` of a
+  dependency; and its default features do not turn on `kosmo-testkit`
+  either. So call probes are compiled only when the command line turns them
+  on, and test hooks only then, in tests and in builds that include
+  `kosmo-testkit`, as every command over the whole `framework/` workspace
+  does; the `clippy` step therefore lints `framework/` once more without
+  `kosmo-testkit` and without test targets, as step 4 of the check
+  describes, so that the platform interface, the backends and the framework
+  core build there without the hooks, as ordinary builds do;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`
