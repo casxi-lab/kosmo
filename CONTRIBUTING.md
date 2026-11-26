@@ -268,6 +268,9 @@ attribute of a library root, do not. It checks:
   exception is a single unconditional
   `allow` or `expect` of `clippy::disallowed_methods` alone in
   `src/det_math.rs` of `kosmo-render`, the wrapper module that calls libm;
+  a deterministic crate keeps its files as regular files, and `include!` and
+  `#[path]` in it bring in only `.rs` files under its directory, so that the
+  step reads every file that the crate compiles;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`

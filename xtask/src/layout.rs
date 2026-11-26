@@ -1667,7 +1667,7 @@ fn check_crate<'a>(
     }
     check_platform(tree, place, manifest, table, problems);
     if krate.deterministic {
-        check_lowerings(tree, place, problems);
+        check_lowerings(tree, place, repo::parent(&root.manifest), problems);
     }
     if let Some(version) = version {
         match package_field(table, "version", root.workspace).and_then(Value::as_str) {
@@ -1868,21 +1868,8 @@ fn check_pure_sources(
                 "{path}:{line}: the pure-core crate {name} may not use extern crate std outside #[cfg(test)]; the attribute stands directly on the extern crate item"
             ));
         }
-        let dir = repo::parent(path);
         for found in &paths {
-            // The modules declared inside an inline module with a
-            // directory are read from that directory.
-            let allowed = |resolved: &str| match found.kind {
-                source::Kind::Code => is_rust_under(resolved, &src),
-                source::Kind::Directory => repo::is_within(resolved, &src),
-                source::Kind::Data => true,
-            };
-            let outside = found.candidates.iter().any(|candidate| {
-                resolve(tree, dir, candidate).is_ok_and(|resolved| {
-                    repo::is_within(&resolved, workspace) && !allowed(&resolved)
-                })
-            });
-            if outside {
+            if brings_in_from_outside(tree, path, found, &src, workspace) {
                 problems.insert(format!(
                     "{path}:{}: the pure-core crate {name} brings in Rust code only from .rs files under {src}/, not {}",
                     found.line, found.path
@@ -1890,6 +1877,31 @@ fn check_pure_sources(
             }
         }
     }
+}
+
+/// Whether the literal path `found` of the Rust file `path` may name,
+/// inside `workspace`, what a crate that keeps its code under `code` does
+/// not bring in: for Rust code, anything but a `.rs` file under `code`; for
+/// the modules declared inside an inline module, which are read from its
+/// directory, a directory outside `code`. A file of data may be anywhere. A
+/// path that leaves the workspace or passes through a symbolic link is
+/// reported by the repository boundary instead.
+fn brings_in_from_outside(
+    tree: &Tree,
+    path: &str,
+    found: &source::SourcePath,
+    code: &str,
+    workspace: &str,
+) -> bool {
+    let allowed = |resolved: &str| match found.kind {
+        source::Kind::Code => is_rust_under(resolved, code),
+        source::Kind::Directory => repo::is_within(resolved, code),
+        source::Kind::Data => true,
+    };
+    found.candidates.iter().any(|candidate| {
+        resolve(tree, repo::parent(path), candidate)
+            .is_ok_and(|resolved| repo::is_within(&resolved, workspace) && !allowed(&resolved))
+    })
 }
 
 /// Whether the package in `dir` with the manifest `table` has a library
@@ -1962,19 +1974,39 @@ fn check_platform(
 /// The lint attributes of a crate on the deterministic path: no Rust file
 /// of the crate, in any target, lowers a determinism lint, except one
 /// unconditional `allow` or `expect` of `clippy::disallowed_methods` in the
-/// wrapper module. A file whose tokens cannot be read is reported by the
-/// repository boundary instead.
-fn check_lowerings(tree: &Tree, place: Place, problems: &mut Problems) {
+/// wrapper module. So that these are all the files that the crate
+/// compiles, everything in the crate's directory is a regular file, and
+/// `include!` and `#[path]` bring in only `.rs` files under it. A file
+/// whose tokens cannot be read, and a path that leaves `workspace`, the
+/// crate's workspace, or passes through a symbolic link, are reported by
+/// the repository boundary instead.
+fn check_lowerings(tree: &Tree, place: Place, workspace: &str, problems: &mut Problems) {
     let (name, krate) = (place.name, place.krate);
+    for (path, entry) in tree.entries() {
+        if matches!(entry, Entry::Symlink(_)) && repo::is_within(path, &krate.path) {
+            problems.insert(format!(
+                "{path}: the deterministic crate {name} keeps its files under {}/ as regular files, not symbolic links",
+                krate.path
+            ));
+        }
+    }
     let wrapper = format!("{}/{}", krate.path, lints::WRAPPER.1);
     let wrapper = (name == lints::WRAPPER.0).then_some(wrapper.as_str());
     for (path, text) in tree
         .texts()
         .filter(|(path, _)| is_rust_under(path, &krate.path))
     {
-        let Ok(stream) = source::tokens(text) else {
+        let Ok((stream, paths)) = read_rust(path, text) else {
             continue;
         };
+        for found in &paths {
+            if brings_in_from_outside(tree, path, found, &krate.path, workspace) {
+                problems.insert(format!(
+                    "{path}:{}: the deterministic crate {name} brings in Rust code only from .rs files under {}/, not {}",
+                    found.line, krate.path, found.path
+                ));
+            }
+        }
         let mut found = Vec::new();
         lints::lowerings(stream, &mut found);
         let mut excused = Some(path) == wrapper;

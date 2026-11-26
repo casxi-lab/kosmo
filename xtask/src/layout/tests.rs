@@ -2200,6 +2200,83 @@ fn every_target_of_a_deterministic_crate_is_checked() {
     );
 }
 
+/// The problem of a literal path `literal` at `at` that brings code into
+/// `kosmo-render` from outside its directory.
+fn brought_in(at: &str, literal: &str) -> String {
+    format!(
+        "{at}: the deterministic crate kosmo-render brings in Rust code only from .rs files under framework/render/, not {literal}"
+    )
+}
+
+#[test]
+fn a_deterministic_crate_brings_in_code_only_from_its_rust_files() {
+    let lowering = "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n";
+    let found = problems_with(|files| {
+        append(
+            files,
+            RENDER_LIB,
+            "#[path = \"lowered.in\"]\npub mod lowered;\ninclude!(\"included.in\");\n#[path = \"../tests/common.rs\"]\nmod common;\npub const DATA: &[u8] = include_bytes!(\"../tests/golden/MANIFEST\");\n",
+        );
+        for file in ["lowered.in", "included.in"] {
+            files.insert(format!("framework/render/src/{file}"), lowering.to_string());
+        }
+        files.insert(
+            "framework/render/tests/common.rs".to_string(),
+            String::new(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            brought_in("framework/render/src/lib.rs:2", "lowered.in"),
+            brought_in("framework/render/src/lib.rs:4", "included.in"),
+        ]
+    );
+}
+
+#[test]
+fn a_deterministic_crate_brings_in_no_rust_file_of_another_crate() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            RENDER_LIB,
+            "#[path = \"../../math-model/src/lowered.rs\"]\nmod lowered;\n",
+        );
+        files.insert(
+            "framework/math-model/src/lowered.rs".to_string(),
+            "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [brought_in(
+            "framework/render/src/lib.rs:2",
+            "../../math-model/src/lowered.rs"
+        )]
+    );
+}
+
+#[test]
+fn a_deterministic_crate_keeps_its_files_as_regular_files() {
+    let mut files = valid();
+    append(&mut files, RENDER_LIB, "pub mod linked;\n");
+    files.insert(
+        "framework/render/src/linked.txt".to_string(),
+        "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n".to_string(),
+    );
+    let mut linked = tree(&files);
+    linked.insert(
+        "framework/render/src/linked.rs",
+        Entry::Symlink("linked.txt".to_string()),
+    );
+    assert_eq!(
+        check(&linked, &ALL),
+        [
+            "framework/render/src/linked.rs: the deterministic crate kosmo-render keeps its files under framework/render/ as regular files, not symbolic links"
+        ]
+    );
+}
+
 #[test]
 fn a_crate_off_the_deterministic_path_may_allow_the_lints() {
     let found = problems_with(|files| {
