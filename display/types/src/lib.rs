@@ -13,11 +13,13 @@
 //! - Pixels: the four [`PixelFormat`]s and the buffer description
 //!   [`BufferDesc`], with the buffer limits [`MAX_BUFFER_SIDE`] and
 //!   [`MAX_BUFFER_BYTES`].
+//! - Damage regions: the rectangles of a buffer whose pixels changed,
+//!   [`DamageRect`], and the bounded region [`Damage`].
 //!
 //! Every type is fixed-size and `Copy` and never allocates. The crate is
 //! pure core: `no_std` without `alloc`, without unsafe code, without
 //! dependencies and without interior mutability. The conversion of pixels
-//! between buffers and damage regions are planned here with the renderer.
+//! between buffers is planned here with the renderer.
 //!
 //! ```
 //! use kosmo_types::{Fx, Point, Rect, Size, round};
@@ -34,12 +36,14 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+mod damage;
 mod focus;
 mod geometry;
 mod input;
 mod pixel;
 mod time;
 
+pub use damage::{Damage, DamageRect, MAX_DAMAGE_RECTS};
 pub use focus::{Epoch, FocusGen};
 pub use geometry::{Fx, Point, Rect, Round, Size, round};
 pub use input::{
@@ -76,5 +80,7 @@ mod tests {
         fixed_size::<PixelFormat>();
         fixed_size::<BufferDesc>();
         fixed_size::<BufferError>();
+        fixed_size::<DamageRect>();
+        fixed_size::<Damage>();
     }
 }
