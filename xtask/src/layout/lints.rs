@@ -157,6 +157,9 @@ fn split(group: &Group) -> Vec<Vec<TokenTree>> {
 }
 
 #[cfg(test)]
+mod fixture;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
