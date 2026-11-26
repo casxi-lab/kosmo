@@ -19,11 +19,12 @@ type Log = Rc<RefCell<Vec<String>>>;
 
 /// A platform that logs its calls, in the log that the test port shares,
 /// and returns the event batches that the test gives it, one for each
-/// wait. Its clock stays at `clock`, and it has one buffer for every
-/// surface.
+/// wait, then `Disconnected` once they are gone and `disconnect` is set.
+/// Its clock stays at `clock`, and it has one buffer for every surface.
 struct Fake {
     log: Log,
     batches: VecDeque<Vec<PlatformEvent>>,
+    disconnect: bool,
     clock: MonoTime,
     resources: BTreeMap<ResourceId, Vec<u8>>,
     desc: BufferDesc,
@@ -40,6 +41,7 @@ impl Fake {
         Fake {
             log: Rc::clone(log),
             batches: VecDeque::new(),
+            disconnect: false,
             clock: MonoTime::from_nanos(7),
             resources: BTreeMap::from([(FONT, vec![1, 2, 3])]),
             desc,
@@ -68,6 +70,7 @@ impl EventSource for Fake {
                 out.extend(batch);
                 Ok(WaitEnd::Events)
             }
+            None if self.disconnect => Err(PlatformError::Disconnected),
             _ if deadline.is_some_and(|deadline| deadline <= self.clock) => Ok(WaitEnd::Deadline),
             _ => Ok(WaitEnd::Idle),
         }
@@ -509,4 +512,54 @@ fn a_frame_beyond_the_buffer_limits_is_refused() {
         Err(ShellError::FrameTooLarge)
     );
     assert_eq!(taken(&log), ["buffer 1"]);
+}
+
+#[test]
+fn run_waits_with_the_deadline_that_each_round_leaves_and_shuts_down() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    fake.batches.push_back(vec![focus_in(), execute_key()]);
+    fake.batches.push_back(Vec::new());
+    fake.disconnect = true;
+    let Shell { app, port, .. } = calculator(&log, 1);
+    let status = run(&mut fake, app, port, &[FONT]);
+    assert_eq!(
+        status,
+        ExitStatus {
+            reason: ExitReason::Disconnected,
+            shutdown: Ok(())
+        }
+    );
+    let polling = 7 + crate::JOB_POLL_INTERVAL;
+    assert_eq!(
+        taken(&log),
+        [
+            "resource font.ttf".to_string(),
+            "wait 0".to_string(),
+            "now".to_string(),
+            "take_reports".to_string(),
+            "submit job".to_string(),
+            "wait 7".to_string(),
+            "now".to_string(),
+            "take_reports".to_string(),
+            format!("wait {polling}"),
+            "shutdown".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn run_shuts_down_and_reports_a_missing_resource_before_any_wait() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let missing = ResourceId::new("missing.ttf");
+    let status = run(
+        &mut fake,
+        TestApp::default(),
+        TestPort::default(),
+        &[missing],
+    );
+    assert_eq!(status.reason, ExitReason::MissingResource(missing));
+    assert_eq!(status.shutdown, Ok(()));
+    assert_eq!(taken(&log), ["resource missing.ttf", "shutdown"]);
 }

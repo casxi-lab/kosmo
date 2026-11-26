@@ -474,6 +474,17 @@ presented as its read-back.
 Until rounds draw, a driver builds a layout result, gets its display list
 with `paint(shell.runtime().tree(), &layout, &damage)` and presents it.
 
+`run(platform, app, port, resources)` runs a shell until it stops and then
+calls `shutdown` once. It runs each round with the `next_deadline` that the
+round before left. It returns an `ExitStatus` with the `reason` and what
+`shutdown` returned: `ExitReason::Disconnected` when a port returns
+`PlatformError::Disconnected`, which is how applications of the first
+release end; `ExitReason::MissingResource` when a listed resource does not
+exist before the first round; and `ExitReason::Failed` with the
+`ShellError` of any other error. Exit codes exist only at the entry of a
+program, which maps the status to one. `run` runs on the calling thread and
+creates no threads.
+
 ## The event handling record
 
 `Output::record` is the event handling record of a round: UTF-8 text, one
@@ -566,6 +577,10 @@ no wall-clock time; review checks these, as the
 - The resources that the shell fetches go nowhere until the font set of
   `kosmo-text` exists, and presentation has no glyph coverage, so a frame
   with glyph runs fails with a missing glyph.
+- With a backend that never blocks, such as the headless backend, a wait
+  without events returns at once, so `run` keeps running rounds until the
+  platform disconnects or fails; drivers of such a backend use
+  `Shell::run_round`.
 - The previous frame is kept for repainting by buffer age, which no backend
   does yet: each presentation converts only its own damage region.
 - One region per surface, and the runtime has one control tree for all
@@ -789,3 +804,14 @@ wall clock.
     `a_configure_with_a_new_size_drops_the_previous_frame`;
     `framework/backend-headless/tests/shell.rs`:
     `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`.
+19. `run` waits with the deadline that each round leaves, and when the
+    platform disconnects it calls `shutdown` and returns
+    `ExitReason::Disconnected`; when a resource is missing at start-up, by
+    an injected fault or because the backend's table lacks it, it calls
+    `shutdown` before any wait and returns `ExitReason::MissingResource`.
+    Tests: `shell::tests::`
+    `run_waits_with_the_deadline_that_each_round_leaves_and_shuts_down`,
+    `run_shuts_down_and_reports_a_missing_resource_before_any_wait`;
+    `framework/backend-headless/tests/shell.rs`:
+    `run_shuts_down_and_returns_when_the_platform_disconnects`,
+    `run_returns_another_status_when_a_resource_is_missing_at_start_up`.

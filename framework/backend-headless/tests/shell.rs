@@ -1,5 +1,7 @@
-//! The shell of the framework core on the headless backend: a frame that
-//! the shell presents is what the backend reads back.
+//! The shell of the framework core on the headless backend: `run` returns
+//! distinct exit statuses when the platform disconnects and when a resource
+//! is missing at start-up, shutting the backend down in both cases, and a
+//! frame that the shell presents is what the backend reads back.
 
 // These tests need the test hooks: the check builds this package once
 // more with them, and a build without them compiles this file empty.
@@ -9,16 +11,16 @@ use std::collections::BTreeMap;
 
 use kosmo_backend_headless::HeadlessBackend;
 use kosmo_platform::{
-    PixelSize, PlatformCaps, PlatformError, PlatformTestHooks, ResourceId, SurfacePort,
-    SurfaceRequest, SurfaceRole, WaitEnd,
+    FaultPort, PixelSize, PlatformCaps, PlatformError, PlatformTestHooks, ResourceId,
+    ResourceProvider, SurfacePort, SurfaceRequest, SurfaceRole, WaitEnd,
 };
 use kosmo_render::{
     Color, Command, ImageStore, ListBuilder, NoGlyphs, Rasterizer, RenderTarget, VelloRasterizer,
 };
 use kosmo_types::{BufferDesc, Damage, DamageRect, Fx, PixelFormat, Point, Rect, Size};
 use kosmo_ui::{
-    App, Control, DrawContext, JobPort, Key, Kind, LayoutBox, LayoutResult, Message, Out, Shell,
-    ShellError, View, paint,
+    App, Control, DrawContext, ExitReason, JobPort, Key, Kind, LayoutBox, LayoutResult, Message,
+    Out, Shell, ShellError, View, paint, run,
 };
 
 /// The resource of the application.
@@ -98,6 +100,38 @@ fn pixels(x: i32, y: i32, width: i32, height: i32) -> Rect {
         Point::new(px(x), px(y)),
         Size::new(px(width), px(height)).unwrap(),
     )
+}
+
+#[test]
+fn run_shuts_down_and_returns_when_the_platform_disconnects() {
+    let mut backend = backend();
+    backend
+        .inject_fault(FaultPort::Wait, PlatformError::Disconnected)
+        .unwrap();
+    let status = run(&mut backend, Boxes, NoJobs, &[FONT]);
+    assert_eq!(status.reason, ExitReason::Disconnected);
+    assert_eq!(status.shutdown, Ok(()));
+    // The backend is shut down: its ports report the disconnection.
+    assert_eq!(backend.resource(FONT), Err(PlatformError::Disconnected));
+}
+
+#[test]
+fn run_returns_another_status_when_a_resource_is_missing_at_start_up() {
+    let mut backend = backend();
+    backend
+        .inject_fault(FaultPort::Resource, PlatformError::NotFound)
+        .unwrap();
+    let status = run(&mut backend, Boxes, NoJobs, &[FONT]);
+    assert_eq!(status.reason, ExitReason::MissingResource(FONT));
+    assert_ne!(status.reason, ExitReason::Disconnected);
+    assert_eq!(status.shutdown, Ok(()));
+    assert_eq!(backend.resource(FONT), Err(PlatformError::Disconnected));
+
+    // A resource that the table does not hold is missing too.
+    let absent = ResourceId::new("absent.ttf");
+    let status = run(&mut self::backend(), Boxes, NoJobs, &[FONT, absent]);
+    assert_eq!(status.reason, ExitReason::MissingResource(absent));
+    assert_eq!(status.shutdown, Ok(()));
 }
 
 #[test]

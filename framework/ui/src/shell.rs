@@ -1,5 +1,5 @@
 //! The shell: the single-round entry, which drives the round function
-//! through the platform interface, and the presentation of frames.
+//! through the platform interface, the presentation of frames, and `run`.
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -24,7 +24,8 @@ use crate::round::{Input, Output, Runtime};
 /// previous frame of each surface, which it keeps for presentation.
 ///
 /// [`Shell::run_round`], the single-round entry, runs one round through a
-/// platform. The shell holds no platform: each call borrows it, so a driver keeps its
+/// platform, and [`run`] runs rounds until the platform disconnects. The
+/// shell holds no platform: each call borrows it, so a driver keeps its
 /// backend between rounds. The shell creates no surface; the application's
 /// assembly or the driver creates them through `SurfacePort`.
 pub struct Shell<A: App> {
@@ -383,6 +384,72 @@ fn new_frame(desc: BufferDesc) -> Result<RenderTarget, ShellError> {
     )
     .map_err(|_| ShellError::FrameTooLarge)?;
     RenderTarget::new(tight).ok_or(ShellError::FrameTooLarge)
+}
+
+/// Why [`run`] returned.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExitReason {
+    /// A port returned [`PlatformError::Disconnected`]: the platform is
+    /// gone. Applications of the first release do not request exit, so
+    /// this is how they end.
+    Disconnected,
+    /// The resource did not exist before the first round.
+    MissingResource(ResourceId),
+    /// The shell stopped with this error, of another kind.
+    Failed(ShellError),
+}
+
+/// The exit status of [`run`]: why it returned, and what the platform's
+/// `shutdown` returned. Exit codes exist only at the entry of a program,
+/// which maps the status to one.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExitStatus {
+    /// Why the shell stopped.
+    pub reason: ExitReason,
+    /// What `shutdown` returned.
+    pub shutdown: Result<(), PlatformError>,
+}
+
+/// Runs `app` with its execution port `port` on `platform` until the shell
+/// stops, then calls `shutdown` once and returns the exit status.
+///
+/// Before the first round it fetches `resources` through
+/// `ResourceProvider`, as [`Shell::run_round`] states; when one does not
+/// exist, it shuts the platform down at once and returns
+/// [`ExitReason::MissingResource`]. Then it runs rounds with
+/// [`Shell::run_round`], each waiting with the [`Shell::next_deadline`]
+/// that the round before left. When a port returns
+/// [`PlatformError::Disconnected`] it returns
+/// [`ExitReason::Disconnected`]; any other error ends it with
+/// [`ExitReason::Failed`]. `run` runs on the thread that calls it and
+/// creates no threads. With a backend that never blocks, such as the
+/// headless backend, a wait without events returns at once, so `run`
+/// keeps running rounds until the platform disconnects; a driver of such
+/// a backend runs rounds with [`Shell::run_round`] instead.
+pub fn run<P: Platform, A: App>(
+    platform: &mut P,
+    app: A,
+    port: A::Port,
+    resources: &[ResourceId],
+) -> ExitStatus {
+    let mut shell = Shell::new(app, port, resources);
+    let reason = loop {
+        let deadline = shell.next_deadline();
+        match shell.run_round(platform, deadline) {
+            Ok(_) => {}
+            Err(ShellError::Platform(PlatformError::Disconnected)) => {
+                break ExitReason::Disconnected;
+            }
+            Err(ShellError::MissingResource(id)) => break ExitReason::MissingResource(id),
+            Err(error) => break ExitReason::Failed(error),
+        }
+    };
+    ExitStatus {
+        reason,
+        shutdown: platform.shutdown(),
+    }
 }
 
 #[cfg(test)]

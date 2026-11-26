@@ -107,6 +107,8 @@
 //! steps with the execution port between them, and pushes the round's
 //! accessibility updates and presents its frames; [`Shell::present`] draws
 //! a display list into a surface's previous frame and presents its damage.
+//! [`run`] runs rounds until the platform disconnects and returns an
+//! [`ExitStatus`].
 //!
 //! The control tree holds at most [`MAX_WIDGETS`] controls and is at most
 //! [`MAX_DEPTH`] deep; a view beyond either leaves the tree as it was and
@@ -147,7 +149,7 @@ pub use paint::{PaintError, paint};
 pub use port::{Effect, JobPort, Receipt, execute};
 pub use record::Record;
 pub use round::{Counts, Input, Output, Round, Runtime, ViewPass};
-pub use shell::{RoundEnd, Shell, ShellError};
+pub use shell::{ExitReason, ExitStatus, RoundEnd, Shell, ShellError, run};
 pub use slot::{Delivered, ResultSlot, Shown, Tagged};
 pub use timer::{TIMER_CAPACITY, TimerLabel};
 pub use tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, RebuildError, Tree, View, WidgetId};
