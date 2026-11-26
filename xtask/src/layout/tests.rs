@@ -3907,6 +3907,26 @@ fn test_functions_and_cfg_conditions_with_test_are_test_code() {
 }
 
 #[test]
+fn a_let_statement_with_a_test_attribute_ends_at_its_semicolon() {
+    // kosmo-jobs is registered for threads, so only the test clock reports.
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "pub fn outer() {\n    #[cfg(test)]\n    let f = |a: u8,\n             d: core::time::Duration| std::thread::sleep(d);\n    #[cfg(test)]\n    let n = vec! {\n        0\n    }\n    .iter()\n    .map(|_| std::thread::sleep(core::time::Duration::ZERO))\n    .count();\n    std::thread::sleep(core::time::Duration::ZERO);\n}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(lib, 5, "std::thread::sleep"),
+            clock_read(lib, 11, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
 fn an_inner_cfg_test_makes_a_module_test_code() {
     let found = problems_with(|files| {
         append(files, "framework/jobs/src/lib.rs", "mod checks;\n");

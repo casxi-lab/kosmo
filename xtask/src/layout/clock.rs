@@ -248,20 +248,24 @@ fn test_lines(stream: TokenStream, found: &mut Vec<(usize, usize)>) {
 }
 
 /// The index of the last token of the item, field or statement whose
-/// further attributes start at `at`: a `;`; for an item of [`BRACED`] or a
-/// macro call, the first `{ ... }` outside angle brackets; otherwise a `,`
-/// outside angle brackets; or the last token of `trees`.
+/// further attributes start at `at`: a `;`; unless it is a `let`
+/// statement, for an item of [`BRACED`] or a macro call, the first
+/// `{ ... }` outside angle brackets, and otherwise a `,` outside angle
+/// brackets; or the last token of `trees`.
 fn item_end(trees: &[TokenTree], mut at: usize) -> usize {
     while let Some((_, after)) = attribute_at(trees, at) {
         at = after;
     }
+    // The pattern and the value of a `let` statement may hold `,` and
+    // `{ ... }`.
+    let statement = matches!(trees.get(at), Some(TokenTree::Ident(ident)) if ident == "let");
     let mut braced = false;
     let mut angles = 0_usize;
     for (index, tree) in trees.iter().enumerate().skip(at) {
         match tree {
             TokenTree::Punct(punct) => match punct.as_char() {
                 ';' => return index,
-                ',' if angles == 0 && !braced => return index,
+                ',' if angles == 0 && !braced && !statement => return index,
                 '<' => angles += 1,
                 '>' => angles = angles.saturating_sub(1),
                 _ => {}
@@ -272,6 +276,7 @@ fn item_end(trees: &[TokenTree], mut at: usize) -> usize {
             TokenTree::Group(group)
                 if group.delimiter() == Delimiter::Brace
                     && angles == 0
+                    && !statement
                     && (braced
                         || is_punct(index.checked_sub(1).and_then(|i| trees.get(i)), '!')) =>
             {
