@@ -171,6 +171,7 @@ fn each_bad_line_is_reported() {
         format!("{digest}  Fill-Rect\n"),
         format!("{digest}  fill_rect\n"),
         format!("{digest}  \n"),
+        format!("{digest}0  long\n"),
         line_of("glyphs"),
     ]
     .concat();
@@ -209,6 +210,7 @@ fn each_bad_line_is_reported() {
                 "{MANIFEST}:11: `fill_rect` is not a golden name of lowercase letters, digits and `-`"
             ),
             format!("{MANIFEST}:12: `` is not a golden name of lowercase letters, digits and `-`"),
+            format!("{MANIFEST}:13: `{digest}0` is not 64 lowercase hexadecimal digits"),
         ]
     );
     assert_eq!(count, 2);
@@ -455,4 +457,45 @@ fn a_directory_with_another_file_gives_no_manifest() {
         );
         fs::remove_dir_all(&dir).unwrap();
     }
+}
+
+#[test]
+fn verify_compares_each_golden_drawn_or_listed_by_name() {
+    let of = |name: &str| digest(&bytes_of(name));
+    let drawn: BTreeMap<String, String> = [
+        ("fill-rect", of("fill-rect")),
+        ("glyphs", of("glyphs, drawn otherwise")),
+        ("new", of("new")),
+    ]
+    .into_iter()
+    .map(|(name, digest)| (name.to_string(), digest))
+    .collect();
+    let mut problems = Problems::default();
+    let manifest = line_of("fill-rect") + &line_of("glyphs") + &line_of("gone");
+    let listed = parse_manifest(MANIFEST, &manifest, &mut problems);
+    assert_eq!(problems.lines(), Vec::<String>::new());
+    let (lines, differ) = compare_digests(&drawn, &listed);
+    assert_eq!(
+        lines,
+        [
+            format!(
+                "fill-rect: drawn {}, MANIFEST {}: same",
+                of("fill-rect"),
+                of("fill-rect")
+            ),
+            format!(
+                "glyphs: drawn {}, MANIFEST {}: differs",
+                of("glyphs, drawn otherwise"),
+                of("glyphs")
+            ),
+            format!("gone: drawn -, MANIFEST {}: differs", of("gone")),
+            format!("new: drawn {}, MANIFEST -: differs", of("new")),
+        ]
+    );
+    assert_eq!(differ, 3);
+    assert_eq!(compare_digests(&drawn, &BTreeMap::new()).1, 3);
+    assert_eq!(
+        compare_digests(&BTreeMap::new(), &BTreeMap::new()),
+        (Vec::new(), 0)
+    );
 }

@@ -419,15 +419,12 @@ pub fn verify(root: &Path) -> ExitCode {
             return Err(problems.lines().join("\n"));
         }
         println!("golden: {} drawn into {}", set.golden_dir(), set.redrawn());
-        let names: BTreeSet<&String> = drawn.keys().chain(listed.keys()).collect();
-        for name in names {
-            let new = drawn.get(name).map_or("-", String::as_str);
-            let old = listed.get(name).map_or("-", |(_, digest)| digest.as_str());
-            let result = if new == old { "same" } else { "differs" };
-            compared += 1;
-            differ += usize::from(new != old);
-            println!("{name}: drawn {new}, MANIFEST {old}: {result}");
+        let (lines, differing) = compare_digests(&drawn, &listed);
+        for line in &lines {
+            println!("{line}");
         }
+        compared += lines.len();
+        differ += differing;
         Ok(())
     });
     match result {
@@ -436,6 +433,26 @@ pub fn verify(root: &Path) -> ExitCode {
         ))),
         other => finish(other),
     }
+}
+
+/// The lines that `--verify` prints for the digests `drawn` against
+/// `listed`, by name, and how many goldens differ; a golden drawn but not
+/// listed, or listed but not drawn, differs.
+fn compare_digests(
+    drawn: &BTreeMap<String, String>,
+    listed: &BTreeMap<String, (usize, String)>,
+) -> (Vec<String>, usize) {
+    let names: BTreeSet<&String> = drawn.keys().chain(listed.keys()).collect();
+    let mut lines = Vec::new();
+    let mut differ = 0;
+    for name in names {
+        let new = drawn.get(name).map_or("-", String::as_str);
+        let old = listed.get(name).map_or("-", |(_, digest)| digest.as_str());
+        let result = if new == old { "same" } else { "differs" };
+        differ += usize::from(new != old);
+        lines.push(format!("{name}: drawn {new}, MANIFEST {old}: {result}"));
+    }
+    (lines, differ)
 }
 
 fn finish(result: Result<(), String>) -> ExitCode {
