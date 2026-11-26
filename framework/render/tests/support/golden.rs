@@ -27,15 +27,30 @@ pub const REDRAWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/golden
 /// The bytes of the encoded description.
 const HEADER: usize = 16;
 
+/// The formats with their codes in the encoding.
+const FORMAT_CODES: [(PixelFormat, u32); 4] = [
+    (PixelFormat::Rgba8Premul, 1),
+    (PixelFormat::Xrgb8888, 2),
+    (PixelFormat::Rgb565, 3),
+    (PixelFormat::Argb8888Premul, 4),
+];
+
 /// The format code of `format` in the encoding.
 pub fn format_code(format: PixelFormat) -> Checked<u32> {
-    match format {
-        PixelFormat::Rgba8Premul => Ok(1),
-        PixelFormat::Xrgb8888 => Ok(2),
-        PixelFormat::Rgb565 => Ok(3),
-        PixelFormat::Argb8888Premul => Ok(4),
-        other => Err(format!("{other:?} has no format code")),
-    }
+    FORMAT_CODES
+        .iter()
+        .find(|&&(known, _)| known == format)
+        .map(|&(_, code)| code)
+        .ok_or_else(|| format!("{format:?} has no format code"))
+}
+
+/// The format of the format code `code` in the encoding.
+fn format_of(code: u32) -> Checked<PixelFormat> {
+    FORMAT_CODES
+        .iter()
+        .find(|&&(_, known)| known == code)
+        .map(|&(format, _)| format)
+        .ok_or_else(|| format!("format code {code} is unknown"))
 }
 
 /// The encoding of `target`: its description and its bytes.
@@ -69,7 +84,8 @@ fn shown(bytes: &[u8]) -> String {
 
 /// Compares the encoding `drawn` with `golden`, the golden `name`, byte
 /// for byte. A difference fails with the first pixel that differs, its
-/// position and its bytes in both.
+/// position and its bytes in both, or with the format code when it is
+/// unknown.
 pub fn compare(name: &str, golden: &[u8], drawn: &[u8]) -> Checked {
     if golden == drawn {
         return Ok(());
@@ -88,7 +104,9 @@ pub fn compare(name: &str, golden: &[u8], drawn: &[u8]) -> Checked {
             "{name}: {drawn} bytes drawn, but the golden has {golden}"
         ));
     };
-    let bpp: usize = if code == 3 { 2 } else { 4 };
+    let bpp = format_of(code)
+        .map_err(|error| format!("{name}: {error}"))?
+        .bytes_per_pixel() as usize;
     let stride = (stride as usize).max(1);
     let (y, column) = (at / stride, at % stride);
     if column >= width as usize * bpp {

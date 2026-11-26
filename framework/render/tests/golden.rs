@@ -121,6 +121,21 @@ fn a_drawing_of_another_buffer_or_length_fails_with_both() -> Checked {
 }
 
 #[test]
+fn a_drawing_with_an_unknown_format_code_fails_with_the_code() {
+    let mut golden = Vec::new();
+    for field in [1_u32, 1, 4, 5] {
+        golden.extend_from_slice(&field.to_le_bytes());
+    }
+    golden.extend_from_slice(&[0; 4]);
+    let mut drawn = golden.clone();
+    drawn[16] = 1;
+    assert_eq!(
+        golden::compare("codes", &golden, &drawn),
+        Err("codes: format code 5 is unknown".to_string())
+    );
+}
+
+#[test]
 fn a_difference_after_the_pixels_of_a_row_names_the_byte() -> Checked {
     // Two pixels of `Rgb565` in rows of 6 bytes.
     let mut golden = Vec::new();
