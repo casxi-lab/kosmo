@@ -1,6 +1,6 @@
 [package]
 name = "kosmo-render"
-description = "Rendering: so far the wrapper of the transcendental functions that deterministic code calls"
+description = "Rendering: display lists and the wrapper of the transcendental functions that deterministic code calls"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+kosmo-types.workspace = true
 libm.workspace = true
 vello_cpu.workspace = true
 

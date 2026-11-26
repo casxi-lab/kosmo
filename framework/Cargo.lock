@@ -167,6 +167,7 @@ version = "0.1.0-dev.1"
 name = "kosmo-render"
 version = "0.1.0-dev.1"
 dependencies = [
+ "kosmo-types",
  "libm",
  "vello_cpu",
 ]
