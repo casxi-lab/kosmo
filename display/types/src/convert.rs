@@ -397,6 +397,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn every_5_bit_and_6_bit_value_is_widened_to_the_nearest_8_bit_value() {
+        // k is the whole number nearest to v * 255 / max exactly when
+        // max * (2k - 1) <= 2 * v * 255 < max * (2k + 1); 2 * v * 255 is
+        // even and max odd, so there is no tie.
+        for max in [31, 63] {
+            for v in 0..=max {
+                let k = u32::from(from_bits(v, max));
+                let twice = 2 * u32::from(v) * 255;
+                let max = u32::from(max);
+                assert!(
+                    max * (2 * k).saturating_sub(1) <= twice && twice < max * (2 * k + 1),
+                    "{v} of {max}: {k}"
+                );
+            }
+        }
+    }
+
     // One case for each ordered pair of formats, with two pixels.
 
     #[test]

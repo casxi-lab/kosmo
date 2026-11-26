@@ -256,4 +256,23 @@ mod tests {
             Err(BufferError::TooManyBytes)
         );
     }
+
+    #[test]
+    fn the_first_check_that_fails_is_the_error() {
+        // Empty before SideTooLong.
+        assert_eq!(
+            BufferDesc::new(0, 8_193, 4, PixelFormat::Rgba8Premul),
+            Err(BufferError::Empty)
+        );
+        // SideTooLong before StrideTooShort.
+        assert_eq!(
+            BufferDesc::new(8_193, 1, 0, PixelFormat::Rgba8Premul),
+            Err(BufferError::SideTooLong)
+        );
+        // StrideTooShort before TooManyBytes.
+        assert_eq!(
+            BufferDesc::new(8_192, 8_192, 32_767, PixelFormat::Rgba8Premul),
+            Err(BufferError::StrideTooShort)
+        );
+    }
 }
