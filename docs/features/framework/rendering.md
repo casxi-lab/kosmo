@@ -166,9 +166,9 @@ bytes as a new one. No type of vello_cpu appears in the interface of
 
 `RenderTarget` is the frame that rendering keeps: a tightly packed
 `Rgba8Premul` buffer, its stride four times its width, within the buffer
-limits. `RenderTarget::new` makes one of zero bytes, `from_bytes` takes
-bytes of its description's length, and `whole` gives the damage region of
-the whole buffer. Before presentation, `convert_into` writes each rectangle
+limits. `RenderTarget::new` makes one whose bytes are all 0, `from_bytes`
+takes bytes of its description's length, and `whole` gives the damage region
+of the whole buffer. Before presentation, `convert_into` writes each rectangle
 of a damage region into the buffer to be presented, of any of the four
 formats, at the same place, through the conversion function of
 `kosmo-types`; every other byte of that buffer stays as it was. When the
@@ -249,7 +249,7 @@ cargo xtask golden --verify
 
 The goldens step of `cargo xtask check` reports a golden whose file differs
 from `MANIFEST`, a golden that no test refers to and a file that `MANIFEST`
-does not list, as [the goldens
+does not list, among other problems, as [the goldens
 step](../../../CONTRIBUTING.md#the-goldens-step-and-cargo-xtask-golden)
 describes. Goldens are written only by `cargo xtask golden`, the check on
 GitHub-hosted runners is authoritative, and a local digest that differs from
@@ -263,14 +263,14 @@ determinism](../../../CONTRIBUTING.md#golden-images-and-determinism) states.
 Their `src/` uses none of the interfaces that the [platform
 boundary](../../architecture.md#platform-boundary) forbids, among them
 threads, clocks, the environment, files and input and output, which the
-layout step of `cargo xtask check` checks. The layout table marks both, and
-`kosmo-ui`, as crates of the deterministic path, so Clippy rejects hash
-containers and the floating-point methods that the determinism lints list in
-all their targets, and no attribute but the one of `det_math` turns these
-lints off. The deps step compares the features of vello_cpu and the packages
-it brings in with the allow entries of `kosmo-render` and the allowlist of
-`framework/`, so a change that turns on `std` or `multithreading` fails
-until those entries record it.
+layout step of `cargo xtask check` checks. Clippy rejects the hash containers
+and the floating-point methods that the determinism lints list in all their
+targets, as in every crate of the product workspaces, and since the layout
+table marks both, and `kosmo-ui`, as crates of the deterministic path, no
+attribute but the one of `det_math` turns these lints off. The deps step
+compares the features of vello_cpu and the packages it brings in with the
+allow entries of `kosmo-render` and the allowlist of `framework/`, so a change
+that turns on `std` or `multithreading` fails until those entries record it.
 
 ## Limits
 
