@@ -784,8 +784,8 @@ in `clippy.toml`; the four types are written by hand. A pull request that
 upgrades the toolchain or `libm` runs the command again and states the
 versions in the comment above the list. The tests of the lints are in
 `xtask/src/layout/lints/fixture.rs`: they write a crate that denies both
-lints into the build directory of `xtask` and run the pinned Clippy on it
-with the root `clippy.toml`, offline. A method call, a path call and a
+lints into `xtask/target/`, which Git ignores, and run the pinned Clippy on
+it with the root `clippy.toml`, offline. A method call, a path call and a
 function pointer of methods with unspecified precision, `algebraic_add`,
 `f32::max`, `libm::sinf` outside a module that expects the lint and
 `std::collections::HashMap`, also through a re-export, are each reported

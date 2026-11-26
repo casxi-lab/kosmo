@@ -23,12 +23,14 @@ use crate::repo;
 
 /// A diagnostic that Clippy or the compiler reported for the fixture: the
 /// file of its primary span, relative to the fixture crate, its line, its
-/// lint or error code, empty for none, and its message.
+/// lint or error code, empty for none, its level, such as `error`, and its
+/// message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Diagnostic {
     file: String,
     line: u64,
     code: String,
+    level: String,
     message: String,
 }
 
@@ -212,6 +214,7 @@ fn diagnostics(stdout: &str, manifest: &str) -> Vec<Diagnostic> {
                     .as_str()
                     .unwrap_or_default()
                     .to_string(),
+                level: message["level"].as_str().unwrap_or_default().to_string(),
                 message: text.to_string(),
             })
         })
@@ -251,7 +254,7 @@ fn clippy() -> Result<Vec<Diagnostic>, String> {
     let found = diagnostics(&stdout, &manifest.to_string_lossy());
     if found.is_empty() {
         return Err(format!(
-            "cargo clippy on the fixture reported nothing, with {}; the fetch step of cargo xtask check downloads libm:\n{}",
+            "cargo clippy on the fixture reported nothing, with {}; it needs the clippy component of the pinned toolchain and the libm that the fetch step of cargo xtask check downloads:\n{}",
             output.status,
             String::from_utf8_lossy(&output.stderr)
         ));
@@ -395,6 +398,13 @@ fn clippy_reports_every_listed_method_function_and_type() {
         .collect();
     found.sort();
     assert_eq!(found, expected);
+}
+
+#[test]
+fn clippy_reports_the_determinism_lints_as_errors() {
+    for found in reported() {
+        assert_eq!(found.level, "error", "{found:?}");
+    }
 }
 
 #[test]
