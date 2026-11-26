@@ -64,6 +64,14 @@ const CONVERT_ROWS: u32 = 64;
 /// The rasterizer on vello_cpu. It keeps one render context and one
 /// drawing buffer and resets them for each call, so a reused rasterizer
 /// gives the same bytes as a new one.
+///
+/// Besides the target, [`render`](Rasterizer::render) allocates a tightly
+/// packed `Rgba8Premul` buffer of its largest damage rectangle, 4 bytes per
+/// pixel, and an RGBA copy, 4 bytes per value, of each distinct glyph mask
+/// that the list uses; [`fill_coverage`](Rasterizer::fill_coverage)
+/// allocates 4 bytes per value of the mask, at most 4 ×
+/// [`MAX_BUFFER_BYTES`](kosmo_types::MAX_BUFFER_BYTES). The rasterizer
+/// keeps its largest buffer until it is dropped.
 pub struct VelloRasterizer {
     context: RenderContext,
     resources: Resources,

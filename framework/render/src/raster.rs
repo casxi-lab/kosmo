@@ -88,9 +88,10 @@ use crate::list::{DisplayList, FontId, GlyphId, Path};
 /// buffer of the target's size, [`RenderError::MissingGlyph`] when the
 /// glyph coverage has no mask for a glyph of the list, wherever the glyph
 /// lies, [`RenderError::Unsupported`] for a command that the rasterizer does
-/// not draw and [`RenderError::OutOfRange`] when an origin with its offsets
-/// does not fit in an [`Fx`]. After an error the target is as it was. On
-/// success it returns the [`WorkCount`] of the list and the region.
+/// not draw and [`RenderError::OutOfRange`] when an origin, or the offsets
+/// of nested groups, added together do not fit in an [`Fx`]. After an
+/// error the target is as it was. On success it returns the [`WorkCount`]
+/// of the list and the region.
 ///
 /// `glyphs` and `images` are read only. Rendering starts no threads and
 /// reads no clock and no file, so the same input gives the same bytes on
