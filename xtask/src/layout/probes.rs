@@ -19,8 +19,8 @@ const TESTKIT: &str = "kosmo-testkit";
 /// The feature of a crate with probes, which turns them on.
 const PROBES: &str = "call-probes";
 
-/// The feature of the platform interface and of each backend that turns on
-/// their test hooks.
+/// The feature of a crate that turns on its test hooks, as those of the
+/// platform interface and of the backends.
 const HOOKS: &str = "test-hooks";
 
 /// The platform interface, whose test hooks `kosmo-testkit` turns on.
@@ -140,12 +140,13 @@ pub fn check_crate(manifest: &str, name: &str, table: &Table, problems: &mut Pro
     }
 }
 
-/// The feature `start` of a crate, other than `call-probes` and
-/// `test-hooks`, expanded through its feature table `features`: it turns on
-/// neither its `call-probes` or `test-hooks` nor the `call-probes` or
-/// `test-hooks` of a dependency, and the default features do not turn on
-/// `kosmo-testkit` either. The dependency on `kosmo-testkit` reports the
-/// other features that turn it on.
+/// The feature `start` of a crate, other than `call-probes`, expanded
+/// through its feature table `features`: it turns on neither its
+/// `call-probes` nor the `call-probes` of a dependency and, unless it is
+/// `test-hooks`, neither its `test-hooks` nor the `test-hooks` of a
+/// dependency; the default features do not turn on `kosmo-testkit` either.
+/// The dependency on `kosmo-testkit` reports the other features that turn
+/// it on.
 fn check_expansion(
     manifest: &str,
     start: &str,
