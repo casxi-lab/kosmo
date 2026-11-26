@@ -306,6 +306,21 @@ attribute of a library root, do not. It checks:
   use, comments and string literals do not match, and `SystemTime` used as
   a type is not a use. Each use is reported with its file and line, and so
   is a doc test whose tokens cannot be read;
+- call probes and test hooks: in every manifest of the product workspaces,
+  a dependency on `kosmo-testkit` other than a dev-dependency is optional
+  and turned on only by the crate's feature `call-probes`, as
+  `call-probes = ["dep:kosmo-testkit"]`; no dependency declaration,
+  dev-dependencies and the `[workspace.dependencies]` of the roots
+  included, turns on the `call-probes` of a crate, as
+  `features = ["call-probes"]` or `features = ["kosmo-ui/call-probes"]`
+  would; none but a dev-dependency, and the dependency of `kosmo-testkit` on
+  `kosmo-platform`, turns on the `test-hooks` of `kosmo-platform` or of a
+  backend, a crate whose name starts with `kosmo-backend-`; and the default
+  features of a crate, expanded through its feature table, turn on neither
+  its own `call-probes` or `test-hooks` nor `kosmo-testkit` or the
+  `call-probes` or `test-hooks` of a dependency. So call probes are
+  compiled only when the command line turns them on, and test hooks only
+  then and in tests;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`

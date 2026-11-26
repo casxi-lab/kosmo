@@ -4014,3 +4014,209 @@ fn the_tests_of_tools_are_test_code() {
         ]
     );
 }
+
+// Call probes and test hooks.
+
+/// The valid layout with the platform interface and the testkit in layer
+/// F0, the headless backend in F1 as in this repository, and a crate
+/// kosmo-x in F1 without dependencies.
+fn with_probes(files: &mut Files) {
+    add_crate(files, "kosmo-platform", "framework", "F0", "");
+    add_crate(
+        files,
+        "kosmo-testkit",
+        "framework",
+        "F0",
+        "same-layer = [\"kosmo-platform\"]\n",
+    );
+    add_crate(files, "kosmo-backend-headless", "framework", "F1", "");
+    add_crate(files, "kosmo-x", "framework", "F1", "");
+    declare(
+        files,
+        "framework",
+        "kosmo-platform = { path = \"platform\", version = \"=0.1.0-dev.1\" }\nkosmo-testkit = { path = \"testkit\", version = \"=0.1.0-dev.1\" }",
+    );
+    append(
+        files,
+        "framework/platform/Cargo.toml",
+        "\n[features]\ntest-hooks = []\n",
+    );
+    append(
+        files,
+        "framework/testkit/Cargo.toml",
+        "\n[dependencies]\nkosmo-platform = { workspace = true, features = [\"test-hooks\"] }\n",
+    );
+    append(
+        files,
+        "framework/backend-headless/Cargo.toml",
+        "\n[features]\ntest-hooks = [\"kosmo-platform/test-hooks\"]\n\n[dependencies]\nkosmo-platform.workspace = true\n\n[dev-dependencies]\nkosmo-testkit.workspace = true\n",
+    );
+}
+
+/// The problems of the layout of [`with_probes`] after `change`.
+fn probes_with(change: impl FnOnce(&mut Files)) -> Vec<String> {
+    problems_with(|files| {
+        with_probes(files);
+        change(files);
+    })
+}
+
+#[test]
+fn rejects_a_normal_dependency_on_the_testkit() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[dependencies]\nkosmo-testkit = { workspace = true }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/x/Cargo.toml: [dependencies] kosmo-testkit: is a normal dependency; only the feature call-probes may turn it on, as an optional dependency"
+        ]
+    );
+}
+
+#[test]
+fn an_optional_testkit_that_only_call_probes_turns_on_passes() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ncall-probes = [\"dep:kosmo-testkit\"]\nother = [\"kosmo-testkit?/x\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn only_call_probes_turns_on_the_testkit() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\nextra = [\"dep:kosmo-testkit\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+    });
+    let at = "framework/x/Cargo.toml: [dependencies] kosmo-testkit:";
+    assert_eq!(
+        found,
+        [
+            format!(
+                "{at} the feature call-probes must turn it on with \"dep:kosmo-testkit\", the only feature that does"
+            ),
+            format!("{at} the feature extra turns it on; only call-probes may"),
+        ]
+    );
+}
+
+#[test]
+fn default_features_do_not_turn_on_call_probes() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ndefault = [\"call-probes\"]\ncall-probes = [\"dep:kosmo-testkit\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/x/Cargo.toml: the default features turn on call-probes; call probes and test hooks stay off by default"
+        ]
+    );
+}
+
+#[test]
+fn default_features_are_expanded_through_the_feature_table() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/sdk/Cargo.toml",
+            "\n[features]\ndefault = [\"probes\"]\nprobes = [\"kosmo-ui/call-probes\", \"hooks\"]\nhooks = [\"kosmo-x?/test-hooks\", \"test-hooks\"]\ntest-hooks = []\n",
+        );
+    });
+    let at = "framework/sdk/Cargo.toml: the default features turn on";
+    let off = "call probes and test hooks stay off by default";
+    assert_eq!(
+        found,
+        [
+            format!("{at} kosmo-ui/call-probes through probes; {off}"),
+            format!("{at} kosmo-x?/test-hooks through probes; {off}"),
+            format!("{at} test-hooks through probes; {off}"),
+        ]
+    );
+}
+
+#[test]
+fn no_dependency_declaration_turns_on_call_probes() {
+    let found = probes_with(|files| {
+        edit(
+            files,
+            "desktop/calc/Cargo.toml",
+            "kosmo-sdk.workspace = true\n",
+            "kosmo-sdk = { workspace = true, features = [\"kosmo-ui/call-probes\"] }\n",
+        );
+        append(
+            files,
+            "framework/sdk/Cargo.toml",
+            "\n[dev-dependencies]\nkosmo-ui = { workspace = true, features = [\"call-probes\"] }\n",
+        );
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "kosmo-render = { path = \"render\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-render = { path = \"render\", version = \"=0.1.0-dev.1\", features = [\"call-probes\"] }",
+        );
+    });
+    let only = "only the command line turns on call probes";
+    assert_eq!(
+        found,
+        [
+            format!(
+                "desktop/calc/Cargo.toml: [dependencies] kosmo-sdk: turns on kosmo-ui/call-probes; {only}"
+            ),
+            format!(
+                "framework/Cargo.toml: [workspace.dependencies] kosmo-render: turns on kosmo-render/call-probes; {only}"
+            ),
+            format!(
+                "framework/sdk/Cargo.toml: [dev-dependencies] kosmo-ui: turns on kosmo-ui/call-probes; {only}"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn only_dev_dependencies_and_the_testkit_turn_on_test_hooks() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[dependencies]\nkosmo-platform = { workspace = true, features = [\"test-hooks\"] }\n\n[target.'cfg(unix)'.dependencies]\nkosmo-backend-headless = { workspace = true, features = [\"test-hooks\"] }\n\n[dev-dependencies]\nkosmo-backend-headless = { workspace = true, features = [\"test-hooks\"] }\n",
+        );
+        declare(
+            files,
+            "framework",
+            "kosmo-backend-headless = { path = \"backend-headless\", version = \"=0.1.0-dev.1\" }",
+        );
+        edit(
+            files,
+            TABLE,
+            "path = \"framework/x\"\n",
+            "path = \"framework/x\"\nsame-layer = [\"kosmo-backend-headless\"]\n",
+        );
+    });
+    let hooks = "only dev-dependencies and the dependency of kosmo-testkit on kosmo-platform turn on test hooks";
+    assert_eq!(
+        found,
+        [
+            format!(
+                "framework/x/Cargo.toml: [dependencies] kosmo-platform: turns on kosmo-platform/test-hooks; {hooks}"
+            ),
+            format!(
+                "framework/x/Cargo.toml: [target.'cfg(unix)'.dependencies] kosmo-backend-headless: turns on kosmo-backend-headless/test-hooks; {hooks}"
+            ),
+        ]
+    );
+}

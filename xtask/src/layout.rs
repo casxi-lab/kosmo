@@ -9,8 +9,9 @@
 //! configuration, pure-core crates, build scripts and procedural macros,
 //! versions and publishing, provisional and export crates, the platform
 //! boundary of library crates, the lint attributes of deterministic crates,
-//! the test clock of test code, the shape of the workspace roots and the
-//! workspaces that the other steps cover. It
+//! the test clock of test code, the features that turn on call probes and
+//! test hooks, the shape of the workspace roots and the workspaces that the
+//! other steps cover. It
 //! collects every problem and reports them one per line, as
 //! `<path>[:<line>]: <message>`, sorted by path, then by line number and
 //! then by message. When the table does not parse or is not consistent,
@@ -21,6 +22,7 @@
 mod clock;
 mod lints;
 mod platform;
+mod probes;
 mod source;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -1013,6 +1015,7 @@ fn check_crates(tree: &Tree, index: &Index, covered: &[&str], problems: &mut Pro
         .map(|(workspace, root)| {
             root.map(|root| {
                 check_shape(&root.manifest, root.table, root.workspace, problems);
+                probes::check_root(&root.manifest, root.workspace, problems);
                 check_listed_members(
                     tree,
                     index,
@@ -1687,6 +1690,7 @@ fn check_crate<'a>(
             ));
         }
     }
+    probes::check_crate(manifest, name, table, problems);
     check_build_scripts(tree, place, manifest, table, problems);
     if krate.pure_core {
         check_pure_sources(tree, place, repo::parent(&root.manifest), table, problems);
