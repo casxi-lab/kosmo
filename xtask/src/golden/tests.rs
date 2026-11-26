@@ -361,6 +361,41 @@ fn the_goldens_of_this_repository_pass() {
 }
 
 #[test]
+fn the_step_fails_with_its_problems_and_counts_the_goldens() {
+    let mut tree = valid();
+    tree.insert(
+        &format!("{DIR}/fill-rect.px"),
+        Entry::File(b"edited".to_vec()),
+    );
+    let mut facts = Facts::new();
+    let error = report(&tree, &SETS, &mut facts).unwrap_err();
+    assert!(
+        error.starts_with(&format!("{DIR}/fill-rect.px: SHA-256 ")),
+        "{error}"
+    );
+    assert_eq!(facts, [("goldens".to_string(), "2".to_string())]);
+    assert_eq!(report(&valid(), &SETS, &mut Facts::new()), Ok(()));
+}
+
+#[test]
+fn the_check_runs_the_goldens_step_on_this_repository() {
+    let step = check::steps()
+        .into_iter()
+        .find(|step| step.name == "goldens")
+        .unwrap();
+    let check::Action::Internal(run) = step.action else {
+        panic!("the goldens step is written in this crate");
+    };
+    let mut facts = Facts::new();
+    assert_eq!(run(&repo::root(), &mut facts), Ok(()));
+    let listed = fs::read_to_string(repo::root().join(MANIFEST))
+        .unwrap()
+        .lines()
+        .count();
+    assert_eq!(facts, [("goldens".to_string(), listed.to_string())]);
+}
+
+#[test]
 fn the_command_runs_the_ignored_writers_of_each_crate() {
     let args = |test: &str| SETS[0].writer(test).args.join(" ");
     let start = "test --locked --manifest-path framework/Cargo.toml -p kosmo-render --test golden";

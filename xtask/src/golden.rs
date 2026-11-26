@@ -325,10 +325,15 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
 
 /// The goldens step on the tracked files.
 pub fn run(root: &Path, facts: &mut Facts) -> Result<(), String> {
-    let tree = Tree::load(root)?;
+    report(&Tree::load(root)?, &SETS, facts)
+}
+
+/// The goldens step on `tree`: prints and records how many goldens the
+/// manifests list, and fails with every problem.
+fn report(tree: &Tree, sets: &[Goldens], facts: &mut Facts) -> Result<(), String> {
     let mut problems = Problems::default();
-    let count = check(&tree, &SETS, &mut problems);
-    let dirs: Vec<String> = SETS.iter().map(Goldens::golden_dir).collect();
+    let count = check(tree, sets, &mut problems);
+    let dirs: Vec<String> = sets.iter().map(Goldens::golden_dir).collect();
     println!("goldens: {count} in {}", dirs.join(", "));
     facts.push(("goldens".to_string(), count.to_string()));
     let lines = problems.lines();
