@@ -2081,6 +2081,26 @@ fn rejects_an_allowance_of_the_methods_lint_outside_the_wrapper_module() {
 }
 
 #[test]
+fn rejects_an_allowance_of_the_methods_lint_written_with_a_raw_identifier() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            RENDER_LIB,
+            "#[allow(clippy::r#disallowed_methods, reason = \"calls libm\")]\nfn sine(x: f32) -> f32 { x }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [lowered(
+            "framework/render/src/lib.rs:2",
+            "kosmo-render",
+            "allow",
+            "disallowed_methods"
+        )]
+    );
+}
+
+#[test]
 fn the_wrapper_module_may_allow_or_expect_the_methods_lint_once() {
     let expect = "#![expect(clippy::disallowed_methods, reason = \"calls libm\")]\n";
     for first in [

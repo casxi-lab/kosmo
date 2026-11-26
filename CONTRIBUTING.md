@@ -260,11 +260,12 @@ attribute of a library root, do not. It checks:
   literals are not uses;
 - the deterministic path: in every Rust file in the directory of a crate
   that the table marks `deterministic`, in any of its targets, no lint
-  attribute `allow`, `expect` or `warn`, also inside `cfg_attr` and in the
-  bodies of macros, names `clippy::disallowed_methods` or
-  `clippy::disallowed_types`, their former names `clippy::disallowed_method`
-  and `clippy::disallowed_type`, or the groups `clippy::style` and
-  `clippy::all` that hold them. The one exception is a single unconditional
+  attribute `allow`, `expect` or `warn`, also inside `cfg_attr`, in the
+  bodies of macros and when written with raw identifiers such as `r#allow`,
+  names `clippy::disallowed_methods` or `clippy::disallowed_types`, their
+  former names `clippy::disallowed_method` and `clippy::disallowed_type`, or
+  the groups `clippy::style` and `clippy::all` that hold them. The one
+  exception is a single unconditional
   `allow` or `expect` of `clippy::disallowed_methods` alone in
   `src/det_math.rs` of `kosmo-render`, the wrapper module that calls libm;
 - the shape of the workspace roots: a product workspace root sets

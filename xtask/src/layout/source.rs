@@ -335,7 +335,7 @@ fn within(dir: &str, relative: &str) -> String {
 }
 
 /// The text of an identifier without the `r#` of a raw identifier.
-fn unraw(ident: &proc_macro2::Ident) -> String {
+pub(super) fn unraw(ident: &proc_macro2::Ident) -> String {
     let text = ident.to_string();
     match text.strip_prefix("r#") {
         Some(name) => name.to_string(),

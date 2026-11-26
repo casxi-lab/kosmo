@@ -4,10 +4,14 @@
 //! `clippy::disallowed_types`.
 //!
 //! The scan works on the token stream, as the other scans of the layout
-//! step do: comments and string literals never match, and the bodies of
-//! macro calls and macro definitions are read like any other tokens.
+//! step do: comments and string literals never match, the bodies of macro
+//! calls and macro definitions are read like any other tokens, and a raw
+//! identifier such as `r#allow` counts without its `r#`, as the compiler
+//! reads it.
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+
+use super::source::unraw;
 
 /// The only Clippy configuration, at the repository root.
 pub const CLIPPY_CONFIG: &str = "clippy.toml";
@@ -102,7 +106,7 @@ fn attribute_lowerings(
     if arguments.delimiter() != Delimiter::Parenthesis {
         return;
     }
-    let name = name.to_string();
+    let name = unraw(name);
     if name == "cfg_attr" {
         // The condition, then the attributes.
         for attribute in split(arguments).into_iter().skip(1) {
@@ -121,8 +125,8 @@ fn attribute_lowerings(
                 TokenTree::Punct(first),
                 TokenTree::Punct(second),
                 TokenTree::Ident(lint),
-            ] if tool == "clippy" && first.as_char() == ':' && second.as_char() == ':' => {
-                let lint = lint.to_string();
+            ] if unraw(tool) == "clippy" && first.as_char() == ':' && second.as_char() == ':' => {
+                let lint = unraw(lint);
                 (LINTS.contains(&lint.as_str()) || OTHER_NAMES.contains(&lint.as_str()))
                     .then(|| format!("clippy::{lint}"))
             }
@@ -219,6 +223,18 @@ mod tests {
                 lowering(1, "expect", &["clippy::disallowed_types"], true),
                 lowering(3, "allow", &["clippy::disallowed_methods"], false),
                 lowering(6, "allow", &["clippy::disallowed_types"], false),
+            ]
+        );
+    }
+
+    #[test]
+    fn raw_identifiers_are_read_as_their_names() {
+        let text = "#[r#allow(r#clippy::r#disallowed_methods)]\nfn a() {}\n#[r#cfg_attr(all(), r#expect(clippy::r#style))]\nfn b() {}\n";
+        assert_eq!(
+            found(text),
+            [
+                lowering(1, "allow", &["clippy::disallowed_methods"], false),
+                lowering(3, "expect", &["clippy::style"], true),
             ]
         );
     }
