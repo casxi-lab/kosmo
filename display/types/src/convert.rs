@@ -7,6 +7,7 @@ use crate::pixel::{BufferDesc, PixelFormat};
 
 /// Why [`convert`] wrote nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ConvertError {
     /// The source bytes are not as many as its description's
     /// [`byte_len`](BufferDesc::byte_len).
@@ -38,7 +39,9 @@ pub enum ConvertError {
 /// - an 8-bit component `c` becomes 5 bits as `(c * 31 + 127) / 255` and 6
 ///   bits as `(c * 63 + 127) / 255`, and a 5-bit or 6-bit component `v`
 ///   becomes 8 bits as `(v * 255 + m / 2) / m`, where `m` is 31 or 63;
-/// - X of [`PixelFormat::Xrgb8888`] is written as `0xFF`.
+/// - converting from another format into [`PixelFormat::Xrgb8888`] writes X
+///   as `0xFF`; within `Xrgb8888` the bytes, X included, are copied as they
+///   are.
 ///
 /// It returns an error and writes nothing when a byte slice is not as long
 /// as its description says, or when the rectangle does not fit in the
