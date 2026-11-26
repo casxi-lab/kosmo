@@ -1626,7 +1626,7 @@ is a design change.
 | Format | Layout |
 | --- | --- |
 | `Rgba8Premul` | Bytes R, G, B, A in memory order, with color premultiplied by alpha; the format that the raster library draws |
-| `Xrgb8888` | A little-endian 32-bit word with X, R, G and B from the high bits to the low bits, so bytes B, G, R, X in memory; X is written as `0xFF` when pixels of another format are converted into it |
+| `Xrgb8888` | A little-endian 32-bit word with X, R, G and B from the high bits to the low bits, so bytes B, G, R, X in memory; X is always `0xFF` |
 | `Argb8888Premul` | A little-endian 32-bit word with A, R, G and B from the high bits to the low bits, so bytes B, G, R, A in memory, with color premultiplied by alpha; reserved for ARGB hardware planes, and used only by conversion in the first release |
 | `Rgb565` | A little-endian 16-bit word with R in bits 15 to 11, G in bits 10 to 5 and B in bits 4 to 0 |
 

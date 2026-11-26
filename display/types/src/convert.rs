@@ -31,7 +31,8 @@ pub enum ConvertError {
 /// The function never allocates, never dithers and uses integer arithmetic
 /// only:
 ///
-/// - within one format it copies the bytes of each row of the rectangle;
+/// - within one format it copies the bytes of each row of the rectangle,
+///   but for X of [`PixelFormat::Xrgb8888`];
 /// - between the two premultiplied formats it only reorders bytes;
 /// - from a premultiplied to an opaque format it takes the premultiplied
 ///   components as they are, and from an opaque to a premultiplied format it
@@ -39,9 +40,8 @@ pub enum ConvertError {
 /// - an 8-bit component `c` becomes 5 bits as `(c * 31 + 127) / 255` and 6
 ///   bits as `(c * 63 + 127) / 255`, and a 5-bit or 6-bit component `v`
 ///   becomes 8 bits as `(v * 255 + m / 2) / m`, where `m` is 31 or 63;
-/// - converting from another format into [`PixelFormat::Xrgb8888`] writes X
-///   as `0xFF`; within `Xrgb8888` the bytes, X included, are copied as they
-///   are.
+/// - X of [`PixelFormat::Xrgb8888`] is always written as `0xFF`, also
+///   within the format, where R, G and B are copied as they are.
 ///
 /// It returns an error and writes nothing when a byte slice is not as long
 /// as its description says, or when the rectangle does not fit in the
@@ -165,8 +165,11 @@ impl Order {
 /// of the format `to`, of the same number of pixels.
 fn convert_row(from: PixelFormat, source: &[u8], to: PixelFormat, target: &mut [u8]) {
     match (Order::of(from), Order::of(to)) {
-        // The same format: both rows have the same length.
-        (Some(from), Some(to)) if from == to => target.copy_from_slice(source),
+        // The same format: both rows have the same length. Xrgb8888 goes
+        // through `read` and `write` below, which write X as 0xFF.
+        (Some(from), Some(to)) if from == to && from != Order::Bgrx => {
+            target.copy_from_slice(source)
+        }
         (None, None) => target.copy_from_slice(source),
         (Some(from), Some(to)) => pixels(source, target, |pixel| to.write(from.read(pixel))),
         (Some(from), None) => pixels(source, target, |pixel| pack_565(from.read(pixel))),
@@ -499,14 +502,14 @@ mod tests {
 
     #[test]
     fn the_same_format_copies_the_bytes_of_each_row() {
-        // X of an Xrgb8888 source is copied as it is within the format.
-        for (format, pixel) in [
-            (Rgba8Premul, BLUE),
-            (Xrgb8888, [1, 2, 3, 4]),
-            (Argb8888Premul, BLUE),
-        ] {
-            assert_eq!(converted::<4>(format, &pixel, format), pixel, "{format:?}");
+        for format in [Rgba8Premul, Argb8888Premul] {
+            assert_eq!(converted::<4>(format, &BLUE, format), BLUE, "{format:?}");
         }
+        // X of Xrgb8888 is written as 0xFF within the format too.
+        assert_eq!(
+            converted::<4>(Xrgb8888, &[1, 2, 3, 4], Xrgb8888),
+            [1, 2, 3, 0xFF]
+        );
         assert_eq!(converted::<2>(Rgb565, &[0x34, 0x12], Rgb565), [0x34, 0x12]);
     }
 

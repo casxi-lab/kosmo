@@ -31,8 +31,8 @@ pub enum PixelFormat {
     /// premultiplied by alpha. The raster library draws in this format.
     Rgba8Premul,
     /// A little-endian 32-bit word with X, R, G and B from the high bits to
-    /// the low bits, so bytes B, G, R and X in memory. X is written as
-    /// `0xFF` when pixels of another format are converted into this one.
+    /// the low bits, so bytes B, G, R and X in memory. X is always written
+    /// as `0xFF`.
     Xrgb8888,
     /// A little-endian 16-bit word with R in bits 15 to 11, G in bits 10 to
     /// 5 and B in bits 4 to 0.
