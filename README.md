@@ -126,8 +126,9 @@ platform interface and with a drawing pass that rounds do not run yet, the
 headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance
-suite of the platform interface, which the headless backend passes, and the
-facade `kosmo-sdk`, which re-exports
+suite of the platform interface, which the headless backend passes, and
+with call probes for tests of call relations, and the facade `kosmo-sdk`,
+which re-exports
 `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad`
 and through which the `desktop/` workspace uses them. The
 `desktop/` workspace has the `kosmo` program. CI runs the repository checks on every pull request to
@@ -145,6 +146,7 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-scratchpad
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-ui
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-backend-headless --features test-hooks
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-testkit
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-sdk
 cargo test --locked --manifest-path display/Cargo.toml -p kosmo-types
 cargo xtask check
@@ -153,12 +155,13 @@ cargo xtask check
 The first runs two derivatives and lists the history in the terminal; without
 the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo`
 reads the lines that you type. The second prints `kosmo` and its version. The
-next eleven run the tests of the terminal, of the editing structure, of the
+next twelve run the tests of the terminal, of the editing structure, of the
 job layer, of rendering, with its pixel goldens and the wrapper of
 transcendental functions, of the platform interface with its test hooks, of
 formula conversion with the kalyx runner, of the Scratchpad, of the
 framework core, of the headless backend with its test hooks and the
-conformance suite, of the facade and of the shared types, and the last runs
+conformance suite, of the call probes of the test support, of the facade
+and of the shared types, and the last runs
 the repository checks. No version has been released yet: a release is a tagged
 commit, and the version that `main` shows is not a release until it is
 tagged.
