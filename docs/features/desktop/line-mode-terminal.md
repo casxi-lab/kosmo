@@ -224,11 +224,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The library `kosmo-sdk` in the `framework/` workspace is the SDK facade of
 kosmo. It only re-exports the framework libraries other than the framework
-core `kosmo-ui`, each as a module under its own name: `kosmo_math_model`,
-`kosmo_jobs`, `kosmo_math_kalyx` and `kosmo_scratchpad`, so
-`kosmo_sdk::kosmo_scratchpad::Scratchpad` is the Scratchpad. The framework
-core `kosmo-ui` is not re-exported yet; the facade re-exports it with the
-first application that uses it. The facade has no code, no features and no direct
+core `kosmo-ui` and the rendering library `kosmo-render`, each as a module
+under its own name: `kosmo_math_model`, `kosmo_jobs`, `kosmo_math_kalyx` and
+`kosmo_scratchpad`, so `kosmo_sdk::kosmo_scratchpad::Scratchpad` is the
+Scratchpad. `kosmo-ui` and `kosmo-render` are not re-exported; the facade
+re-exports `kosmo-ui` with the first application that uses it. The facade has
+no code, no features and no direct
 external dependency of its own; kalyx and the packages that kalyx depends on
 come through `kosmo-math-kalyx`, which is why the allowlist of `desktop/`
 lists them. It is unstable, so its modules can change in any version, and

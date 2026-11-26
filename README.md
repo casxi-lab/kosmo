@@ -119,7 +119,8 @@ application's [control tree](docs/features/framework/runtime.md) and runs
 the rounds of its event loop with result slots, timers, focus checks and
 the dispatch of commands, so far without layout, drawing or a platform
 interface, and the facade `kosmo-sdk`, which re-exports all of them but
-`kosmo-ui` and through which the `desktop/` workspace uses them. The
+`kosmo-render` and `kosmo-ui` and through which the `desktop/` workspace
+uses them. The
 `desktop/` workspace has the `kosmo` program. CI runs the repository checks on every pull request to
 `main` and every push to `main`. These commands run from the repository root:
 

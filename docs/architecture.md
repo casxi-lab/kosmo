@@ -13,9 +13,9 @@ structure in `kosmo-math-model`, formula conversion in `kosmo-math-kalyx`, the
 job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
-kalyx's output lines, the wrapper of transcendental functions in
-`kosmo-render`, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, part
+kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
+history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, the
+wrapper of transcendental functions in `kosmo-render`, part
 of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
 focus generation and epoch, the keyboard event records, pixel formats, buffer
 descriptions with the conversion of pixels between them, and damage regions,

@@ -640,13 +640,13 @@ Security advisories are checked by hand before each version is tagged,
 pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
 crates.io packages in every `Cargo.lock` of the repository against the RustSec
 advisory database and records, with the release decision, the commit of the
-advisory database that was used. A weekly advisory job is planned for when
-the allowlists of the product workspaces together list more than about 20
-distinct packages, each name and version counted once however many allowlists
-list it; the packages of the tool workspace `xtask` do not count. With the
-framework's raster library they list more than that, and the job will be added
-with the framework's text stack. The job will not be required for merging and
-will change neither the `cargo xtask check` job nor the branch rules of `main`.
+advisory database that was used. A weekly advisory job, not required for
+merging, will be added with the framework's text stack; with the framework's
+raster library, the allowlists of the product workspaces together list more
+than about 20 distinct packages, each name and version counted once however
+many allowlists list it, the packages of the tool workspace `xtask` not
+counted. The job will change neither the `cargo xtask check` job nor the
+branch rules of `main`.
 
 ## Commit messages
 
