@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use kosmo_backend_headless::HeadlessBackend;
 use kosmo_platform::{
-    EventSource, FaultPort, PixelSize, PlatformCaps, PlatformError, PlatformTestHooks, ResourceId,
-    ResourceProvider, WaitEnd,
+    EventSource, FaultPort, PixelSize, PlatformCaps, PlatformError, PlatformEvent,
+    PlatformTestHooks, ResourceId, ResourceProvider, SurfaceId, WaitEnd,
 };
 use kosmo_types::PixelFormat;
 
@@ -45,9 +45,16 @@ fn a_second_fault_at_a_port_is_busy_and_the_first_takes_effect_once() {
         backend.inject_fault(FaultPort::Resource, PlatformError::Backend),
         Err(PlatformError::Busy)
     );
+    // The fault does nothing else: a queued event waits for the next wait.
+    let queued = PlatformEvent::Released {
+        surface: SurfaceId::new(1),
+    };
+    assert_eq!(PlatformTestHooks::inject(&mut backend, queued), Ok(()));
     let mut events = Vec::new();
     assert_eq!(backend.wait(None, &mut events), Err(PlatformError::Backend));
-    assert_eq!(backend.wait(None, &mut events), Ok(WaitEnd::Idle));
+    assert!(events.is_empty());
+    assert_eq!(backend.wait(None, &mut events), Ok(WaitEnd::Events));
+    assert_eq!(events, [queued]);
     let a = ResourceId::new("a");
     assert_eq!(backend.resource(a), Err(PlatformError::NotFound));
     assert_eq!(backend.resource(a), Ok(&[1, 2, 3][..]));

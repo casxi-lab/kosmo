@@ -536,7 +536,19 @@ fn surfaces_are_distinct_and_destroyed_ones_stale<P: PlatformTestHooks>(p: &mut 
     for s in [b, c] {
         call("buffer of a live surface", p.buffer(s).map(|_| ()))?;
     }
-    Ok(())
+    // With no surface left, a new one still has an identity of its own.
+    for s in [b, c] {
+        call("destroy_surface", p.destroy_surface(s))?;
+    }
+    let d = create(p, Setup::FORMATS[0])?;
+    ensure(![a, b, c].contains(&d), || {
+        format!("a surface created after the others went is {d:?}")
+    })?;
+    same(
+        "present of the first destroyed surface after that",
+        p.present(a, &[whole()?]),
+        stale,
+    )
 }
 
 fn at_most_the_bound_of_surfaces_exist<P: PlatformTestHooks>(p: &mut P) -> Outcome {
@@ -547,12 +559,13 @@ fn at_most_the_bound_of_surfaces_exist<P: PlatformTestHooks>(p: &mut P) -> Outco
     for (seed, s) in surfaces.iter().enumerate() {
         draw_and_present(p, *s, seed as u8, &[whole()?])?;
     }
+    settle(p)?;
     same(
         "a surface over the bound",
         p.create_surface(request(Setup::FORMATS[0])?),
         Err(PlatformError::Exhausted),
     )?;
-    settle(p)?;
+    same("the events after the refused request", settle(p)?, vec![])?;
     for s in surfaces {
         call("buffer of a surface at the bound", p.buffer(s).map(|_| ()))?;
         call(
@@ -664,6 +677,7 @@ fn a_presentation_has_at_most_the_bound_of_rectangles<P: PlatformTestHooks>(p: &
         p.present(s, &rects),
         Err(PlatformError::Exhausted),
     )?;
+    same("the events after it", settle(p)?, vec![])?;
     same(
         "the read-back after it",
         read_back(p, s)?,
@@ -804,8 +818,16 @@ fn at_most_the_bound_of_injected_events_wait<P: PlatformTestHooks>(p: &mut P) ->
         p.inject(key(s, stamp(1), MAX_INJECTED as u64)),
         Err(PlatformError::Exhausted),
     )?;
-    same("the returned events", settle(p)?, at_bound)?;
-    let after = key(s, stamp(1), 2 * MAX_INJECTED as u64);
+    // Events that a wait returned no longer count against the bound.
+    let (_, first) = wait(p, None)?;
+    let refill = keys(s, 2 * MAX_INJECTED as u64, first.len());
+    inject_all(p, &refill)?;
+    let mut returned = first;
+    returned.extend(settle(p)?);
+    let mut want = at_bound;
+    want.extend(refill);
+    same("the returned events", returned, want)?;
+    let after = key(s, stamp(1), 3 * MAX_INJECTED as u64);
     call("inject after the queue emptied", p.inject(after))?;
     same("the events after that", settle(p)?, vec![after])
 }
