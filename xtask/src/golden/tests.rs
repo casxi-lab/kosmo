@@ -597,17 +597,24 @@ fn a_test_that_runs_only_under_a_cfg_is_reported() {
 }
 
 #[test]
-fn a_comparison_outside_a_test_is_reported() {
+fn a_comparison_outside_the_top_level_tests_is_reported() {
+    let message = |line: usize| {
+        format!("{TESTS}:{line}: golden fill-rect is compared outside the top-level tests")
+    };
     let tree = valid_with(
         "#[test]\nfn draws()",
         "#[allow(dead_code, reason = \"r\")]\nfn draws()",
     );
-    assert_eq!(
-        problems(&tree).0,
-        [format!(
-            "{TESTS}:9: golden fill-rect is compared in a function that is not a test"
-        )]
-    );
+    assert_eq!(problems(&tree).0, [message(9)]);
+    let test = "#[test]\nfn draws() -> Result<(), String> {\n    matches_golden(\"fill-rect\")\n}";
+    for attribute in ["#[ignore]", "#[cfg(any())]"] {
+        let nested = format!(
+            "mod later {{\n    #[test]\n    {attribute}\n    fn draws() -> Result<(), String> {{\n        super::matches_golden(\"fill-rect\")\n    }}\n}}"
+        );
+        assert_eq!(problems(&valid_with(test, &nested)).0, [message(11)]);
+    }
+    let unused = "#[allow(unused_macros, reason = \"r\")]\nmacro_rules! draws {\n    () => {\n        matches_golden(\"fill-rect\")\n    };\n}";
+    assert_eq!(problems(&valid_with(test, unused)).0, [message(10)]);
 }
 
 #[test]

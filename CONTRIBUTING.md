@@ -380,11 +380,12 @@ by line number:
 - a line of `MANIFEST` that is not a digest of 64 lowercase hexadecimal
   digits, two spaces and a name, a name listed twice and lines out of order;
 - a call of `matches_golden` with a name that `MANIFEST` does not list, and
-  a call in `tests/golden.rs` inside a function that is not a test;
+  a call in `tests/golden.rs` outside its top-level tests;
 - a crate with goldens whose `tests/golden.rs` lacks the ignored tests
-  `write_goldens` and `redraw_goldens`, ignores another test, or has a
-  `cfg` or `cfg_attr` attribute on itself, a function or a module, since
-  the tests of the goldens run on every target;
+  `write_goldens` and `redraw_goldens`, ignores another top-level test, or
+  has a `cfg` or `cfg_attr` attribute on itself or on a top-level function
+  or module, since the tests of the goldens run on every target and only
+  its top-level tests compare goldens;
 - a directory `tests/golden` of a crate that `cargo xtask golden` does not
   write.
 

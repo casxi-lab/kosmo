@@ -12,7 +12,8 @@
 //! `write_goldens` and `redraw_goldens`, which the command runs, no other
 //! ignored test, and no `cfg` or `cfg_attr` attribute on itself, its
 //! functions or its modules, so that its tests run on every target; it
-//! compares goldens only inside its tests.
+//! compares goldens only inside its top-level tests, whose attributes the
+//! goldens step reads.
 //!
 //! The goldens step reads only tracked files and does not run Cargo. It
 //! reports every problem it finds, one per line as `<path>[:<line>]:
@@ -214,10 +215,11 @@ fn references(tree: &Tree, dir: &str) -> Vec<(String, usize, String)> {
     found
 }
 
-/// The names of the functions of the Rust file `text` with both `#[test]`
-/// and `#[ignore]`, and the names of its functions and modules with a `cfg`
-/// or `cfg_attr` attribute, `crate` standing for the file itself; none when
-/// it does not parse.
+/// The names of the top-level functions of the Rust file `text` with both
+/// `#[test]` and `#[ignore]`, the names of its top-level functions and
+/// modules with a `cfg` or `cfg_attr` attribute, `crate` standing for the
+/// file itself, and the first and last lines of its top-level functions with
+/// `#[test]`; none when it does not parse.
 fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>, Vec<(usize, usize)>) {
     let Ok(file) = syn::parse_file(text) else {
         return Default::default();
@@ -227,8 +229,7 @@ fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>, Vec<(usize,
             .iter()
             .any(|attr| names.iter().any(|name| attr.path().is_ident(name)))
     };
-    let (mut ignored, mut conditional, mut untested) =
-        (BTreeSet::new(), BTreeSet::new(), Vec::new());
+    let (mut ignored, mut conditional, mut tested) = (BTreeSet::new(), BTreeSet::new(), Vec::new());
     if has(&file.attrs, &["cfg", "cfg_attr"]) {
         conditional.insert("crate".to_string());
     }
@@ -241,16 +242,17 @@ fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>, Vec<(usize,
         if has(attrs, &["cfg", "cfg_attr"]) {
             conditional.insert(name.clone());
         }
-        if let syn::Item::Fn(function) = item {
-            if !has(attrs, &["test"]) {
-                let first = function.sig.fn_token.span.start().line;
-                untested.push((first, function.block.brace_token.span.close().end().line));
-            } else if has(attrs, &["ignore"]) {
+        if let syn::Item::Fn(function) = item
+            && has(attrs, &["test"])
+        {
+            let first = function.sig.fn_token.span.start().line;
+            tested.push((first, function.block.brace_token.span.close().end().line));
+            if has(attrs, &["ignore"]) {
                 ignored.insert(name);
             }
         }
     }
-    (ignored, conditional, untested)
+    (ignored, conditional, tested)
 }
 
 fn scan(stream: TokenStream, found: &mut dyn FnMut(usize, String)) {
@@ -365,14 +367,14 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
         }
     }
     let tests = format!("{}/tests/{TEST}.rs", set.dir);
-    let (ignored, conditional, untested) = tree.text(&tests).map(ignored_tests).unwrap_or_default();
+    let (ignored, conditional, tested) = tree.text(&tests).map(ignored_tests).unwrap_or_default();
     for (path, line, name) in &references {
         if *path == tests
-            && untested
+            && !tested
                 .iter()
                 .any(|&(first, last)| (first..=last).contains(line))
         {
-            let message = format!("golden {name} is compared in a function that is not a test");
+            let message = format!("golden {name} is compared outside the top-level tests");
             problems.add(&tests, *line, message);
         }
     }
