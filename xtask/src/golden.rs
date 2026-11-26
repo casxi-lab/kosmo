@@ -423,18 +423,43 @@ pub fn manifest_text(digests: &BTreeMap<String, String>) -> String {
 /// writes its `MANIFEST`.
 pub fn update(root: &Path) -> ExitCode {
     let result = SETS.iter().try_for_each(|set| {
-        check::run_command(root, &set.writer(WRITE))?;
+        let count = write_set(root, set, || check::run_command(root, &set.writer(WRITE)))?;
         let dir = set.golden_dir();
-        let digests = digests_in(&root.join(&dir))?;
-        fs::write(root.join(&dir).join("MANIFEST"), manifest_text(&digests))
-            .map_err(|error| format!("cannot write {dir}/MANIFEST: {error}"))?;
-        println!(
-            "golden: wrote {dir}/MANIFEST with {} goldens",
-            digests.len()
-        );
+        println!("golden: wrote {dir}/MANIFEST with {count} goldens");
         Ok::<(), String>(())
     });
     finish(result)
+}
+
+/// Writes the goldens of `set` in the working copy at `root` with `write`
+/// and then its `MANIFEST`, and returns how many goldens it lists. The
+/// goldens are removed first, so the file of a golden whose scene is gone
+/// goes too; it fails when `write` leaves no golden.
+fn write_set(
+    root: &Path,
+    set: &Goldens,
+    write: impl FnOnce() -> Result<(), String>,
+) -> Result<usize, String> {
+    let dir = set.golden_dir();
+    let path = root.join(&dir);
+    if path.is_dir() {
+        for name in digests_in(&path)?.keys() {
+            let file = format!("{dir}/{name}.px");
+            fs::remove_file(root.join(&file))
+                .map_err(|error| format!("cannot remove {file}: {error}"))?;
+        }
+    }
+    write()?;
+    let digests = digests_in(&path)?;
+    if digests.is_empty() {
+        return Err(format!(
+            "golden: the test {WRITE} of {} wrote no golden into {dir}",
+            set.package
+        ));
+    }
+    fs::write(path.join("MANIFEST"), manifest_text(&digests))
+        .map_err(|error| format!("cannot write {dir}/MANIFEST: {error}"))?;
+    Ok(digests.len())
 }
 
 /// `cargo xtask golden --verify`: draws the goldens of each crate again

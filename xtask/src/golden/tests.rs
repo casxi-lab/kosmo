@@ -495,6 +495,48 @@ fn the_manifest_lists_every_golden_of_the_directory_by_name() {
 }
 
 #[test]
+fn the_command_writes_every_golden_again_and_fails_without_any() {
+    let root = scratch("update");
+    let set = Goldens {
+        workspace: "w",
+        package: "p",
+        dir: "c",
+    };
+    let dir = root.join(set.golden_dir());
+    fs::create_dir_all(&dir).unwrap();
+    for name in ["fill-rect", "gone"] {
+        fs::write(dir.join(format!("{name}.px")), bytes_of(name)).unwrap();
+    }
+    fs::write(dir.join(".DS_Store"), b"").unwrap();
+    // A writer that writes nothing leaves no golden and no manifest.
+    assert_eq!(
+        write_set(&root, &set, || Ok(())),
+        Err("golden: the test write_goldens of p wrote no golden into c/tests/golden".to_string())
+    );
+    assert!(!dir.join("fill-rect.px").exists() && !dir.join("gone.px").exists());
+    assert!(!dir.join("MANIFEST").exists());
+    // The file of a golden that the writer no longer writes goes.
+    fs::write(dir.join("gone.px"), bytes_of("gone")).unwrap();
+    let write = || {
+        fs::write(dir.join("fill-rect.px"), bytes_of("fill-rect"))
+            .map_err(|error| error.to_string())
+    };
+    assert_eq!(write_set(&root, &set, write), Ok(1));
+    assert!(!dir.join("gone.px").exists() && dir.join(".DS_Store").exists());
+    let manifest = fs::read_to_string(dir.join("MANIFEST")).unwrap();
+    assert_eq!(manifest, line_of("fill-rect"));
+    // The first writing creates the golden directory.
+    let new = Goldens { dir: "d", ..set };
+    let write = || {
+        let dir = root.join(new.golden_dir());
+        fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+        fs::write(dir.join("glyphs.px"), bytes_of("glyphs")).map_err(|error| error.to_string())
+    };
+    assert_eq!(write_set(&root, &new, write), Ok(1));
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn a_directory_with_another_file_gives_no_manifest() {
     for other in ["notes.txt", "Fill.px", "sub.px/"] {
         let dir = scratch("other");
