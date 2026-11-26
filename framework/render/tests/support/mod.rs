@@ -1,9 +1,11 @@
 //! Support of the integration tests: the per-pixel reference rasterizer, a
-//! glyph coverage of three test glyphs and the scenes that the tests draw.
+//! glyph coverage of three test glyphs, the scenes that the tests draw and
+//! their pixel goldens.
 //! Each test file declares it `pub`, so the parts that it does not use are
 //! not reported as unused.
 
 pub mod glyphs;
+pub mod golden;
 pub mod reference;
 pub mod scenes;
 
