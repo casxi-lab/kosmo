@@ -37,7 +37,7 @@ impl fmt::Display for PlatformError {
             PlatformError::Unsupported => "not supported by the platform",
             PlatformError::StaleHandle => "the surface does not exist",
             PlatformError::InvalidArgument => "invalid argument",
-            PlatformError::Busy => "the buffer is not given back yet",
+            PlatformError::Busy => "the buffer is not given back yet or a fault waits at the port",
             PlatformError::Exhausted => "a bound of the platform interface is reached",
             PlatformError::Disconnected => "the platform is disconnected",
             PlatformError::NotFound => "the resource does not exist",
