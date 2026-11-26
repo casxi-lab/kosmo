@@ -357,8 +357,10 @@ which writes its `.px` files, and then writes `MANIFEST` from the `.px`
 files in `tests/golden/`; run without a change to the drawing code, it
 leaves every file as it was. It removes the `.px` files of the goldens
 before it runs the test, so the file of a golden whose scene is gone goes
-too, and it fails when the test writes no golden. Add a new golden's file
-with `git add`. The second runs the ignored test `redraw_goldens`, which
+too, and it fails when the test writes no golden. When it fails, the files
+it removed stay removed until it runs again without failing, or until
+`git checkout -- <crate>/tests/golden` restores them. Add a new golden's
+file with `git add`. The second runs the ignored test `redraw_goldens`, which
 draws the goldens again into `target/golden/<package>/` of the workspace,
 and prints for each golden the new digest and the digest in `MANIFEST`. It
 fails when one differs and changes no tracked file. Both leave out files
