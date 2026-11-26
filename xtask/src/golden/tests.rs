@@ -430,6 +430,8 @@ fn the_manifest_lists_every_golden_of_the_directory_by_name() {
         fs::write(dir.join(format!("{name}.px")), bytes_of(name)).unwrap();
     }
     fs::write(dir.join("MANIFEST"), "stale\n").unwrap();
+    // A file of the Finder, which the manifest leaves out.
+    fs::write(dir.join(".DS_Store"), b"\0\0\0\x01Bud1").unwrap();
     let text = manifest_text(&digests_in(&dir).unwrap());
     let expected = line_of("clip-group") + &line_of("fill-rect") + &line_of("glyphs");
     assert_eq!(text, expected);

@@ -344,7 +344,8 @@ fn report(tree: &Tree, sets: &[Goldens], facts: &mut Facts) -> Result<(), String
     }
 }
 
-/// The digests of the goldens in the directory `dir` on disk, by name. Any
+/// The digests of the goldens in the directory `dir` on disk, by name.
+/// Files whose names start with `.`, such as `.DS_Store`, are left out; any
 /// other file but `MANIFEST` is an error.
 pub fn digests_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
     let shown = dir.display();
@@ -354,7 +355,7 @@ pub fn digests_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
         let entry = entry.map_err(|error| format!("cannot read {shown}: {error}"))?;
         let file = entry.file_name();
         let file = file.to_string_lossy();
-        if file == "MANIFEST" {
+        if file == "MANIFEST" || file.starts_with('.') {
             continue;
         }
         let name = file.strip_suffix(".px").filter(|name| is_name(name));
