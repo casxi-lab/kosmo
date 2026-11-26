@@ -195,6 +195,14 @@ default-features = false
 features = []
 resolved-features = []
 
+[crates.kosmo-testkit]
+path = "framework/testkit"
+layer = "F0"
+export = false
+pure-core = false
+publish = false
+same-layer = ["kosmo-platform"]
+
 [crates.kosmo-math-kalyx]
 path = "framework/math-kalyx"
 layer = "F1"

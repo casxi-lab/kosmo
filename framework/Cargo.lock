@@ -157,6 +157,7 @@ name = "kosmo-backend-headless"
 version = "0.1.0-dev.1"
 dependencies = [
  "kosmo-platform",
+ "kosmo-testkit",
  "kosmo-types",
 ]
 
@@ -214,6 +215,14 @@ dependencies = [
  "kosmo-math-kalyx",
  "kosmo-math-model",
  "kosmo-scratchpad",
+]
+
+[[package]]
+name = "kosmo-testkit"
+version = "0.1.0-dev.1"
+dependencies = [
+ "kosmo-platform",
+ "kosmo-types",
 ]
 
 [[package]]
