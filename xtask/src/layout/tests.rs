@@ -3750,3 +3750,267 @@ fn crates_may_reach_kalyx_through_the_adapter() {
     });
     assert_eq!(found, Vec::<String>::new());
 }
+
+// The test clock.
+
+/// The problem of `item` at `path` and `line` in test code.
+fn clock_read(path: &str, line: usize, item: &str) -> String {
+    format!("{path}:{line}: {item} in test code; tests take time from an injected clock")
+}
+
+/// Adds the crate `name` of the layer `layer` in `workspace`, with `marks`
+/// besides those of the valid layout, to the table, the members of its
+/// root and the tracked files.
+fn add_crate(files: &mut Files, name: &str, workspace: &str, layer: &str, marks: &str) {
+    let dir = dir_of(name);
+    append(
+        files,
+        TABLE,
+        &format!(
+            "\n[crates.{name}]\npath = \"{workspace}/{dir}\"\nlayer = \"{layer}\"\nexport = false\npure-core = false\npublish = false\n{marks}"
+        ),
+    );
+    edit(
+        files,
+        &format!("{workspace}/Cargo.toml"),
+        "members = [",
+        &format!("members = [\"{dir}\", "),
+    );
+    files.insert(
+        format!("{workspace}/{dir}/Cargo.toml"),
+        crate_manifest(name, &[]),
+    );
+    files.insert(
+        format!("{workspace}/{dir}/src/lib.rs"),
+        format!("//! The crate {name}.\n"),
+    );
+}
+
+#[test]
+fn rejects_sleeps_and_wall_clock_reads_in_tests() {
+    let path = "framework/math-model/tests/wait.rs";
+    let found = problems_with(|files| {
+        files.insert(
+            path.to_string(),
+            "#[test]\nfn waits() {\n    std::thread::sleep(core::time::Duration::from_millis(1));\n    let _ = std::time::SystemTime::now();\n}\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(path, 3, "std::thread::sleep"),
+            clock_read(path, 4, "std::time::SystemTime::now"),
+        ]
+    );
+}
+
+#[test]
+fn test_modules_are_read_through_their_imports() {
+    // kosmo-jobs is registered for threads, so only the test clock reports.
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "#[cfg(test)]\nmod tests {\n    use std::thread;\n    fn waits(d: core::time::Duration) {\n        thread::sleep(d);\n    }\n}\n",
+        );
+    });
+    assert_eq!(found, [clock_read(lib, 6, "std::thread::sleep")]);
+}
+
+#[test]
+fn the_files_of_test_modules_are_test_code() {
+    let found = problems_with(|files| {
+        append(files, "framework/jobs/src/lib.rs", "mod x;\n");
+        files.insert(
+            "framework/jobs/src/x.rs".to_string(),
+            "#[cfg(test)]\nmod tests;\n".to_string(),
+        );
+        files.insert(
+            "framework/jobs/src/x/tests.rs".to_string(),
+            "mod support;\nfn waits(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n"
+                .to_string(),
+        );
+        // The modules of a test module are test code too.
+        files.insert(
+            "framework/jobs/src/x/tests/support.rs".to_string(),
+            "use std::thread::*;\nfn waits(d: core::time::Duration) {\n    sleep(d);\n}\n"
+                .to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read("framework/jobs/src/x/tests.rs", 3, "std::thread::sleep"),
+            clock_read(
+                "framework/jobs/src/x/tests/support.rs",
+                3,
+                "std::thread::sleep"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn test_functions_and_cfg_conditions_with_test_are_test_code() {
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "pub fn pause(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n#[test]\nfn waits() {\n    pause(core::time::Duration::ZERO);\n    std::thread::sleep(core::time::Duration::ZERO);\n}\n#[cfg(not(test))]\nfn never() {\n    std::thread::sleep(core::time::Duration::ZERO);\n}\n",
+        );
+        // kosmo is registered for the real clock.
+        append(
+            files,
+            "desktop/kosmo/src/lib.rs",
+            "pub fn now() -> std::time::SystemTime {\n    std::time::SystemTime::now()\n}\n#[cfg(all(test, unix))]\nfn also() -> std::time::SystemTime {\n    std::time::SystemTime::now()\n}\n",
+        );
+    });
+    // Code outside tests is left to the platform boundary, which allows
+    // threads to kosmo-jobs.
+    assert_eq!(
+        found,
+        [
+            clock_read("desktop/kosmo/src/lib.rs", 7, "std::time::SystemTime::now"),
+            clock_read(lib, 8, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
+fn an_inner_cfg_test_makes_a_module_test_code() {
+    let found = problems_with(|files| {
+        append(files, "framework/jobs/src/lib.rs", "mod checks;\n");
+        files.insert(
+            "framework/jobs/src/checks.rs".to_string(),
+            "//! Checks.\n#![cfg(test)]\nfn waits(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [clock_read(
+            "framework/jobs/src/checks.rs",
+            4,
+            "std::thread::sleep"
+        )]
+    );
+}
+
+#[test]
+fn the_sources_of_the_testkit_and_of_test_layers_are_test_code() {
+    let found = problems_with(|files| {
+        add_crate(
+            files,
+            "kosmo-testkit",
+            "framework",
+            "F0",
+            "platform = [\"real-clock\"]\n",
+        );
+        append(
+            files,
+            "framework/testkit/src/lib.rs",
+            "use std::time::SystemTime;\npub fn now() -> SystemTime {\n    SystemTime::now()\n}\n",
+        );
+        add_crate(
+            files,
+            "kosmo-integration",
+            "framework",
+            "F4",
+            "platform = [\"threads\"]\n",
+        );
+        append(
+            files,
+            "framework/integration/src/lib.rs",
+            "pub fn pause(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read("framework/integration/src/lib.rs", 3, "std::thread::sleep"),
+            clock_read(
+                "framework/testkit/src/lib.rs",
+                4,
+                "std::time::SystemTime::now"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn types_comments_and_strings_are_not_clock_reads() {
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/math-model/tests/files.rs".to_string(),
+            "//! std::thread::sleep(d) in a comment.\nuse std::time::SystemTime;\n/// ```\n/// std::thread::sleep(d);\n/// ```\nfn modified(at: Option<SystemTime>) -> &'static str {\n    // let _ = std::time::SystemTime::now();\n    let _ = (at, SystemTime::UNIX_EPOCH);\n    \"std::time::SystemTime::now()\"\n}\n".to_string(),
+        );
+        append(
+            files,
+            "framework/math-model/src/lib.rs",
+            "/// Not a doc test: std::thread::sleep(d).\n///\n/// ```text\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```ignore\n/// std::thread::sleep(d);\n/// ```\npub const NAME: &str = \"std::thread::sleep\";\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn doc_tests_are_test_code() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "//! ```\n//! # use std::thread;\n//! thread::sleep(d);\n//! ```\n/// ```compile_fail\n/// let _ = std::time::SystemTime::now();\n/// ```\n///\n/// ```no_run\n/// std::thread::sleep(d);\n/// ```\n#[doc = \"```should_panic,edition2024\\nstd::thread::sleep(d);\\n```\"]\npub fn f() {}\n/**\n * ```rust\n * std::thread::sleep(d);\n * ```\n */\npub fn g() {}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(lib, 4, "std::thread::sleep"),
+            clock_read(lib, 7, "std::time::SystemTime::now"),
+            clock_read(lib, 11, "std::thread::sleep"),
+            clock_read(lib, 13, "std::thread::sleep"),
+            clock_read(lib, 17, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
+fn a_doc_test_that_is_not_rust_tokens_is_reported() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "/// ```\n/// let s = \"open;\n/// ```\npub fn f() {}\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[&format!(
+            "{lib}:3: the doc test cannot be read as Rust tokens"
+        )],
+    );
+}
+
+#[test]
+fn the_tests_of_tools_are_test_code() {
+    let found = problems_with(|files| {
+        files.insert(
+            "xtask/src/main.rs".to_string(),
+            "fn main() {}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn waits() {\n        std::thread::sleep(core::time::Duration::ZERO);\n    }\n}\n".to_string(),
+        );
+        files.insert(
+            "xtask/tests/run.rs".to_string(),
+            "use std::time::SystemTime as Wall;\n#[test]\nfn reads() {\n    let _ = Wall::now();\n}\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read("xtask/src/main.rs", 6, "std::thread::sleep"),
+            clock_read("xtask/tests/run.rs", 4, "std::time::SystemTime::now"),
+        ]
+    );
+}

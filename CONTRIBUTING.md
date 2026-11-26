@@ -286,6 +286,26 @@ attribute of a library root, do not. It checks:
   as the roots of its targets, and `include!` and `#[path]` in it bring in
   only `.rs` files under its directory, so that, outside the limits below,
   the step reads every file that the crate compiles;
+- the test clock: tests take time only from an injected clock, so no test
+  code of a crate of the table or of a tool workspace calls
+  `std::thread::sleep` or `std::time::SystemTime::now`. Test code is every
+  Rust file under a crate's `tests/`, `benches/` and `examples/`; under its
+  `src/`, the items under `#[test]` or under a `cfg` attribute whose
+  condition names `test` outside `not(...)`, as `#[cfg(test)]` and
+  `#[cfg(all(test, unix))]` do, all of a module with an inner
+  `#![cfg(test)]`, and the files of the modules that these declare or
+  include, with the modules that those declare or include in turn; the
+  whole `src/` of `kosmo-testkit` and of the crates of layers D4 and F4;
+  and the doc tests under `src/`: the fenced code blocks of doc comments,
+  written with `///`, `//!`, `/** */` or `#[doc = "..."]`, that rustdoc
+  runs as Rust, without a tag or with only `rust`, `compile_fail`,
+  `no_run`, `should_panic` and the other tags of Rust tests, but not
+  `ignore`, read with their hidden lines. The uses are found as the
+  platform boundary check finds them, so imports, renames and glob imports
+  are followed, an import of either function is reported as well as each
+  use, comments and string literals do not match, and `SystemTime` used as
+  a type is not a use. Each use is reported with its file and line, and so
+  is a doc test whose tokens cannot be read;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`
@@ -321,7 +341,14 @@ read. The rule of the wrapper module reads only the tokens
 of `src/det_math.rs`, so a module declaration or an `include!` that a macro
 defined in another file expands inside the wrapper module is not found,
 and the module's exception covers the code that it brings in; review reads
-the macros that deterministic crates call. It cannot see
+the macros that deterministic crates call. The test clock check has
+the limits of the platform boundary check and counts the lines of a test
+item, from its first attribute to its end, as test code, other code on
+those lines included. It finds test targets by their directories, not by
+a `path` of `[[test]]`, `[[bench]]` or `[[example]]` elsewhere, and does
+not read indented code blocks, which rustdoc also runs, doc comments that a
+macro writes, as `#[doc = include_str!("...")]` does, or a test attribute
+that `cfg_attr` adds. It cannot see
 what build scripts, procedural macros or configuration outside the
 repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
 `CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no longer runs the

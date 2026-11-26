@@ -39,7 +39,7 @@ fn line(literal: &Literal) -> usize {
 }
 
 /// The value of a string literal.
-fn string(literal: &Literal) -> Option<String> {
+pub(super) fn string(literal: &Literal) -> Option<String> {
     match syn::Lit::new(literal.clone()) {
         syn::Lit::Str(text) => Some(text.value()),
         _ => None,
@@ -82,6 +82,9 @@ pub enum Kind {
     /// The directory of the modules declared inside an inline module, for
     /// a `#[path]` on it or a `#![path]` at the start of its body.
     Directory,
+    /// A module declared with `mod name;`, which rustc reads from
+    /// `name.rs` or `name/mod.rs` unless a `#[path]` names its file.
+    Module,
 }
 
 /// A directory that an inline module may give the modules declared inside
@@ -114,7 +117,20 @@ struct Directories {
 /// name, or a crate root, whose inline modules do not, so both are
 /// candidates.
 pub fn source_paths(stream: TokenStream, stem: Option<&str>, found: &mut Vec<SourcePath>) {
-    scan(stream, &[], stem, found);
+    let mut all = Vec::new();
+    scan(stream, &[], stem, &mut all);
+    found.extend(all.into_iter().filter(|path| path.kind != Kind::Module));
+}
+
+/// The modules that `stream`, the tokens of a file with `stem` as for
+/// [`source_paths`], declares with `mod name;` at any depth, each with the
+/// files that rustc may read it from: `name.rs` and `name/mod.rs` in each
+/// directory that the module around it may have.
+pub fn declared_modules(stream: TokenStream, stem: Option<&str>) -> Vec<SourcePath> {
+    let mut all = Vec::new();
+    scan(stream, &[], stem, &mut all);
+    all.retain(|path| path.kind == Kind::Module);
+    all
 }
 
 fn scan(
@@ -149,6 +165,28 @@ fn scan(
                         },
                     });
                 }
+            }
+            TokenTree::Ident(keyword) if keyword == "mod" && is_punct(trees.get(at + 2), ';') => {
+                let Some(TokenTree::Ident(name)) = trees.get(at + 1) else {
+                    continue;
+                };
+                let name = unraw(name);
+                let mut candidates = Vec::new();
+                for file in [format!("{name}.rs"), format!("{name}/mod.rs")] {
+                    let mut paths = self::candidates(modules, stem, &file);
+                    // A file other than a `mod.rs` file may be a module
+                    // file, whose modules lie in a directory of its name.
+                    if let (true, Some(stem)) = (modules.is_empty(), stem) {
+                        paths.push(within(stem, &file));
+                    }
+                    candidates.extend(paths);
+                }
+                found.push(SourcePath {
+                    line: keyword.span().start().line,
+                    path: name,
+                    kind: Kind::Module,
+                    candidates,
+                });
             }
             TokenTree::Ident(keyword) if keyword == "mod" => {
                 if let Some(TokenTree::Ident(name)) = trees.get(at + 1)
