@@ -844,8 +844,10 @@ layer and marks: export, facade (an export crate that only re-exports),
 pure core (`no_std` with `alloc`, no unsafe code, no build script, no
 external dependency and no interior mutability), provisional (with the
 condition that ends it), publishable, and whether it may have a build script
-or be a procedural-macro library, and, for a library crate at the platform
-boundary, its platform categories (see [Platform boundary](#platform-boundary)).
+or be a procedural-macro library, for a library crate at the platform
+boundary, its platform categories (see [Platform boundary](#platform-boundary)),
+and whether it is on the deterministic path (see [Transcendental
+functions](#transcendental-functions)).
 The allowed direct external dependencies of
 each crate are listed in its entry, and the allowed packages of each
 workspace's `Cargo.lock`, with the license exceptions of the workspace, in the
@@ -1714,7 +1716,8 @@ and uses integer arithmetic only:
   trees, display lists, glyph positions, coverage or pixels. In the first
   release it is every target (`src/`, tests and examples) of `kosmo-types`,
   `kosmo-ui`, `kosmo-render`, `kosmo-text`, `kosmo-controls` and
-  `kosmo-math-controls`; a later crate is judged by the same definition. In
+  `kosmo-math-controls`; a later crate is judged by the same definition, and
+  the layout table marks each crate of the path `deterministic`. In
   `display/`, `kosmo-compositor` and later server modules that write pixels
   belong to it. `display/` needs no transcendental functions in the first
   release; if it needs them later, their source is a design change.
@@ -1735,10 +1738,14 @@ and uses integer arithmetic only:
   and `as` conversions. Minimum, maximum and clamping are written with explicit
   comparisons or on integers.
 
-A planned check enforces these rules on the deterministic path. It rejects:
+Clippy enforces these rules with the lists of the root `clippy.toml`, as
+[the determinism lints](../CONTRIBUTING.md#the-determinism-lints) describes.
+It rejects:
 
-- a direct call to `libm`, `core_maths` or a similar crate outside the wrapper
-  module; only `kosmo-render` depends on `libm` directly;
+- a direct call to `libm` outside the wrapper module; only `kosmo-render`
+  depends on `libm` directly, and `core_maths` or a similar crate is kept out
+  by the allow entries of the layout table, since adding a package is a design
+  change;
 - an `f32` or `f64` method whose documentation has an "Unspecified precision"
   section. In toolchain 1.99.0 these are the 29 stable methods `powi`, `powf`,
   `exp`, `exp2`, `ln`, `log`, `log2`, `log10`, `abs_sub`, `cbrt`, `hypot`,
@@ -1755,7 +1762,10 @@ A planned check enforces these rules on the deterministic path. It rejects:
 The check reports method calls, path calls and function pointers by the resolved
 receiver type, so a method of the same name on a kosmo type is not reported.
 Expected values in tests are written as constants. The check cannot be turned
-off at a single place in the source, except in the wrapper module. Its list of
+off at a single place in the source, except in the wrapper module: the layout
+step rejects the attributes that would, within the limits that [the layout
+step](../CONTRIBUTING.md#the-layout-step) states for macros, which review
+covers. Its list of
 methods is generated from the toolchain's documentation and generated again when
 the toolchain is upgraded. `no_std` does not replace the check: `core` already
 has `to_degrees`, the `algebraic_*` methods, `min` and `max`, and its
@@ -4056,11 +4066,11 @@ A component is a unit with its own role, contract and level.
 | Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | [Job layer](features/framework/job-layer.md); tests in `framework/jobs/src/`, `framework/jobs/tests/`, `framework/math-kalyx/src/runner/` and `framework/math-kalyx/tests/` |
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/scratchpad/src/` and `framework/scratchpad/tests/` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
-| Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
+| Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | [Rendering](features/framework/rendering.md#pixel-formats-buffers-and-damage-regions) for pixel formats, buffer descriptions, conversion and damage regions, and [Framework runtime](features/framework/runtime.md) for the other types; tests in `display/types/src/` and `display/types/tests/` |
 | Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/ui/src/` and `framework/ui/tests/` |
 | Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
-| Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | `planned` |
+| Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | [Rendering](features/framework/rendering.md); tests in `framework/render/src/` and `framework/render/tests/` |
 | Text (shaping and line breaking with parley, glyph outlines and coverage cache, the two bundled fonts and their asset manifest) | `kosmo-text` | Presentation | A0 | `planned` |
 | Platform interface (nine traits, with AccessKit re-exported) and conformance suite | `kosmo-platform` (the suite's crate is chosen with the suite) | Platform contract | A1 | `planned` |
 | Headless backend (no threads, a virtual clock that only the driver advances) | `kosmo-backend-headless` | Backend | A0, passing the platform conformance suite | `planned` |

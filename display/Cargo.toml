@@ -24,6 +24,10 @@ panic = "deny"
 todo = "deny"
 unimplemented = "deny"
 allow_attributes_without_reason = "deny"
+# The methods and types that the root `clippy.toml` lists for
+# deterministic code are denied in every crate of the workspace.
+disallowed_methods = "deny"
+disallowed_types = "deny"
 
 [profile.release]
 overflow-checks = true

@@ -9,6 +9,13 @@
 //! differ between hosts. A function is added here with its first caller,
 //! together with a unit test.
 
+// The one place that calls libm, whose functions the root clippy.toml lists
+// for all other code.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the wrapper of the transcendental functions calls libm"
+)]
+
 /// The sine of `x`, in radians, from `libm`'s `sin`.
 pub fn sin(x: f64) -> f64 {
     libm::sin(x)

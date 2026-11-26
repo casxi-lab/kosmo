@@ -8,15 +8,17 @@
 //! kalyx adapter makes, the repository boundary, the Cargo
 //! configuration, pure-core crates, build scripts and procedural macros,
 //! versions and publishing, provisional and export crates, the platform
-//! boundary of library crates, the shape of the workspace roots and the
-//! workspaces that the other steps cover. It
+//! boundary of library crates, the lint attributes of deterministic crates,
+//! the shape of the workspace roots and the workspaces that the other steps
+//! cover. It
 //! collects every problem and reports them one per line, as
 //! `<path>[:<line>]: <message>`, sorted by path, then by line number and
 //! then by message. When the table does not parse or is not consistent,
 //! only the checks that need no table run: the repository root has no
 //! manifest, there is no submodule, no symbolic link leaves the repository,
-//! and the Cargo configuration.
+//! the Cargo configuration and the Clippy configuration.
 
+mod lints;
 mod platform;
 mod source;
 
@@ -48,14 +50,32 @@ pub const ALIAS: &str = "xtask";
 /// Where the list of workspaces that the format, Clippy and test steps
 /// cover is defined.
 const COVERAGE_SOURCE: &str = "xtask/src/check.rs";
-/// The Clippy lints that the root of every product workspace denies.
-pub const DENIED_LINTS: [&str; 6] = [
+/// The Clippy lints that the root of every product workspace denies: six
+/// lints of the `restriction` group, and the two determinism lints of the
+/// `style` group, whose lists the root Clippy configuration holds.
+pub const DENIED_LINTS: [&str; 8] = [
     "unwrap_used",
     "expect_used",
     "panic",
     "todo",
     "unimplemented",
     "allow_attributes_without_reason",
+    lints::LINTS[0],
+    lints::LINTS[1],
+];
+/// The Clippy groups that hold the denied lints; at a higher priority, a
+/// lower level of a group would replace theirs.
+const DENIED_GROUPS: [&str; 3] = ["restriction", "style", "all"];
+
+/// The former names of the lints of [`DENIED_LINTS`] that Clippy still
+/// accepts, each read as the lint's current name.
+const FORMER_LINT_NAMES: [&str; 6] = [
+    lints::FORMER_NAMES[0],
+    lints::FORMER_NAMES[1],
+    "option_unwrap_used",
+    "result_unwrap_used",
+    "option_expect_used",
+    "result_expect_used",
 ];
 /// Keys that no dependency entry has; `package` renames a dependency.
 const FORBIDDEN_KEYS: [&str; 7] = [
@@ -216,6 +236,10 @@ pub struct Crate {
     /// a library crate without them is a core library.
     #[serde(default)]
     platform: Option<Vec<String>>,
+    /// Whether the crate is on the deterministic path, where no lint
+    /// attribute turns off the determinism lints.
+    #[serde(default)]
+    deterministic: bool,
     /// The allowed direct external dependencies, which the deps step
     /// compares with what Cargo resolves.
     #[serde(default)]
@@ -849,6 +873,24 @@ fn check_repository(tree: &Tree, index: Option<&Index>, problems: &mut Problems)
         }
     }
     check_cargo_configuration(tree, problems);
+    check_clippy_configuration(tree, problems);
+}
+
+/// The only Clippy configuration is the regular file `clippy.toml` at the
+/// repository root: Clippy reads the nearest one at or above a crate's
+/// directory, so another would replace its lists for the crates below it.
+fn check_clippy_configuration(tree: &Tree, problems: &mut Problems) {
+    for (path, entry) in tree
+        .entries()
+        .filter(|(path, _)| lints::is_clippy_configuration(path))
+    {
+        if path != lints::CLIPPY_CONFIG || !matches!(entry, Entry::File(_)) {
+            problems.insert(format!(
+                "{path}: the only Clippy configuration is {} at the repository root, a regular file",
+                lints::CLIPPY_CONFIG
+            ));
+        }
+    }
 }
 
 /// Whether `path`, in any letter case, is a `.cargo` entry or a Cargo
@@ -1407,12 +1449,25 @@ fn check_shape(manifest: &str, table: &Table, workspace: &Table, problems: &mut 
             ));
         }
     }
-    // The group holds the denied lints; at a higher priority, a lower level
-    // would replace theirs.
-    if let Some(level @ ("allow" | "warn")) = level("restriction") {
-        problems.insert(format!(
-            "{manifest}: [workspace.lints.clippy] restriction may not be \"{level}\"; the group holds the denied lints"
-        ));
+    for group in DENIED_GROUPS {
+        if let Some(level @ ("allow" | "warn")) = level(group) {
+            problems.insert(format!(
+                "{manifest}: [workspace.lints.clippy] {group} may not be \"{level}\"; the group holds the denied lints"
+            ));
+        }
+    }
+    // Clippy reads `disallowed-methods` and a former name as the same lint
+    // as the name this step checks, so such a key could lower it.
+    for key in clippy
+        .and_then(Value::as_table)
+        .into_iter()
+        .flat_map(Table::keys)
+    {
+        if key.contains('-') || FORMER_LINT_NAMES.contains(&key.as_str()) {
+            problems.insert(format!(
+                "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads - as _ and a former name as the current one, so the key could set a lint of the table a second time"
+            ));
+        }
     }
     let profiles = table.get("profile").and_then(Value::as_table);
     let overflow_checks =
@@ -1635,6 +1690,21 @@ fn check_crate<'a>(
         check_pure_sources(tree, place, repo::parent(&root.manifest), table, problems);
     }
     check_platform(tree, place, manifest, table, problems);
+    if lints::DETERMINISTIC.contains(&name) && !krate.deterministic {
+        problems.insert(format!(
+            "{TABLE}: crates.{name}: must set deterministic = true; the architecture puts it on the deterministic path"
+        ));
+    }
+    if krate.deterministic {
+        check_lowerings(
+            tree,
+            place,
+            manifest,
+            table,
+            repo::parent(&root.manifest),
+            problems,
+        );
+    }
     if let Some(version) = version {
         match package_field(table, "version", root.workspace).and_then(Value::as_str) {
             Some(own) if own == version => {}
@@ -1681,6 +1751,12 @@ fn check_build_scripts(
     if has_build_script && krate.pure_core {
         problems.insert(format!(
             "{manifest}: the pure-core crate {name} may not have a build script"
+        ));
+    } else if has_build_script && krate.deterministic {
+        // A build script could point Clippy at another configuration for
+        // the crate's compilation, through `cargo::rustc-env`.
+        problems.insert(format!(
+            "{manifest}: the deterministic crate {name} may not have a build script"
         ));
     } else if has_build_script && !krate.build_script {
         problems.insert(format!(
@@ -1834,21 +1910,8 @@ fn check_pure_sources(
                 "{path}:{line}: the pure-core crate {name} may not use extern crate std outside #[cfg(test)]; the attribute stands directly on the extern crate item"
             ));
         }
-        let dir = repo::parent(path);
         for found in &paths {
-            // The modules declared inside an inline module with a
-            // directory are read from that directory.
-            let allowed = |resolved: &str| match found.kind {
-                source::Kind::Code => is_rust_under(resolved, &src),
-                source::Kind::Directory => repo::is_within(resolved, &src),
-                source::Kind::Data => true,
-            };
-            let outside = found.candidates.iter().any(|candidate| {
-                resolve(tree, dir, candidate).is_ok_and(|resolved| {
-                    repo::is_within(&resolved, workspace) && !allowed(&resolved)
-                })
-            });
-            if outside {
+            if brings_in_from_outside(tree, path, found, &src, workspace) {
                 problems.insert(format!(
                     "{path}:{}: the pure-core crate {name} brings in Rust code only from .rs files under {src}/, not {}",
                     found.line, found.path
@@ -1856,6 +1919,31 @@ fn check_pure_sources(
             }
         }
     }
+}
+
+/// Whether the literal path `found` of the Rust file `path` may name,
+/// inside `workspace`, what a crate that keeps its code under `code` does
+/// not bring in: for Rust code, anything but a `.rs` file under `code`; for
+/// the modules declared inside an inline module, which are read from its
+/// directory, a directory outside `code`. A file of data may be anywhere. A
+/// path that leaves the workspace or passes through a symbolic link is
+/// reported by the repository boundary instead.
+fn brings_in_from_outside(
+    tree: &Tree,
+    path: &str,
+    found: &source::SourcePath,
+    code: &str,
+    workspace: &str,
+) -> bool {
+    let allowed = |resolved: &str| match found.kind {
+        source::Kind::Code => is_rust_under(resolved, code),
+        source::Kind::Directory => repo::is_within(resolved, code),
+        source::Kind::Data => true,
+    };
+    found.candidates.iter().any(|candidate| {
+        resolve(tree, repo::parent(path), candidate)
+            .is_ok_and(|resolved| repo::is_within(&resolved, workspace) && !allowed(&resolved))
+    })
 }
 
 /// Whether the package in `dir` with the manifest `table` has a library
@@ -1921,6 +2009,96 @@ fn check_platform(
                 "{path}:{}: {who} may not use {}; {allowed_by}",
                 hit.line, hit.item
             ));
+        }
+    }
+}
+
+/// The lint attributes of a crate on the deterministic path: no Rust file
+/// of the crate, in any target, lowers a determinism lint, except one
+/// unconditional `#![allow(...)]` or `#![expect(...)]` of
+/// `clippy::disallowed_methods` at the start of the wrapper module, which
+/// declares no module in another file and includes no file, so that the
+/// attribute covers that file only. So that the files read are, within the
+/// limits that CONTRIBUTING states for macros, all the files that the crate
+/// compiles, everything in the crate's directory is a
+/// regular file, the roots of the targets that its manifest `table`, at
+/// `manifest`, names are `.rs` files under it, and `include!` and `#[path]`
+/// bring in only `.rs` files under it. A file whose tokens cannot be read,
+/// and a path that leaves `workspace`, the crate's workspace, or passes
+/// through a symbolic link, are reported by the repository boundary
+/// instead.
+fn check_lowerings(
+    tree: &Tree,
+    place: Place,
+    manifest: &str,
+    table: &Table,
+    workspace: &str,
+    problems: &mut Problems,
+) {
+    let (name, krate) = (place.name, place.krate);
+    for target in target_paths(table) {
+        if let Ok(resolved) = resolve(tree, &krate.path, target)
+            && !is_rust_under(&resolved, &krate.path)
+        {
+            problems.insert(format!(
+                "{manifest}: the deterministic crate {name} has the roots of its targets in .rs files under {}/, not {target}",
+                krate.path
+            ));
+        }
+    }
+    for (path, entry) in tree.entries() {
+        if matches!(entry, Entry::Symlink(_)) && repo::is_within(path, &krate.path) {
+            problems.insert(format!(
+                "{path}: the deterministic crate {name} keeps its files under {}/ as regular files, not symbolic links",
+                krate.path
+            ));
+        }
+    }
+    let wrapper = format!("{}/{}", krate.path, lints::WRAPPER.1);
+    let wrapper = (name == lints::WRAPPER.0).then_some(wrapper.as_str());
+    for (path, text) in tree
+        .texts()
+        .filter(|(path, _)| is_rust_under(path, &krate.path))
+    {
+        let Ok((stream, paths)) = read_rust(path, text) else {
+            continue;
+        };
+        for found in &paths {
+            if brings_in_from_outside(tree, path, found, &krate.path, workspace) {
+                problems.insert(format!(
+                    "{path}:{}: the deterministic crate {name} brings in Rust code only from .rs files under {}/, not {}",
+                    found.line, krate.path, found.path
+                ));
+            }
+        }
+        let is_wrapper = Some(path) == wrapper;
+        if is_wrapper {
+            let mut lines = Vec::new();
+            lints::other_files(stream.clone(), &mut lines);
+            for line in lines {
+                problems.insert(format!(
+                    "{path}:{line}: the wrapper module det_math of {} declares no module in another file and includes no file; its exception covers every module inside it",
+                    lints::WRAPPER.0
+                ));
+            }
+        }
+        let mut found = Vec::new();
+        lints::lowerings(stream, &mut found);
+        let mut excused = is_wrapper;
+        for lowering in found {
+            if excused && lowering.is_the_wrappers() {
+                excused = false;
+                continue;
+            }
+            for lint in &lowering.lints {
+                problems.insert(format!(
+                    "{path}:{}: the deterministic crate {name} may not {} {lint}; only one allow or expect of clippy::disallowed_methods in {} of {}, the wrapper module, may",
+                    lowering.line,
+                    lowering.level,
+                    lints::WRAPPER.1,
+                    lints::WRAPPER.0,
+                ));
+            }
         }
     }
 }
@@ -2182,29 +2360,6 @@ fn check_form(tree: &Tree, index: &Index, path: &str, table: &Table, problems: &
         problems.insert(format!("{path}: the package {name}: {KREPI}"));
     }
     let dir = repo::parent(path);
-    let mut target_paths: Vec<&str> = Vec::new();
-    if let Some(Value::String(build)) = table
-        .get("package")
-        .and_then(|package| package.get("build"))
-    {
-        target_paths.push(build);
-    }
-    if let Some(lib) = table
-        .get("lib")
-        .and_then(|lib| lib.get("path"))
-        .and_then(Value::as_str)
-    {
-        target_paths.push(lib);
-    }
-    for kind in TARGET_KINDS {
-        let entries = table.get(kind).and_then(Value::as_array);
-        target_paths.extend(
-            entries
-                .into_iter()
-                .flatten()
-                .filter_map(|entry| entry.get("path").and_then(Value::as_str)),
-        );
-    }
     let package = table.get("package");
     let workspace_package = table
         .get("workspace")
@@ -2231,11 +2386,41 @@ fn check_form(tree: &Tree, index: &Index, path: &str, table: &Table, problems: &
         }
     }
     let boundary = index.boundary(path);
-    for target in target_paths {
+    for target in target_paths(table) {
         if let Some(problem) = escape(tree, dir, target, boundary) {
             problems.insert(format!("{path}: the target path {target} {problem}"));
         }
     }
+}
+
+/// The paths of the build script and of the roots of the targets that the
+/// manifest `table` names: `package.build`, `[lib] path` and the `path` of
+/// each `[[bin]]`, `[[test]]`, `[[bench]]` and `[[example]]`.
+fn target_paths(table: &Table) -> Vec<&str> {
+    let mut paths: Vec<&str> = Vec::new();
+    if let Some(Value::String(build)) = table
+        .get("package")
+        .and_then(|package| package.get("build"))
+    {
+        paths.push(build);
+    }
+    if let Some(lib) = table
+        .get("lib")
+        .and_then(|lib| lib.get("path"))
+        .and_then(Value::as_str)
+    {
+        paths.push(lib);
+    }
+    for kind in TARGET_KINDS {
+        let entries = table.get(kind).and_then(Value::as_array);
+        paths.extend(
+            entries
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("path").and_then(Value::as_str)),
+        );
+    }
+    paths
 }
 
 /// The literal paths of every tracked Rust file stay inside its workspace,

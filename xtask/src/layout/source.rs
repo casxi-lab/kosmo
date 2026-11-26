@@ -46,7 +46,8 @@ fn string(literal: &Literal) -> Option<String> {
     }
 }
 
-fn is_punct(tree: Option<&TokenTree>, char: char) -> bool {
+/// Whether `tree` is the punctuation `char`.
+pub(super) fn is_punct(tree: Option<&TokenTree>, char: char) -> bool {
     matches!(tree, Some(TokenTree::Punct(punct)) if punct.as_char() == char)
 }
 
@@ -335,7 +336,7 @@ fn within(dir: &str, relative: &str) -> String {
 }
 
 /// The text of an identifier without the `r#` of a raw identifier.
-fn unraw(ident: &proc_macro2::Ident) -> String {
+pub(super) fn unraw(ident: &proc_macro2::Ident) -> String {
     let text = ident.to_string();
     match text.strip_prefix("r#") {
         Some(name) => name.to_string(),

@@ -68,13 +68,15 @@ type Spec = (
 /// The crates of the valid layout. The kalyx adapter `kosmo-math-kalyx`
 /// also depends on kalyx, which the root of `framework/` declares. As in
 /// this repository, `kosmo-jobs` is registered for threads and `kosmo` for
-/// the standard streams, arguments, exit code and real clock.
+/// the standard streams, arguments, exit code and real clock, and
+/// `kosmo-types`, `kosmo-render` and `kosmo-ui` are on the deterministic
+/// path.
 const CRATES: [Spec; 14] = [
     (
         "kosmo-types",
         "display",
         "D0",
-        "export = true\npure-core = true\n",
+        "export = true\npure-core = true\ndeterministic = true\n",
         &[],
     ),
     (
@@ -106,7 +108,13 @@ const CRATES: [Spec; 14] = [
         "same-layer = [\"kosmo-math-model\"]\nplatform = [\"threads\"]\n",
         &["kosmo-math-model"],
     ),
-    ("kosmo-render", "framework", "F0", "", &[]),
+    (
+        "kosmo-render",
+        "framework",
+        "F0",
+        "deterministic = true\n",
+        &[],
+    ),
     (
         "kosmo-client",
         "framework",
@@ -118,7 +126,7 @@ const CRATES: [Spec; 14] = [
         "kosmo-ui",
         "framework",
         "F1",
-        "",
+        "deterministic = true\n",
         &["kosmo-render", "kosmo-types"],
     ),
     (
@@ -1220,6 +1228,87 @@ fn the_denied_lints_may_be_forbidden_but_not_lowered() {
     );
 }
 
+#[test]
+fn the_determinism_lints_are_denied_and_their_groups_not_lowered() {
+    let found = problems_with(|files| {
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "disallowed_methods = \"deny\"\n",
+            "disallowed_methods = \"warn\"\n",
+        );
+        edit(
+            files,
+            "display/Cargo.toml",
+            "disallowed_types = \"deny\"\n",
+            "",
+        );
+        append(
+            files,
+            "desktop/Cargo.toml",
+            "\n[workspace.lints.clippy.style]\nlevel = \"allow\"\npriority = 1\n",
+        );
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "[workspace.lints.clippy]\n",
+            "[workspace.lints.clippy]\nall = \"warn\"\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[
+            "framework/Cargo.toml: [workspace.lints.clippy] disallowed_methods must be \"deny\" or \"forbid\"",
+            "display/Cargo.toml: [workspace.lints.clippy] disallowed_types must be \"deny\" or \"forbid\"",
+            "desktop/Cargo.toml: [workspace.lints.clippy] style may not be \"allow\"; the group holds the denied lints",
+            "framework/Cargo.toml: [workspace.lints.clippy] all may not be \"warn\"; the group holds the denied lints",
+        ],
+    );
+}
+
+#[test]
+fn a_lint_key_with_a_hyphen_or_a_former_name_is_reported() {
+    let found = problems_with(|files| {
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "[workspace.lints.clippy]\n",
+            "[workspace.lints.clippy]\ndisallowed-methods = \"allow\"\n",
+        );
+        edit(
+            files,
+            "display/Cargo.toml",
+            "[workspace.lints.clippy]\n",
+            "[workspace.lints.clippy]\ndisallowed_type = \"allow\"\n",
+        );
+        append(
+            files,
+            "desktop/Cargo.toml",
+            "\n[workspace.lints.clippy.unwrap-used]\nlevel = \"allow\"\npriority = 1\n",
+        );
+        edit(
+            files,
+            "desktop/Cargo.toml",
+            "[workspace.lints.clippy]\n",
+            "[workspace.lints.clippy]\noption_unwrap_used = \"allow\"\n",
+        );
+    });
+    let message = |manifest: &str, key: &str| {
+        format!(
+            "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads - as _ and a former name as the current one, so the key could set a lint of the table a second time"
+        )
+    };
+    assert_problems(
+        &found,
+        &[
+            message("framework/Cargo.toml", "disallowed-methods").as_str(),
+            message("display/Cargo.toml", "disallowed_type").as_str(),
+            message("desktop/Cargo.toml", "unwrap-used").as_str(),
+            message("desktop/Cargo.toml", "option_unwrap_used").as_str(),
+        ],
+    );
+}
+
 // Members.
 
 #[test]
@@ -1957,6 +2046,428 @@ fn there_is_no_other_cargo_configuration() {
             ".CARGO/Config.toml: the only Cargo configuration is .cargo/config.toml, a regular file",
         ],
     );
+}
+
+// The Clippy configuration.
+
+#[test]
+fn rejects_a_clippy_configuration_beside_the_root_one() {
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/render/clippy.toml".to_string(),
+            "disallowed-methods = []\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/render/clippy.toml: the only Clippy configuration is clippy.toml at the repository root, a regular file"
+        ]
+    );
+}
+
+#[test]
+fn the_only_clippy_configuration_is_the_regular_root_file() {
+    let mut files = valid();
+    files.insert("clippy.toml".to_string(), "msrv = \"1.99\"\n".to_string());
+    assert_eq!(check(&tree(&files), &ALL), Vec::<String>::new());
+    for path in [".clippy.toml", "display/Clippy.TOML", "xtask/.CLIPPY.toml"] {
+        files.insert(path.to_string(), "msrv = \"1.99\"\n".to_string());
+    }
+    let mut linked = tree(&files);
+    linked.insert(
+        "clippy.toml",
+        Entry::Symlink("xtask/.CLIPPY.toml".to_string()),
+    );
+    assert_problems(
+        &check(&linked, &ALL),
+        &[
+            ".clippy.toml: the only Clippy configuration is clippy.toml at the repository root, a regular file",
+            "clippy.toml: the only Clippy configuration is clippy.toml at the repository root, a regular file",
+            "display/Clippy.TOML: the only Clippy configuration is clippy.toml at the repository root, a regular file",
+            "xtask/.CLIPPY.toml: the only Clippy configuration is clippy.toml at the repository root, a regular file",
+        ],
+    );
+}
+
+// The determinism lints on the deterministic path.
+
+/// The wrapper module of `kosmo-render`.
+const WRAPPER: &str = "framework/render/src/det_math.rs";
+
+/// The problem of a lowering of `lint` with `level` at `at` in the
+/// deterministic crate `name`.
+fn lowered(at: &str, name: &str, level: &str, lint: &str) -> String {
+    format!(
+        "{at}: the deterministic crate {name} may not {level} clippy::{lint}; only one allow or expect of clippy::disallowed_methods in src/det_math.rs of kosmo-render, the wrapper module, may"
+    )
+}
+
+#[test]
+fn the_crates_that_the_architecture_names_on_the_deterministic_path_are_marked() {
+    let found = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "[crates.kosmo-ui]\npath = \"framework/ui\"\nlayer = \"F1\"\nexport = false\npure-core = false\npublish = false\ndeterministic = true\n",
+            "[crates.kosmo-ui]\npath = \"framework/ui\"\nlayer = \"F1\"\nexport = false\npure-core = false\npublish = false\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "layout.toml: crates.kosmo-ui: must set deterministic = true; the architecture puts it on the deterministic path"
+        ]
+    );
+}
+
+#[test]
+fn rejects_an_allowance_of_the_methods_lint_outside_the_wrapper_module() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            RENDER_LIB,
+            "#[allow(clippy::disallowed_methods, reason = \"calls libm\")]\nfn sine(x: f32) -> f32 { x }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [lowered(
+            "framework/render/src/lib.rs:2",
+            "kosmo-render",
+            "allow",
+            "disallowed_methods"
+        )]
+    );
+}
+
+#[test]
+fn rejects_an_allowance_of_the_methods_lint_written_with_a_raw_identifier() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            RENDER_LIB,
+            "#[allow(clippy::r#disallowed_methods, reason = \"calls libm\")]\nfn sine(x: f32) -> f32 { x }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [lowered(
+            "framework/render/src/lib.rs:2",
+            "kosmo-render",
+            "allow",
+            "disallowed_methods"
+        )]
+    );
+}
+
+#[test]
+fn the_wrapper_module_may_allow_or_expect_the_methods_lint_once() {
+    let expect = "#![expect(clippy::disallowed_methods, reason = \"calls libm\")]\n";
+    for first in [
+        expect,
+        "#![allow(clippy::disallowed_methods, reason = \"calls libm\")]\n",
+    ] {
+        let found = problems_with(|files| {
+            files.insert(WRAPPER.to_string(), first.to_string());
+        });
+        assert_eq!(found, Vec::<String>::new(), "{first}");
+    }
+    let found = problems_with(|files| {
+        files.insert(
+            WRAPPER.to_string(),
+            format!("{expect}#[allow(clippy::disallowed_methods)]\nfn f() {{}}\n"),
+        );
+    });
+    assert_eq!(
+        found,
+        [lowered(
+            &format!("{WRAPPER}:2"),
+            "kosmo-render",
+            "allow",
+            "disallowed_methods"
+        )]
+    );
+    // Neither the types lint, nor a group, nor a conditional or lower
+    // attribute is the wrapper's one exception.
+    for (attribute, level, lint) in [
+        (
+            "#![allow(clippy::disallowed_types)]\n",
+            "allow",
+            "disallowed_types",
+        ),
+        ("#![allow(clippy::style)]\n", "allow", "style"),
+        (
+            "#![cfg_attr(test, expect(clippy::disallowed_methods))]\n",
+            "expect",
+            "disallowed_methods",
+        ),
+        (
+            "#![warn(clippy::disallowed_methods)]\n",
+            "warn",
+            "disallowed_methods",
+        ),
+    ] {
+        let found = problems_with(|files| {
+            files.insert(WRAPPER.to_string(), attribute.to_string());
+        });
+        assert_eq!(
+            found,
+            [lowered(
+                &format!("{WRAPPER}:1"),
+                "kosmo-render",
+                level,
+                lint
+            )],
+            "{attribute}"
+        );
+    }
+}
+
+#[test]
+fn only_an_inner_attribute_at_the_start_of_the_wrapper_module_is_its_exception() {
+    for (text, line) in [
+        (
+            "#[expect(clippy::disallowed_methods)]\npub fn sinf(x: f32) -> f32 {\n    libm::sinf(x)\n}\n",
+            1,
+        ),
+        (
+            "mod inner {\n    #![expect(clippy::disallowed_methods)]\n}\n",
+            2,
+        ),
+        (
+            "#[macro_export]\nmacro_rules! sine {\n    ($x:expr) => {{\n        #[expect(clippy::disallowed_methods)]\n        let y = $x.sin();\n        y\n    }};\n}\n",
+            4,
+        ),
+    ] {
+        let found = problems_with(|files| {
+            files.insert(WRAPPER.to_string(), text.to_string());
+        });
+        assert_eq!(
+            found,
+            [lowered(
+                &format!("{WRAPPER}:{line}"),
+                "kosmo-render",
+                "expect",
+                "disallowed_methods"
+            )],
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn the_wrapper_module_declares_no_module_in_another_file_and_includes_no_file() {
+    let expect = "#![expect(clippy::disallowed_methods, reason = \"calls libm\")]\n";
+    let larger = "pub fn larger(a: f32, b: f32) -> f32 {\n    a.max(b)\n}\n";
+    let inline = problems_with(|files| {
+        files.insert(
+            WRAPPER.to_string(),
+            format!("{expect}mod inner {{\n    pub fn f() {{}}\n}}\n"),
+        );
+    });
+    assert_eq!(inline, Vec::<String>::new());
+    let rule = "the wrapper module det_math of kosmo-render declares no module in another file and includes no file; its exception covers every module inside it";
+    let module = problems_with(|files| {
+        files.insert(WRAPPER.to_string(), format!("{expect}pub mod extra;\n"));
+        files.insert(
+            "framework/render/src/det_math/extra.rs".to_string(),
+            larger.to_string(),
+        );
+    });
+    assert_eq!(module, [format!("{WRAPPER}:2: {rule}")]);
+    let included = problems_with(|files| {
+        files.insert(
+            WRAPPER.to_string(),
+            format!("{expect}include!(\"extra.rs\");\n"),
+        );
+        files.insert(
+            "framework/render/src/extra.rs".to_string(),
+            larger.to_string(),
+        );
+    });
+    assert_eq!(included, [format!("{WRAPPER}:2: {rule}")]);
+}
+
+#[test]
+fn every_target_of_a_deterministic_crate_is_checked() {
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/ui/tests/scene.rs".to_string(),
+            "#[expect(clippy::disallowed_types)]\nfn f() {}\n".to_string(),
+        );
+        files.insert(
+            "framework/ui/src/det_math.rs".to_string(),
+            "#![allow(clippy::disallowed_method)]\n".to_string(),
+        );
+        append(
+            files,
+            "display/types/src/lib.rs",
+            "#[allow(clippy::all, reason = \"a test\")]\nfn f() {}\n",
+        );
+    });
+    assert_problems(
+        &found,
+        &[
+            &lowered(
+                "framework/ui/tests/scene.rs:1",
+                "kosmo-ui",
+                "expect",
+                "disallowed_types",
+            ),
+            &lowered(
+                "framework/ui/src/det_math.rs:1",
+                "kosmo-ui",
+                "allow",
+                "disallowed_method",
+            ),
+            "display/types/src/lib.rs:",
+        ],
+    );
+}
+
+/// The problem of a literal path `literal` at `at` that brings code into
+/// `kosmo-render` from outside its directory.
+fn brought_in(at: &str, literal: &str) -> String {
+    format!(
+        "{at}: the deterministic crate kosmo-render brings in Rust code only from .rs files under framework/render/, not {literal}"
+    )
+}
+
+#[test]
+fn a_deterministic_crate_brings_in_code_only_from_its_rust_files() {
+    let lowering = "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n";
+    let found = problems_with(|files| {
+        append(
+            files,
+            RENDER_LIB,
+            "#[path = \"lowered.in\"]\npub mod lowered;\ninclude!(\"included.in\");\n#[path = \"../tests/common.rs\"]\nmod common;\npub const DATA: &[u8] = include_bytes!(\"../tests/golden/MANIFEST\");\n",
+        );
+        for file in ["lowered.in", "included.in"] {
+            files.insert(format!("framework/render/src/{file}"), lowering.to_string());
+        }
+        files.insert(
+            "framework/render/tests/common.rs".to_string(),
+            String::new(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            brought_in("framework/render/src/lib.rs:2", "lowered.in"),
+            brought_in("framework/render/src/lib.rs:4", "included.in"),
+        ]
+    );
+}
+
+#[test]
+fn a_deterministic_crate_brings_in_no_rust_file_of_another_crate() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            RENDER_LIB,
+            "#[path = \"../../math-model/src/lowered.rs\"]\nmod lowered;\n",
+        );
+        files.insert(
+            "framework/math-model/src/lowered.rs".to_string(),
+            "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [brought_in(
+            "framework/render/src/lib.rs:2",
+            "../../math-model/src/lowered.rs"
+        )]
+    );
+}
+
+#[test]
+fn a_deterministic_crate_has_the_roots_of_its_targets_in_its_rust_files() {
+    let lowering = "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n";
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/render/Cargo.toml",
+            "\n[[test]]\nname = \"lowered\"\npath = \"tests/lowered.in\"\n\n[[test]]\nname = \"outside\"\npath = \"../lowered.rs\"\n",
+        );
+        files.insert(
+            "framework/render/tests/lowered.in".to_string(),
+            lowering.to_string(),
+        );
+        files.insert("framework/lowered.rs".to_string(), lowering.to_string());
+    });
+    let message = |target: &str| {
+        format!(
+            "framework/render/Cargo.toml: the deterministic crate kosmo-render has the roots of its targets in .rs files under framework/render/, not {target}"
+        )
+    };
+    assert_problems(
+        &found,
+        &[
+            message("tests/lowered.in").as_str(),
+            message("../lowered.rs").as_str(),
+        ],
+    );
+}
+
+#[test]
+fn a_deterministic_crate_has_no_build_script_even_when_marked() {
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/render/build.rs".to_string(),
+            "fn main() {}\n".to_string(),
+        );
+        edit(
+            files,
+            TABLE,
+            "[crates.kosmo-render]\npath = \"framework/render\"\n",
+            "[crates.kosmo-render]\npath = \"framework/render\"\nbuild-script = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/render/Cargo.toml: the deterministic crate kosmo-render may not have a build script"
+        ]
+    );
+}
+
+#[test]
+fn a_deterministic_crate_keeps_its_files_as_regular_files() {
+    let mut files = valid();
+    append(&mut files, RENDER_LIB, "pub mod linked;\n");
+    files.insert(
+        "framework/render/src/linked.txt".to_string(),
+        "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n".to_string(),
+    );
+    let mut linked = tree(&files);
+    linked.insert(
+        "framework/render/src/linked.rs",
+        Entry::Symlink("linked.txt".to_string()),
+    );
+    assert_eq!(
+        check(&linked, &ALL),
+        [
+            "framework/render/src/linked.rs: the deterministic crate kosmo-render keeps its files under framework/render/ as regular files, not symbolic links"
+        ]
+    );
+}
+
+#[test]
+fn a_crate_off_the_deterministic_path_may_allow_the_lints() {
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/jobs/src/det_math.rs".to_string(),
+            "#![allow(clippy::disallowed_methods, clippy::disallowed_types)]\n".to_string(),
+        );
+        append(
+            files,
+            "framework/math-model/src/lib.rs",
+            "#[allow(clippy::disallowed_types, reason = \"a test\")]\nfn f() {}\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
 }
 
 // Pure-core crates.
