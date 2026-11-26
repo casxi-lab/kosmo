@@ -25,6 +25,15 @@ pub const WORKSPACES: [&str; 4] = ["xtask", "display", "framework", "desktop"];
 pub const FEATURE_PASSES: [(&str, &str, &str); 1] =
     [("framework", "kosmo-backend-headless", "test-hooks")];
 
+/// The workspaces that the clippy step lints once more without one of
+/// their members, as `(workspace, member)`: `kosmo-testkit` turns on the
+/// test hooks of `kosmo-platform` through an ordinary dependency, so
+/// every command over the whole workspace builds the hooks. This pass,
+/// of library and program targets only, builds the other crates as
+/// ordinary builds do, without the hooks, so no code outside tests can
+/// name them.
+pub const ORDINARY_PASSES: [(&str, &str); 1] = [("framework", "kosmo-testkit")];
+
 /// The environment variable, and its value, that keeps Cargo off the
 /// network. Every Cargo command after the fetch step sets it; `cargo fmt`
 /// does not accept `--offline`.
@@ -128,6 +137,32 @@ fn per_workspace(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
         .collect()
 }
 
+/// The same Cargo command for each workspace of `ORDINARY_PASSES`, over
+/// the workspace without the member, offline; its time is recorded as
+/// `<workspace>_without_<member>_ms`.
+fn ordinary_passes(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
+    ORDINARY_PASSES
+        .iter()
+        .map(|(workspace, member)| {
+            let mut all: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+            all.extend([
+                "--workspace".to_string(),
+                "--exclude".to_string(),
+                member.to_string(),
+                "--manifest-path".to_string(),
+                format!("{workspace}/Cargo.toml"),
+            ]);
+            all.extend(trailing.iter().map(|arg| arg.to_string()));
+            Cmd {
+                program: cargo(),
+                args: all,
+                env: offline(),
+                timing: format!("{workspace}_without_{member}_ms"),
+            }
+        })
+        .collect()
+}
+
 /// The same Cargo command for each package of `FEATURE_PASSES`, with its
 /// feature on, offline; its time is recorded as `<package>_<feature>_ms`.
 fn feature_passes(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
@@ -185,6 +220,7 @@ pub fn steps() -> Vec<Step> {
                         &["clippy", "--workspace", "--all-targets", "--locked"],
                         &["--", "-D", "warnings"],
                     ),
+                    ordinary_passes(&["clippy", "--locked"], &["--", "-D", "warnings"]),
                     feature_passes(
                         &["clippy", "--all-targets", "--locked"],
                         &["--", "-D", "warnings"],
@@ -464,6 +500,9 @@ mod tests {
                     "framework/Cargo.toml",
                     "desktop/Cargo.toml",
                 ];
+                if step.name == "clippy" {
+                    expected.push("framework/Cargo.toml");
+                }
                 if step.name == "clippy" || step.name == "test" {
                     expected.push("framework/Cargo.toml");
                 }
@@ -502,6 +541,62 @@ mod tests {
             );
             assert!(!pass.args.iter().any(|arg| arg == "--workspace"));
             assert_eq!(pass.timing, "kosmo-backend-headless_test-hooks_ms");
+        }
+    }
+
+    #[test]
+    fn clippy_lints_the_framework_once_more_without_the_testkit() {
+        for step in steps() {
+            let Action::Commands(commands) = step.action else {
+                continue;
+            };
+            let excluding: Vec<&Cmd> = commands
+                .iter()
+                .filter(|cmd| cmd.args.iter().any(|arg| arg == "--exclude"))
+                .collect();
+            if step.name != "clippy" {
+                assert!(excluding.is_empty(), "{}: {excluding:?}", step.name);
+                continue;
+            }
+            let [pass] = excluding[..] else {
+                panic!("the clippy step has one pass without a member: {excluding:?}");
+            };
+            // After the workspace commands and before the feature passes.
+            assert_eq!(
+                commands.iter().position(|cmd| cmd.timing == pass.timing),
+                Some(WORKSPACES.len()),
+                "{}",
+                pass.shown()
+            );
+            assert_eq!(
+                pass.args,
+                [
+                    "clippy",
+                    "--locked",
+                    "--workspace",
+                    "--exclude",
+                    "kosmo-testkit",
+                    "--manifest-path",
+                    "framework/Cargo.toml",
+                    "--",
+                    "-D",
+                    "warnings",
+                ]
+            );
+            // Test targets would bring the testkit back as a dev-dependency,
+            // and a feature could turn the hooks on.
+            for arg in &pass.args {
+                assert!(
+                    !arg.starts_with("--all-targets")
+                        && !arg.starts_with("--tests")
+                        && !arg.starts_with("--features")
+                        && !arg.starts_with("--all-features"),
+                    "{}",
+                    pass.shown()
+                );
+            }
+            assert_eq!(pass.env, offline());
+            assert_eq!(pass.timing, "framework_without_kosmo-testkit_ms");
         }
     }
 
@@ -724,7 +819,7 @@ mod tests {
         let online = online_after_fetch(&steps);
         assert_eq!(
             online.len(),
-            WORKSPACES.len() + FEATURE_PASSES.len(),
+            WORKSPACES.len() + ORDINARY_PASSES.len() + FEATURE_PASSES.len(),
             "{online:?}"
         );
         assert!(

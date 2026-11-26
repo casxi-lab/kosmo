@@ -9,7 +9,7 @@ publish = false
 
 [features]
 # The test hooks: `PlatformTestHooks` and its value types. Off by default;
-# only test builds turn it on.
+# only test builds, and builds that include `kosmo-testkit`, turn it on.
 test-hooks = []
 
 [dependencies]

@@ -39,12 +39,18 @@ order and stops at the first one that fails:
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
 4. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
    workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask`,
-   `display`, `framework` and `desktop`. `clippy` and `test` then build each
-   package that `FEATURE_PASSES` lists once more with its feature on, so far
-   `kosmo-backend-headless` with `test-hooks`: the workspace's command builds
-   it without its test hooks, which compiles the test files that
-   `#![cfg(feature = "test-hooks")]` gates on them empty, and this pass
-   builds the hooks and runs those tests;
+   `display`, `framework` and `desktop`. `clippy` then lints each workspace
+   that `ORDINARY_PASSES` lists once more, without one of its members and
+   without test targets, so far `framework` without `kosmo-testkit`: that
+   member turns on the test hooks of `kosmo-platform` through an ordinary
+   dependency, so every command over the whole workspace builds them, and
+   this pass builds the other crates as ordinary builds do, without them,
+   so that code outside tests cannot name them. `clippy` and `test` also
+   build each package that `FEATURE_PASSES` lists once more with its
+   feature on, so far `kosmo-backend-headless` with `test-hooks`: the
+   workspace's command builds it without its test hooks, which compiles the
+   test files that `#![cfg(feature = "test-hooks")]` gates on them empty,
+   and this pass builds the hooks and runs those tests;
 5. `docs`: relative links and anchors in the Markdown files;
 6. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
@@ -84,12 +90,14 @@ or carries an `#[allow]`, and every `#[allow]` states its reason with
 the working tree was clean before and after the run, each step with its
 status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
-`<workspace>_ms`, and of each feature pass, as `<package>_<feature>_ms`; for the `fetch` step and the `cargo metadata` commands of
-the `deps` step, the duration of each command as `<workspace>_<target>_ms`;
-for the `deps` step also the observations that its section lists; for the
-`goldens` step, the number of goldens that the manifests list, as
-`goldens`), the first line of `rustc --version`, the runner image
-(`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
+`<workspace>_ms`, of each pass without a member, as
+`<workspace>_without_<member>_ms`, and of each feature pass, as
+`<package>_<feature>_ms`; for the `fetch` step and the `cargo metadata`
+commands of the `deps` step, the duration of each command as
+`<workspace>_<target>_ms`; for the `deps` step also the observations that its
+section lists; for the `goldens` step, the number of goldens that the
+manifests list, as `goldens`), the first line of `rustc --version`, the runner
+image (`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
 `GITHUB_RUN_ATTEMPT`, `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a
 value the environment does not provide is `null`.
 
