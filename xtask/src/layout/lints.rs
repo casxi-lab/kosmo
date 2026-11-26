@@ -11,7 +11,7 @@
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 
-use super::source::unraw;
+use super::source::{is_punct, unraw};
 
 /// The only Clippy configuration, at the repository root.
 pub const CLIPPY_CONFIG: &str = "clippy.toml";
@@ -30,7 +30,7 @@ const LOWERING: [&str; 3] = ["allow", "expect", "warn"];
 
 /// The wrapper module of the transcendental functions: the crate and its
 /// file, the one place that may allow or expect `clippy::disallowed_methods`,
-/// once, to call libm.
+/// once, at the start of the file, to call libm.
 pub const WRAPPER: (&str, &str) = ("kosmo-render", "src/det_math.rs");
 
 /// Whether Clippy may read the file at `path` as a configuration: its name
@@ -53,50 +53,58 @@ pub struct Lowering {
     pub lints: Vec<String>,
     /// Whether the attribute stands inside `cfg_attr`.
     pub conditional: bool,
+    /// Whether it is an inner attribute `#![...]` of the file itself,
+    /// outside every bracket, brace and parenthesis, which stands at the
+    /// start of the file and applies to the whole module.
+    pub of_the_file: bool,
 }
 
 impl Lowering {
     /// Whether this is the one attribute that the wrapper module may have:
-    /// an unconditional `allow` or `expect` of `clippy::disallowed_methods`
-    /// alone.
+    /// an unconditional `#![allow(...)]` or `#![expect(...)]` of
+    /// `clippy::disallowed_methods` alone at the start of the file.
     pub fn is_the_wrappers(&self) -> bool {
-        !self.conditional
+        self.of_the_file
+            && !self.conditional
             && (self.level == "allow" || self.level == "expect")
             && self.lints == ["clippy::disallowed_methods"]
     }
 }
 
-/// The attributes in `stream`, at any depth, that lower a lint of the
-/// determinism rules, in the order they appear.
+/// The attributes in `stream`, the tokens of a file, at any depth, that
+/// lower a lint of the determinism rules, in the order they appear.
 pub fn lowerings(stream: TokenStream, found: &mut Vec<Lowering>) {
+    scan(stream, true, found);
+}
+
+/// The lowerings in `stream`, the tokens of the whole file when `top` is
+/// true and of a group inside it otherwise.
+fn scan(stream: TokenStream, top: bool, found: &mut Vec<Lowering>) {
     let trees: Vec<TokenTree> = stream.into_iter().collect();
     for (at, tree) in trees.iter().enumerate() {
         match tree {
             TokenTree::Punct(hash) if hash.as_char() == '#' => {
-                let mut next = at + 1;
-                if matches!(trees.get(next), Some(TokenTree::Punct(bang)) if bang.as_char() == '!')
-                {
-                    next += 1;
-                }
-                if let Some(TokenTree::Group(attribute)) = trees.get(next)
+                let inner = is_punct(trees.get(at + 1), '!');
+                if let Some(TokenTree::Group(attribute)) = trees.get(at + 1 + usize::from(inner))
                     && attribute.delimiter() == Delimiter::Bracket
                 {
                     let line = hash.span().start().line;
-                    attribute_lowerings(attribute.stream(), line, false, found);
+                    attribute_lowerings(attribute.stream(), line, false, top && inner, found);
                 }
             }
-            TokenTree::Group(group) => lowerings(group.stream(), found),
+            TokenTree::Group(group) => scan(group.stream(), false, found),
             _ => {}
         }
     }
 }
 
 /// The lowerings of the attribute `meta`, the contents of `#[...]` or one
-/// attribute of a `cfg_attr`, at `line`.
+/// attribute of a `cfg_attr`, at `line`; `of_the_file` as in [`Lowering`].
 fn attribute_lowerings(
     meta: TokenStream,
     line: usize,
     conditional: bool,
+    of_the_file: bool,
     found: &mut Vec<Lowering>,
 ) {
     let trees: Vec<TokenTree> = meta.into_iter().collect();
@@ -110,7 +118,13 @@ fn attribute_lowerings(
     if name == "cfg_attr" {
         // The condition, then the attributes.
         for attribute in split(arguments).into_iter().skip(1) {
-            attribute_lowerings(attribute.into_iter().collect(), line, true, found);
+            attribute_lowerings(
+                attribute.into_iter().collect(),
+                line,
+                true,
+                of_the_file,
+                found,
+            );
         }
         return;
     }
@@ -139,7 +153,33 @@ fn attribute_lowerings(
             level: name,
             lints,
             conditional,
+            of_the_file,
         });
+    }
+}
+
+/// The lines, in `stream`, at any depth, of the module declarations that
+/// end with `;`, whose module is in another file, and of the calls of
+/// `include!`, in the order they appear.
+pub fn other_files(stream: TokenStream, found: &mut Vec<usize>) {
+    let trees: Vec<TokenTree> = stream.into_iter().collect();
+    for (at, tree) in trees.iter().enumerate() {
+        match tree {
+            TokenTree::Ident(keyword)
+                if keyword == "mod"
+                    && matches!(trees.get(at + 1), Some(TokenTree::Ident(_)))
+                    && is_punct(trees.get(at + 2), ';') =>
+            {
+                found.push(keyword.span().start().line);
+            }
+            TokenTree::Ident(name)
+                if unraw(name) == "include" && is_punct(trees.get(at + 1), '!') =>
+            {
+                found.push(name.span().start().line);
+            }
+            TokenTree::Group(group) => other_files(group.stream(), found),
+            _ => {}
+        }
     }
 }
 
@@ -179,7 +219,22 @@ mod tests {
             level: level.to_string(),
             lints: lints.iter().map(|lint| lint.to_string()).collect(),
             conditional,
+            of_the_file: false,
         }
+    }
+
+    /// `lowering` as an inner attribute of the file itself.
+    fn of_the_file(lowering: Lowering) -> Lowering {
+        Lowering {
+            of_the_file: true,
+            ..lowering
+        }
+    }
+
+    fn other_files_in(text: &str) -> Vec<usize> {
+        let mut found = Vec::new();
+        other_files(crate::layout::source::tokens(text).unwrap(), &mut found);
+        found
     }
 
     #[test]
@@ -201,7 +256,7 @@ mod tests {
         assert_eq!(
             found(text),
             [
-                lowering(1, "allow", &["clippy::disallowed_method"], false),
+                of_the_file(lowering(1, "allow", &["clippy::disallowed_method"], false)),
                 lowering(3, "allow", &["clippy::style"], false),
                 lowering(
                     5,
@@ -246,21 +301,47 @@ mod tests {
     }
 
     #[test]
+    fn only_the_inner_attributes_of_the_file_itself_are_of_the_file() {
+        let text = "#![expect(clippy::disallowed_methods)]\n#[expect(clippy::disallowed_methods)]\nfn f() {}\nmod m {\n    #![expect(clippy::disallowed_methods)]\n}\nmacro_rules! m { () => { #![expect(clippy::disallowed_methods)] } }\n";
+        let methods = ["clippy::disallowed_methods"];
+        assert_eq!(
+            found(text),
+            [
+                of_the_file(lowering(1, "expect", &methods, false)),
+                lowering(2, "expect", &methods, false),
+                lowering(5, "expect", &methods, false),
+                lowering(7, "expect", &methods, false),
+            ]
+        );
+    }
+
+    #[test]
     fn only_one_unconditional_allowance_of_the_methods_lint_is_the_wrappers() {
-        assert!(lowering(1, "expect", &["clippy::disallowed_methods"], false).is_the_wrappers());
-        assert!(lowering(1, "allow", &["clippy::disallowed_methods"], false).is_the_wrappers());
-        assert!(!lowering(1, "warn", &["clippy::disallowed_methods"], false).is_the_wrappers());
-        assert!(!lowering(1, "allow", &["clippy::disallowed_methods"], true).is_the_wrappers());
-        assert!(!lowering(1, "allow", &["clippy::disallowed_types"], false).is_the_wrappers());
+        let methods = ["clippy::disallowed_methods"];
+        assert!(of_the_file(lowering(1, "expect", &methods, false)).is_the_wrappers());
+        assert!(of_the_file(lowering(1, "allow", &methods, false)).is_the_wrappers());
+        assert!(!lowering(1, "expect", &methods, false).is_the_wrappers());
+        assert!(!of_the_file(lowering(1, "warn", &methods, false)).is_the_wrappers());
+        assert!(!of_the_file(lowering(1, "allow", &methods, true)).is_the_wrappers());
         assert!(
-            !lowering(
+            !of_the_file(lowering(1, "allow", &["clippy::disallowed_types"], false))
+                .is_the_wrappers()
+        );
+        assert!(
+            !of_the_file(lowering(
                 1,
                 "allow",
                 &["clippy::disallowed_methods", "clippy::style"],
                 false
-            )
+            ))
             .is_the_wrappers()
         );
+    }
+
+    #[test]
+    fn finds_modules_in_other_files_and_included_files() {
+        let text = "mod inline {\n    mod nested;\n}\npub mod extra;\n#[path = \"x.rs\"]\nmod x;\nr#include!(\"y.rs\");\nconst S: &str = include_str!(\"z.txt\");\nmacro_rules! m { () => { include!(\"w.rs\"); } }\n// mod comment;\n";
+        assert_eq!(other_files_in(text), [2, 4, 6, 7, 9]);
     }
 
     #[test]

@@ -265,12 +265,15 @@ attribute of a library root, do not. It checks:
   names `clippy::disallowed_methods` or `clippy::disallowed_types`, their
   former names `clippy::disallowed_method` and `clippy::disallowed_type`, or
   the groups `clippy::style` and `clippy::all` that hold them. The one
-  exception is a single unconditional
-  `allow` or `expect` of `clippy::disallowed_methods` alone in
-  `src/det_math.rs` of `kosmo-render`, the wrapper module that calls libm;
-  a deterministic crate keeps its files as regular files, and `include!` and
-  `#[path]` in it bring in only `.rs` files under its directory, so that the
-  step reads every file that the crate compiles;
+  exception is a single unconditional inner attribute `#![allow(...)]` or
+  `#![expect(...)]` of `clippy::disallowed_methods` alone at the start of
+  `src/det_math.rs` of `kosmo-render`, the wrapper module that calls libm,
+  which declares no module in another file and includes no file; the
+  exception covers every listed method in the module and in the inline
+  modules inside it, so review reads that the module only forwards to
+  `libm`; a deterministic crate keeps its files as regular files, and
+  `include!` and `#[path]` in it bring in only `.rs` files under its
+  directory, so that the step reads every file that the crate compiles;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`

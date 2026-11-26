@@ -1973,13 +1973,15 @@ fn check_platform(
 
 /// The lint attributes of a crate on the deterministic path: no Rust file
 /// of the crate, in any target, lowers a determinism lint, except one
-/// unconditional `allow` or `expect` of `clippy::disallowed_methods` in the
-/// wrapper module. So that these are all the files that the crate
-/// compiles, everything in the crate's directory is a regular file, and
-/// `include!` and `#[path]` bring in only `.rs` files under it. A file
-/// whose tokens cannot be read, and a path that leaves `workspace`, the
-/// crate's workspace, or passes through a symbolic link, are reported by
-/// the repository boundary instead.
+/// unconditional `#![allow(...)]` or `#![expect(...)]` of
+/// `clippy::disallowed_methods` at the start of the wrapper module, which
+/// declares no module in another file and includes no file, so that the
+/// attribute covers that file only. So that the files read are all the
+/// files that the crate compiles, everything in the crate's directory is a
+/// regular file, and `include!` and `#[path]` bring in only `.rs` files
+/// under it. A file whose tokens cannot be read, and a path that leaves
+/// `workspace`, the crate's workspace, or passes through a symbolic link,
+/// are reported by the repository boundary instead.
 fn check_lowerings(tree: &Tree, place: Place, workspace: &str, problems: &mut Problems) {
     let (name, krate) = (place.name, place.krate);
     for (path, entry) in tree.entries() {
@@ -2007,9 +2009,20 @@ fn check_lowerings(tree: &Tree, place: Place, workspace: &str, problems: &mut Pr
                 ));
             }
         }
+        let is_wrapper = Some(path) == wrapper;
+        if is_wrapper {
+            let mut lines = Vec::new();
+            lints::other_files(stream.clone(), &mut lines);
+            for line in lines {
+                problems.insert(format!(
+                    "{path}:{line}: the wrapper module det_math of {} declares no module in another file and includes no file; its exception covers every module inside it",
+                    lints::WRAPPER.0
+                ));
+            }
+        }
         let mut found = Vec::new();
         lints::lowerings(stream, &mut found);
-        let mut excused = Some(path) == wrapper;
+        let mut excused = is_wrapper;
         for lowering in found {
             if excused && lowering.is_the_wrappers() {
                 excused = false;

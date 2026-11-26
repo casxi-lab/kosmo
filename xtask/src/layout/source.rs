@@ -46,7 +46,8 @@ fn string(literal: &Literal) -> Option<String> {
     }
 }
 
-fn is_punct(tree: Option<&TokenTree>, char: char) -> bool {
+/// Whether `tree` is the punctuation `char`.
+pub(super) fn is_punct(tree: Option<&TokenTree>, char: char) -> bool {
     matches!(tree, Some(TokenTree::Punct(punct)) if punct.as_char() == char)
 }
 

@@ -2164,6 +2164,71 @@ fn the_wrapper_module_may_allow_or_expect_the_methods_lint_once() {
 }
 
 #[test]
+fn only_an_inner_attribute_at_the_start_of_the_wrapper_module_is_its_exception() {
+    for (text, line) in [
+        (
+            "#[expect(clippy::disallowed_methods)]\npub fn sinf(x: f32) -> f32 {\n    libm::sinf(x)\n}\n",
+            1,
+        ),
+        (
+            "mod inner {\n    #![expect(clippy::disallowed_methods)]\n}\n",
+            2,
+        ),
+        (
+            "#[macro_export]\nmacro_rules! sine {\n    ($x:expr) => {{\n        #[expect(clippy::disallowed_methods)]\n        let y = $x.sin();\n        y\n    }};\n}\n",
+            4,
+        ),
+    ] {
+        let found = problems_with(|files| {
+            files.insert(WRAPPER.to_string(), text.to_string());
+        });
+        assert_eq!(
+            found,
+            [lowered(
+                &format!("{WRAPPER}:{line}"),
+                "kosmo-render",
+                "expect",
+                "disallowed_methods"
+            )],
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn the_wrapper_module_declares_no_module_in_another_file_and_includes_no_file() {
+    let expect = "#![expect(clippy::disallowed_methods, reason = \"calls libm\")]\n";
+    let larger = "pub fn larger(a: f32, b: f32) -> f32 {\n    a.max(b)\n}\n";
+    let inline = problems_with(|files| {
+        files.insert(
+            WRAPPER.to_string(),
+            format!("{expect}mod inner {{\n    pub fn f() {{}}\n}}\n"),
+        );
+    });
+    assert_eq!(inline, Vec::<String>::new());
+    let rule = "the wrapper module det_math of kosmo-render declares no module in another file and includes no file; its exception covers every module inside it";
+    let module = problems_with(|files| {
+        files.insert(WRAPPER.to_string(), format!("{expect}pub mod extra;\n"));
+        files.insert(
+            "framework/render/src/det_math/extra.rs".to_string(),
+            larger.to_string(),
+        );
+    });
+    assert_eq!(module, [format!("{WRAPPER}:2: {rule}")]);
+    let included = problems_with(|files| {
+        files.insert(
+            WRAPPER.to_string(),
+            format!("{expect}include!(\"extra.rs\");\n"),
+        );
+        files.insert(
+            "framework/render/src/extra.rs".to_string(),
+            larger.to_string(),
+        );
+    });
+    assert_eq!(included, [format!("{WRAPPER}:2: {rule}")]);
+}
+
+#[test]
 fn every_target_of_a_deterministic_crate_is_checked() {
     let found = problems_with(|files| {
         files.insert(
