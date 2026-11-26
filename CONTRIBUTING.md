@@ -373,13 +373,17 @@ of `src/det_math.rs`, so a module declaration or an `include!` that a macro
 defined in another file expands inside the wrapper module is not found,
 and the module's exception covers the code that it brings in; review reads
 the macros that deterministic crates call. The test clock check has
-the limits of the platform boundary check and counts the lines of a test
-item, from its first attribute to its end, as test code, other code on
-those lines included. It finds test targets by their directories, not by
-a `path` of `[[test]]`, `[[bench]]` or `[[example]]` elsewhere, and does
-not read indented code blocks, which rustdoc also runs, doc comments that a
-macro writes, as `#[doc = include_str!("...")]` does, or a test attribute
-that `cfg_attr` adds. It cannot see
+the limits of the platform boundary check in how it reads tokens, imports
+and macros, though it reads the test code of every crate, one without a
+library target included, and counts the lines of a test item, from its
+first attribute to its end, as test code, other code on those lines
+included. A test module in its own file does not see what its parent
+module imports, so a `sleep` taken with `use super::*` from a parent that
+imports `std::thread::sleep` is not found. It finds test targets by their
+directories, not by a `path` of `[[test]]`, `[[bench]]` or `[[example]]`
+elsewhere, and does not read indented code blocks, which rustdoc also
+runs, doc comments that a macro writes, as `#[doc = include_str!("...")]`
+does, or a test attribute that `cfg_attr` adds. It cannot see
 what build scripts, procedural macros or configuration outside the
 repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
 `CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no longer runs the
