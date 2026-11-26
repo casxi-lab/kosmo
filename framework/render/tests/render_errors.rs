@@ -108,6 +108,37 @@ fn an_origin_that_does_not_fit_with_its_offsets_is_refused() -> Checked {
 }
 
 #[test]
+fn offsets_of_nested_groups_that_do_not_fit_are_refused() -> Checked {
+    let mut target = sevens()?;
+    let mut builder = ListBuilder::new();
+    let far = Point::new(Fx::MAX, Fx::ZERO);
+    for _ in 0..2 {
+        builder
+            .push(Command::PushClip {
+                rect: rect(0, 0, 16, 8),
+                offset: far,
+            })
+            .unwrap();
+    }
+    builder
+        .push(Command::FillRect {
+            rect: rect(0, 0, 4, 4),
+            color: Color::opaque(1, 2, 3),
+        })
+        .unwrap();
+    for _ in 0..2 {
+        builder.push(Command::PopClip).unwrap();
+    }
+    let list = builder.finish().unwrap();
+    let whole = target.whole();
+    let result =
+        VelloRasterizer::new().render(&list, &whole, &NoGlyphs, &ImageStore::EMPTY, &mut target);
+    assert_eq!(result, Err(RenderError::OutOfRange));
+    assert!(target.bytes().iter().all(|&byte| byte == 7));
+    Ok(())
+}
+
+#[test]
 fn an_outline_beyond_the_items_is_over_the_limit() {
     let mut outline = Path::new(Point::default());
     for _ in 0..MAX_ITEMS {

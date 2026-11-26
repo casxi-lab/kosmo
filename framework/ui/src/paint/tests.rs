@@ -272,8 +272,9 @@ fn a_control_ends_only_the_groups_it_starts() {
 }
 
 /// The group around a control's commands counts toward the limit of the
-/// display list: the start of the root's group and its 16,383 commands
-/// fill the list, and the end of the group is refused.
+/// display list: with the root's box alone, the start of the root's group
+/// and its 16,383 commands fill the list, and the end of the group is
+/// refused.
 #[test]
 fn the_groups_count_toward_the_limit_of_the_list() {
     let (tree, ids) = build([
@@ -283,7 +284,11 @@ fn the_groups_count_toward_the_limit_of_the_list() {
         Painter::Nothing,
     ]);
     assert_eq!(
-        paint(&tree, &layout(&boxes(ids)), &damage(&[(0, 0, 100, 80)])),
+        paint(
+            &tree,
+            &layout(&boxes(ids)[..1]),
+            &damage(&[(0, 0, 100, 80)])
+        ),
         Err(PaintError::List(ListError::TooManyCommands))
     );
 }

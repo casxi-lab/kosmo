@@ -60,25 +60,24 @@ fn stroke(path: &Path, width: Fx, join: Join, cap: Cap) -> Command {
     }
 }
 
-/// At a joint of 20 degrees the point of a miter join lies about 5.8 half
+/// At a joint of 28 degrees the point of a miter join lies about 4.13 half
 /// widths from the joint, beyond the limit of 4, so the miter join draws
-/// the bytes of a bevel join. At a joint of 90 degrees it lies about 1.4
-/// half widths from the joint, and the two joins differ.
+/// the bytes of a bevel join. At a joint of 30 degrees it lies about 3.86
+/// half widths from the joint, within the limit, and the two joins differ.
 #[test]
 fn a_miter_join_beyond_4_half_widths_is_a_bevel_join() -> Checked {
-    // Arms of 28 pixels at 10 degrees from the vertical: 4.86 pixels to
-    // the side and 27.58 down.
-    let sharp = vee(16, 311, 1765);
-    // Arms at 45 degrees from the vertical.
-    let right = vee(12, 20 * 64, 20 * 64);
+    // 28 degrees: 1 / sin 14 degrees = 4.13 half widths.
+    let beyond = vee(16, 434, 1739);
+    // 30 degrees: 1 / sin 15 degrees = 3.86 half widths.
+    let within = vee(16, 464, 1731);
     let joined = |path: &Path, join| drawn(vec![stroke(path, fx(4, 0), join, Cap::Butt)]);
     assert!(
-        joined(&sharp, Join::Miter)? == joined(&sharp, Join::Bevel)?,
-        "at 20 degrees the miter join is not cut off"
+        joined(&beyond, Join::Miter)? == joined(&beyond, Join::Bevel)?,
+        "at 28 degrees the miter join is not cut off"
     );
     assert!(
-        joined(&right, Join::Miter)? != joined(&right, Join::Bevel)?,
-        "at 90 degrees the miter join is cut off"
+        joined(&within, Join::Miter)? != joined(&within, Join::Bevel)?,
+        "at 30 degrees the miter join is cut off"
     );
     Ok(())
 }
