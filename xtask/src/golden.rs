@@ -7,7 +7,10 @@
 //! golden: the SHA-256 of the file in 64 lowercase hexadecimal digits, two
 //! spaces and the name, sorted by name. Names are lowercase letters, digits
 //! and `-`. A test of the crate refers to a golden by calling
-//! `matches_golden` with its name as a string literal.
+//! `matches_golden` with its name as a string literal. The crate's
+//! integration test `tests/golden.rs` holds the ignored tests
+//! `write_goldens` and `redraw_goldens`, which the command runs, and no
+//! other ignored test.
 //!
 //! The goldens step reads only tracked files and does not run Cargo. It
 //! reports every problem it finds, one per line as `<path>[:<line>]:
@@ -209,6 +212,27 @@ fn references(tree: &Tree, dir: &str) -> Vec<(String, usize, String)> {
     found
 }
 
+/// The names of the functions of the Rust file `text` with both `#[test]`
+/// and `#[ignore]`; none when it does not parse.
+fn ignored_tests(text: &str) -> BTreeSet<String> {
+    let Ok(file) = syn::parse_file(text) else {
+        return BTreeSet::new();
+    };
+    file.items
+        .iter()
+        .filter_map(|item| match item {
+            syn::Item::Fn(function)
+                if ["test", "ignore"]
+                    .iter()
+                    .all(|name| function.attrs.iter().any(|attr| attr.path().is_ident(name))) =>
+            {
+                Some(function.sig.ident.to_string())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 fn scan(stream: TokenStream, found: &mut dyn FnMut(usize, String)) {
     let trees: Vec<TokenTree> = stream.into_iter().collect();
     for (at, tree) in trees.iter().enumerate() {
@@ -319,6 +343,23 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
         if !listed.contains_key(name) {
             problems.add(path, *line, format!("golden {name} is not in MANIFEST"));
         }
+    }
+    let tests = format!("{}/tests/{TEST}.rs", set.dir);
+    let ignored = tree.text(&tests).map(ignored_tests).unwrap_or_default();
+    for writer in [WRITE, REDRAW] {
+        if !ignored.contains(writer) {
+            let message =
+                format!("has no ignored test `{writer}`, which `cargo xtask golden` runs");
+            problems.add(&tests, 0, message);
+        }
+    }
+    for name in ignored
+        .iter()
+        .filter(|name| ![WRITE, REDRAW].contains(&name.as_str()))
+    {
+        let message =
+            format!("ignores the test `{name}`; only the writers of the goldens are ignored");
+        problems.add(&tests, 0, message);
     }
     listed.len()
 }

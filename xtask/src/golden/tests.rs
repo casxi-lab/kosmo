@@ -14,9 +14,12 @@ fn line_of(name: &str) -> String {
     format!("{}  {name}\n", digest(&bytes_of(name)))
 }
 
-/// A test file that defines `matches_golden` on lines 3 to 5 and calls it
+/// The two ignored tests that write the goldens.
+const WRITERS: &str = "\n#[test]\n#[ignore = \"writes the goldens\"]\nfn write_goldens() -> Result<(), String> {\n    support::write()\n}\n\n#[test]\n#[ignore = \"draws the goldens again\"]\nfn redraw_goldens() -> Result<(), String> {\n    support::redraw()\n}\n";
+
+/// A test file that defines `matches_golden` on lines 3 to 5, calls it
 /// with each of `referenced`, the first on line 9 and each further one 5
-/// lines later.
+/// lines later, and ends with the ignored tests that write the goldens.
 fn tests_of(referenced: &[&str]) -> String {
     let mut tests = String::from(
         "pub mod support;\n\nfn matches_golden(name: &str) -> Result<(), String> {\n    support::check(name)\n}\n",
@@ -26,6 +29,7 @@ fn tests_of(referenced: &[&str]) -> String {
             "\n#[test]\nfn draws() -> Result<(), String> {{\n    matches_golden(\"{name}\")\n}}\n"
         ));
     }
+    tests.push_str(WRITERS);
     tests
 }
 
@@ -76,8 +80,56 @@ fn goldens_with_their_files_lines_and_tests_pass() {
 
 #[test]
 fn a_crate_without_goldens_passes() {
-    let tree = Tree::from_files(&[(TESTS, "fn matches_golden(name: &str) {}\n")]);
+    let tree = Tree::from_files(&[(TESTS, &tests_of(&[]))]);
     assert_eq!(problems(&tree), (Vec::new(), 0));
+}
+
+/// The tree of [`valid`] with `old` replaced by `new`, once, in its test
+/// file.
+fn valid_with(old: &str, new: &str) -> Tree {
+    let tests = tests_of(&["fill-rect", "glyphs"]);
+    assert!(tests.contains(old), "{old}");
+    let mut tree = valid();
+    tree.insert(TESTS, Entry::File(tests.replacen(old, new, 1).into_bytes()));
+    tree
+}
+
+#[test]
+fn a_writer_that_is_not_ignored_is_reported() {
+    let tree = valid_with("#[ignore = \"writes the goldens\"]\n", "");
+    assert_eq!(
+        problems(&tree).0,
+        [format!(
+            "{TESTS}: has no ignored test `write_goldens`, which `cargo xtask golden` runs"
+        )]
+    );
+}
+
+#[test]
+fn a_renamed_writer_is_reported() {
+    let tree = valid_with("fn redraw_goldens()", "fn redraw_all_goldens()");
+    assert_eq!(
+        problems(&tree).0,
+        [
+            format!(
+                "{TESTS}: has no ignored test `redraw_goldens`, which `cargo xtask golden` runs"
+            ),
+            format!(
+                "{TESTS}: ignores the test `redraw_all_goldens`; only the writers of the goldens are ignored"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn an_ignored_comparison_is_reported() {
+    let tree = valid_with("#[test]\nfn draws()", "#[test]\n#[ignore]\nfn draws()");
+    assert_eq!(
+        problems(&tree).0,
+        [format!(
+            "{TESTS}: ignores the test `draws`; only the writers of the goldens are ignored"
+        )]
+    );
 }
 
 #[test]

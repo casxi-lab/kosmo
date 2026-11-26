@@ -374,6 +374,8 @@ by line number:
 - a line of `MANIFEST` that is not a digest of 64 lowercase hexadecimal
   digits, two spaces and a name, a name listed twice and lines out of order;
 - a call of `matches_golden` with a name that `MANIFEST` does not list;
+- a crate with goldens whose `tests/golden.rs` lacks the ignored tests
+  `write_goldens` and `redraw_goldens`, or ignores another test;
 - a directory `tests/golden` of a crate that `cargo xtask golden` does not
   write.
 
