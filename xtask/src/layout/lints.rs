@@ -28,6 +28,18 @@ const OTHER_NAMES: [&str; 4] = ["disallowed_method", "disallowed_type", "style",
 /// The lint levels that turn a denied lint off or lower it.
 const LOWERING: [&str; 3] = ["allow", "expect", "warn"];
 
+/// The crates that the architecture puts on the deterministic path by
+/// name; each of them that the table lists is marked `deterministic`.
+pub const DETERMINISTIC: [&str; 7] = [
+    "kosmo-types",
+    "kosmo-ui",
+    "kosmo-render",
+    "kosmo-text",
+    "kosmo-controls",
+    "kosmo-math-controls",
+    "kosmo-compositor",
+];
+
 /// The wrapper module of the transcendental functions: the crate and its
 /// file, the one place that may allow or expect `clippy::disallowed_methods`,
 /// once, at the start of the file, to call libm.

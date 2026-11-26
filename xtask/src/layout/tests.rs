@@ -2061,6 +2061,24 @@ fn lowered(at: &str, name: &str, level: &str, lint: &str) -> String {
 }
 
 #[test]
+fn the_crates_that_the_architecture_names_on_the_deterministic_path_are_marked() {
+    let found = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "[crates.kosmo-ui]\npath = \"framework/ui\"\nlayer = \"F1\"\nexport = false\npure-core = false\npublish = false\ndeterministic = true\n",
+            "[crates.kosmo-ui]\npath = \"framework/ui\"\nlayer = \"F1\"\nexport = false\npure-core = false\npublish = false\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "layout.toml: crates.kosmo-ui: must set deterministic = true; the architecture puts it on the deterministic path"
+        ]
+    );
+}
+
+#[test]
 fn rejects_an_allowance_of_the_methods_lint_outside_the_wrapper_module() {
     let found = problems_with(|files| {
         append(

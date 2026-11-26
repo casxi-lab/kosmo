@@ -258,13 +258,17 @@ attribute of a library root, do not. It checks:
   of a forbidden item, a path that names one or an item inside one, and a
   call of a forbidden macro. Compile-time `env!`, comments, doc comments and string
   literals are not uses;
-- the deterministic path: in every Rust file in the directory of a crate
-  that the table marks `deterministic`, in any of its targets, no lint
-  attribute `allow`, `expect` or `warn`, also inside `cfg_attr`, in the
-  bodies of macros and when written with raw identifiers such as `r#allow`,
-  names `clippy::disallowed_methods` or `clippy::disallowed_types`, their
-  former names `clippy::disallowed_method` and `clippy::disallowed_type`, or
-  the groups `clippy::style` and `clippy::all` that hold them. The one
+- the deterministic path: the crates that the architecture names on the
+  path, `kosmo-types`, `kosmo-ui`, `kosmo-render`, `kosmo-text`,
+  `kosmo-controls`, `kosmo-math-controls` and `kosmo-compositor`, are marked
+  `deterministic` when the table lists them. In every Rust file in the
+  directory of a crate that the table marks `deterministic`, in any of its
+  targets, no lint attribute `allow`, `expect` or `warn`, also inside
+  `cfg_attr`, in the bodies of macros and when written with raw identifiers
+  such as `r#allow`, names `clippy::disallowed_methods` or
+  `clippy::disallowed_types`, their former names `clippy::disallowed_method`
+  and `clippy::disallowed_type`, or the groups `clippy::style` and
+  `clippy::all` that hold them. The one
   exception is a single unconditional inner attribute `#![allow(...)]` or
   `#![expect(...)]` of `clippy::disallowed_methods` alone at the start of
   `src/det_math.rs` of `kosmo-render`, the wrapper module that calls libm,

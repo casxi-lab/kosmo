@@ -1666,6 +1666,11 @@ fn check_crate<'a>(
         check_pure_sources(tree, place, repo::parent(&root.manifest), table, problems);
     }
     check_platform(tree, place, manifest, table, problems);
+    if lints::DETERMINISTIC.contains(&name) && !krate.deterministic {
+        problems.insert(format!(
+            "{TABLE}: crates.{name}: must set deterministic = true; the architecture puts it on the deterministic path"
+        ));
+    }
     if krate.deterministic {
         check_lowerings(tree, place, repo::parent(&root.manifest), problems);
     }
