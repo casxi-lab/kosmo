@@ -85,7 +85,7 @@ fn references_are_found_anywhere_in_the_crate_and_only_in_code() {
     let mut tree = valid();
     let support = "mod inner {\n    fn f() {\n        let _ = [support::golden::matches_golden(\"glyphs\")];\n    }\n}\n\
         /// matches_golden(\"orphan\")\nconst A: &str = \"matches_golden(\\\"orphan\\\")\";\n\
-        // matches_golden(\"orphan\")\nfn g(name: &str) { matches_golden(name); matches_golden[\"orphan\"]; }\n";
+        // matches_golden(\"orphan\")\nfn g(name: &str) { matches_golden(name); matches_golden(&\"orphan\".to_string()); matches_golden[\"orphan\"]; }\n";
     tree.insert(
         "framework/render/tests/support/golden.rs",
         Entry::File(support.as_bytes().to_vec()),
@@ -167,6 +167,10 @@ fn each_bad_line_is_reported() {
         format!("{digest}  Fill_Rect\n"),
         format!("{digest}  crlf\r\n"),
         "\n".to_string(),
+        format!("{}g  past-f\n", &digest[..63]),
+        format!("{digest}  Fill-Rect\n"),
+        format!("{digest}  fill_rect\n"),
+        format!("{digest}  \n"),
         line_of("glyphs"),
     ]
     .concat();
@@ -194,6 +198,17 @@ fn each_bad_line_is_reported() {
                 "{MANIFEST}:7: `crlf\r` is not a golden name of lowercase letters, digits and `-`"
             ),
             format!("{MANIFEST}:8: {shape}"),
+            format!(
+                "{MANIFEST}:9: `{}g` is not 64 lowercase hexadecimal digits",
+                &digest[..63]
+            ),
+            format!(
+                "{MANIFEST}:10: `Fill-Rect` is not a golden name of lowercase letters, digits and `-`"
+            ),
+            format!(
+                "{MANIFEST}:11: `fill_rect` is not a golden name of lowercase letters, digits and `-`"
+            ),
+            format!("{MANIFEST}:12: `` is not a golden name of lowercase letters, digits and `-`"),
         ]
     );
     assert_eq!(count, 2);
