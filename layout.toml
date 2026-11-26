@@ -100,7 +100,9 @@ lock-allowlist = "xtask/allowlist.toml"
 # or #![expect] of clippy::disallowed_methods at the start of
 # src/det_math.rs of kosmo-render, the wrapper module through which
 # deterministic code calls libm. The crates that the architecture names on
-# the deterministic path set it.
+# the deterministic path set it. Such a crate has no build script, even when
+# marked build-script, and the roots of its targets are .rs files under its
+# directory.
 #
 # `platform`, the platform boundary column, lists at least one platform
 # category of a library crate, a crate with a library target, at the

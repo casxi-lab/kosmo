@@ -66,6 +66,17 @@ pub const DENIED_LINTS: [&str; 8] = [
 /// The Clippy groups that hold the denied lints; at a higher priority, a
 /// lower level of a group would replace theirs.
 const DENIED_GROUPS: [&str; 3] = ["restriction", "style", "all"];
+
+/// The former names of the lints of [`DENIED_LINTS`] that Clippy still
+/// accepts, each read as the lint's current name.
+const FORMER_LINT_NAMES: [&str; 6] = [
+    lints::FORMER_NAMES[0],
+    lints::FORMER_NAMES[1],
+    "option_unwrap_used",
+    "result_unwrap_used",
+    "option_expect_used",
+    "result_expect_used",
+];
 /// Keys that no dependency entry has; `package` renames a dependency.
 const FORBIDDEN_KEYS: [&str; 7] = [
     "git",
@@ -1452,9 +1463,9 @@ fn check_shape(manifest: &str, table: &Table, workspace: &Table, problems: &mut 
         .into_iter()
         .flat_map(Table::keys)
     {
-        if key.contains('-') || lints::FORMER_NAMES.contains(&key.as_str()) {
+        if key.contains('-') || FORMER_LINT_NAMES.contains(&key.as_str()) {
             problems.insert(format!(
-                "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads this key as another lint of the table"
+                "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads - as _ and a former name as the current one, so the key could set a lint of the table a second time"
             ));
         }
     }
@@ -2007,8 +2018,9 @@ fn check_platform(
 /// unconditional `#![allow(...)]` or `#![expect(...)]` of
 /// `clippy::disallowed_methods` at the start of the wrapper module, which
 /// declares no module in another file and includes no file, so that the
-/// attribute covers that file only. So that the files read are all the
-/// files that the crate compiles, everything in the crate's directory is a
+/// attribute covers that file only. So that the files read are, within the
+/// limits that CONTRIBUTING states for macros, all the files that the crate
+/// compiles, everything in the crate's directory is a
 /// regular file, the roots of the targets that its manifest `table`, at
 /// `manifest`, names are `.rs` files under it, and `include!` and `#[path]`
 /// bring in only `.rs` files under it. A file whose tokens cannot be read,

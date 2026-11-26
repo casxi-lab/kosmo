@@ -10,6 +10,7 @@
 //! `disallowed_types` as the product workspaces do, and each file of it
 //! holds one case; the tests compare what Clippy reports in each file.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -180,11 +181,11 @@ fn the_configuration_lists_exactly_the_methods_and_functions_of_the_rules() {
             .collect();
         assert_eq!(names, FLOAT_METHODS, "{ty}");
     }
-    let libm = methods
+    let libm: BTreeSet<&str> = methods
         .iter()
-        .filter(|path| path.starts_with("libm::"))
-        .count();
-    assert_eq!(libm, LIBM_FUNCTIONS);
+        .filter_map(|path| path.strip_prefix("libm::"))
+        .collect();
+    assert_eq!(libm.len(), LIBM_FUNCTIONS);
     assert_eq!(methods.len(), 2 * FLOAT_METHODS.len() + LIBM_FUNCTIONS);
 }
 

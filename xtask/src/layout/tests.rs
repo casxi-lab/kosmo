@@ -1286,10 +1286,16 @@ fn a_lint_key_with_a_hyphen_or_a_former_name_is_reported() {
             "desktop/Cargo.toml",
             "\n[workspace.lints.clippy.unwrap-used]\nlevel = \"allow\"\npriority = 1\n",
         );
+        edit(
+            files,
+            "desktop/Cargo.toml",
+            "[workspace.lints.clippy]\n",
+            "[workspace.lints.clippy]\noption_unwrap_used = \"allow\"\n",
+        );
     });
     let message = |manifest: &str, key: &str| {
         format!(
-            "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads this key as another lint of the table"
+            "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads - as _ and a former name as the current one, so the key could set a lint of the table a second time"
         )
     };
     assert_problems(
@@ -1298,6 +1304,7 @@ fn a_lint_key_with_a_hyphen_or_a_former_name_is_reported() {
             message("framework/Cargo.toml", "disallowed-methods").as_str(),
             message("display/Cargo.toml", "disallowed_type").as_str(),
             message("desktop/Cargo.toml", "unwrap-used").as_str(),
+            message("desktop/Cargo.toml", "option_unwrap_used").as_str(),
         ],
     );
 }

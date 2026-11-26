@@ -477,8 +477,9 @@ the layout step of `cargo xtask check` checks. It is on the deterministic
 path: Clippy rejects the hash containers of the standard library and the
 floating-point methods that [the determinism
 lints](../../../CONTRIBUTING.md#the-determinism-lints) list, as in every
-crate of the product workspaces, and no attribute in it turns these lints
-off. It uses no floating-point arithmetic and no locale, and its record holds
+crate of the product workspaces, and the layout step rejects an attribute
+in it that turns these lints off, within the limits that [the layout
+step](../../../CONTRIBUTING.md#the-layout-step) states for macros. It uses no floating-point arithmetic and no locale, and its record holds
 no wall-clock time; review checks these, as the
 [determinism rules](../../architecture.md#determinism-rules) describe.
 

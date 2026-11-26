@@ -266,8 +266,12 @@ threads, clocks, the environment, files and input and output, which the
 layout step of `cargo xtask check` checks. Clippy rejects the hash containers
 and the floating-point methods that the determinism lints list in all their
 targets, as in every crate of the product workspaces, and since the layout
-table marks both, and `kosmo-ui`, as crates of the deterministic path, no
-attribute but the one of `det_math` turns these lints off. The deps step
+table marks both, and `kosmo-ui`, as crates of the deterministic path, the
+layout step rejects any attribute in them that turns these lints off, except
+the one of `det_math`; an attribute that a macro assembles from parts or
+brings in from another crate is not found, as [the layout
+step](../../../CONTRIBUTING.md#the-layout-step) states, and review reads
+those macros. The deps step
 compares the features of vello_cpu and the packages it brings in with the
 allow entries of `kosmo-render` and the allowlist of `framework/`, so a change
 that turns on `std` or `multithreading` fails until those entries record it.

@@ -1762,7 +1762,10 @@ It rejects:
 The check reports method calls, path calls and function pointers by the resolved
 receiver type, so a method of the same name on a kosmo type is not reported.
 Expected values in tests are written as constants. The check cannot be turned
-off at a single place in the source, except in the wrapper module. Its list of
+off at a single place in the source, except in the wrapper module: the layout
+step rejects the attributes that would, within the limits that [the layout
+step](../CONTRIBUTING.md#the-layout-step) states for macros, which review
+covers. Its list of
 methods is generated from the toolchain's documentation and generated again when
 the toolchain is upgraded. `no_std` does not replace the check: `core` already
 has `to_degrees`, the `algebraic_*` methods, `min` and `max`, and its

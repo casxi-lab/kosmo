@@ -278,17 +278,19 @@ attribute of a library root, do not. It checks:
   `libm`; a deterministic crate keeps its files as regular files, has no
   build script, names in its manifest only `.rs` files under its directory
   as the roots of its targets, and `include!` and `#[path]` in it bring in
-  only `.rs` files under its directory, so that the step reads every file
-  that the crate compiles;
+  only `.rs` files under its directory, so that, outside the limits below,
+  the step reads every file that the crate compiles;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`
   and the groups that hold them, `restriction`, `style` and `all`, to
   neither `allow` nor `warn`, writes every key of `[workspace.lints.clippy]`
-  with `_` and under the lint's current name, since Clippy reads
-  `disallowed-methods` or `disallowed_method` as the same lint, sets `overflow-checks = true` in
-  `[profile.release]` and `false` nowhere in `[profile]`, package overrides
-  and `build-override` included, and has no `exclude` or `default-members`;
+  with `_` and the lints above under their current names, since Clippy
+  reads `disallowed-methods` as `disallowed_methods`, `disallowed_method` as
+  `disallowed_methods` and `option_unwrap_used` as `unwrap_used`, sets
+  `overflow-checks = true` in `[profile.release]` and `false` nowhere in
+  `[profile]`, package overrides and `build-override` included, and has no
+  `exclude` or `default-members`;
   each member sets `[lints] workspace = true`;
 - coverage: `WORKSPACES` lists exactly the tool workspaces and the product
   workspaces with crates.
@@ -307,7 +309,9 @@ checked. Lint attributes are found by their own names too, so one that a
 macro assembles from parts or a procedural macro adds is not found, nor is
 one in a crate that the table does not mark `deterministic`, also when a
 `macro_rules!` macro of such a crate carries it into a deterministic crate
-that calls the macro. The rule of the wrapper module reads only the tokens
+that calls the macro, or brings in, with a literal `include!` that rustc
+resolves from the file that calls the macro, a file that the step does not
+read. The rule of the wrapper module reads only the tokens
 of `src/det_math.rs`, so a module declaration or an `include!` that a macro
 defined in another file expands inside the wrapper module is not found,
 and the module's exception covers the code that it brings in; review reads
