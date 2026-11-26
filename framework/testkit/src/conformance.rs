@@ -485,8 +485,14 @@ fn the_clock_reads_what_the_driver_advanced_it_to<P: PlatformTestHooks>(p: &mut 
     wait(p, Some(MonoTime::from_nanos(20)))?;
     same("the clock after two waits", p.now(), ten)?;
     p.caps();
-    create(p, Setup::FORMATS[0])?;
+    let s = create(p, Setup::FORMATS[0])?;
     call("resource", p.resource(FIRST))?;
+    draw_and_present(p, s, 1, &[whole()?])?;
+    release(p, s)?;
+    call("update", p.update(s, named_tree("a", "b")))?;
+    call("inject", p.inject(key(s, stamp(1), 1)))?;
+    settle(p)?;
+    call("destroy_surface", p.destroy_surface(s))?;
     same("the clock after other port calls", p.now(), ten)?;
     same("advancing to the same time", p.advance_to(ten), Ok(()))?;
     same(
@@ -676,11 +682,13 @@ fn the_capabilities_stay_and_other_formats_are_unsupported<P: PlatformTestHooks>
     for format in Setup::FORMATS {
         create(p, format)?;
     }
+    settle(p)?;
     same(
         "a surface in a format outside the capabilities",
         p.create_surface(request(PixelFormat::Rgb565)?),
         Err(PlatformError::Unsupported),
     )?;
+    same("the events after the refused request", settle(p)?, vec![])?;
     // The refused request took no surface: the bound still allows the rest.
     for _ in Setup::FORMATS.len()..MAX_SURFACES {
         create(p, Setup::FORMATS[0])?;
@@ -724,6 +732,14 @@ fn tree_updates_apply_in_order<P: PlatformTestHooks>(p: &mut P) -> Outcome {
         Err(PlatformError::InvalidArgument),
     )?;
     same("the tree after it", tree(p, s)?, None)?;
+    let mut dangling = named_tree("first", "second");
+    dangling.nodes.pop();
+    same(
+        "a first update without a node that the window names",
+        p.update(s, dangling),
+        Err(PlatformError::InvalidArgument),
+    )?;
+    same("the tree after that", tree(p, s)?, None)?;
     let whole = named_tree("first", "second");
     let before: BTreeMap<NodeId, Node> = whole.nodes.iter().cloned().collect();
     call("update", p.update(s, whole))?;
