@@ -20,8 +20,8 @@ use super::{Checked, failed};
 /// The directory of the goldens.
 pub const GOLDENS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden");
 
-/// The directory, in the workspace's build directory, into which
-/// `cargo xtask golden --verify` draws the goldens again.
+/// The directory, in the workspace's default build directory `target/`,
+/// into which `cargo xtask golden --verify` draws the goldens again.
 pub const REDRAWN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../target/golden/kosmo-render");
 
 /// The bytes of the encoded description.

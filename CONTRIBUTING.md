@@ -78,11 +78,12 @@ status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
 `<workspace>_ms`; for the `fetch` step and the `cargo metadata` commands of
 the `deps` step, the duration of each command as `<workspace>_<target>_ms`;
-for the `deps` step also the observations that its section lists), the first
-line of `rustc --version`, the runner image (`ImageOS`, `ImageVersion`) and
-the GitHub Actions run (`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`,
-`GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a value the environment
-does not provide is `null`.
+for the `deps` step also the observations that its section lists; for the
+`goldens` step, the number of goldens that the manifests list, as
+`goldens`), the first line of `rustc --version`, the runner image
+(`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
+`GITHUB_RUN_ATTEMPT`, `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a
+value the environment does not provide is `null`.
 
 CI runs the check as the job `cargo xtask check` of
 `.github/workflows/check.yml` on a GitHub-hosted `ubuntu-24.04-arm` runner,
@@ -361,7 +362,8 @@ with `git add`. The second runs the ignored test `redraw_goldens`, which
 draws the goldens again into `target/golden/<package>/` of the workspace,
 and prints for each golden the new digest and the digest in `MANIFEST`. It
 fails when one differs and changes no tracked file. Both leave out files
-whose names start with `.`, such as `.DS_Store`.
+whose names start with `.`, such as `.DS_Store`. The ignored tests are run
+only through these commands.
 
 The `goldens` step reads the tracked files of the golden directories and of
 the crates with goldens, without running Cargo, and reports every problem it
