@@ -344,3 +344,65 @@ fn the_goldens_of_this_repository_pass() {
     let (found, _) = problems(&tree);
     assert_eq!(found, Vec::<String>::new());
 }
+
+#[test]
+fn the_command_runs_the_ignored_writers_of_each_crate() {
+    let args = |test: &str| SETS[0].writer(test).args.join(" ");
+    let start = "test --locked --manifest-path framework/Cargo.toml -p kosmo-render --test golden";
+    assert_eq!(
+        args(WRITE),
+        format!("{start} -- --ignored --exact write_goldens")
+    );
+    assert_eq!(
+        args(REDRAW),
+        format!("{start} -- --ignored --exact redraw_goldens")
+    );
+    assert_eq!(SETS[0].golden_dir(), DIR);
+    assert_eq!(SETS[0].redrawn(), "framework/target/golden/kosmo-render");
+}
+
+/// An empty scratch directory in this crate's ignored build directory.
+fn scratch(name: &str) -> std::path::PathBuf {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join(format!("golden-test-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn the_manifest_lists_every_golden_of_the_directory_by_name() {
+    let dir = scratch("manifest");
+    for name in ["glyphs", "clip-group", "fill-rect"] {
+        fs::write(dir.join(format!("{name}.px")), bytes_of(name)).unwrap();
+    }
+    fs::write(dir.join("MANIFEST"), "stale\n").unwrap();
+    let text = manifest_text(&digests_in(&dir).unwrap());
+    let expected = line_of("clip-group") + &line_of("fill-rect") + &line_of("glyphs");
+    assert_eq!(text, expected);
+    let mut problems = Problems::default();
+    let listed = parse_manifest("MANIFEST", &text, &mut problems);
+    assert_eq!(problems.lines(), Vec::<String>::new());
+    assert_eq!(listed.len(), 3);
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_directory_with_another_file_gives_no_manifest() {
+    for other in ["notes.txt", "Fill.px", "sub.px/"] {
+        let dir = scratch("other");
+        fs::write(dir.join("fill-rect.px"), bytes_of("fill-rect")).unwrap();
+        match other.strip_suffix('/') {
+            Some(sub) => fs::create_dir(dir.join(sub)).unwrap(),
+            None => fs::write(dir.join(other), b"").unwrap(),
+        }
+        let error = digests_in(&dir).unwrap_err();
+        let file = other.trim_end_matches('/');
+        assert!(
+            error.ends_with(&format!("/{file} is not a golden `<name>.px`")),
+            "{error}"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+}

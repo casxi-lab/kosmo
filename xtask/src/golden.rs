@@ -1,4 +1,5 @@
-//! Pixel goldens: the goldens step of `cargo xtask check`.
+//! Pixel goldens: the goldens step of `cargo xtask check` and the command
+//! `cargo xtask golden`, which writes them.
 //!
 //! The goldens of a crate are in its directory `tests/golden/`: one file
 //! `<name>.px` for each golden, holding a drawn buffer as its crate's tests
@@ -16,26 +17,44 @@
 mod tests;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::Path;
+use std::process::ExitCode;
 use std::str::FromStr;
 
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use sha2::{Digest, Sha256};
 
-use crate::check::Facts;
+use crate::check::{self, Cmd, Facts};
 use crate::repo::{self, Entry, Tree};
 
 /// A crate whose tests compare drawings with goldens.
 #[derive(Debug, Clone, Copy)]
 pub struct Goldens {
+    /// The directory of its workspace.
+    pub workspace: &'static str,
+    /// The package.
+    pub package: &'static str,
     /// The directory of the crate.
     pub dir: &'static str,
 }
 
 /// The crates with goldens. A golden directory elsewhere fails the step.
 pub const SETS: [Goldens; 1] = [Goldens {
+    workspace: "framework",
+    package: "kosmo-render",
     dir: "framework/render",
 }];
+
+/// The integration test of each crate with goldens that compares and
+/// writes them.
+const TEST: &str = "golden";
+
+/// The ignored test that writes the goldens into the golden directory.
+const WRITE: &str = "write_goldens";
+
+/// The ignored test that draws them again into [`Goldens::redrawn`].
+const REDRAW: &str = "redraw_goldens";
 
 /// The function through which a test refers to a golden.
 const REFERENCE: &str = "matches_golden";
@@ -44,6 +63,36 @@ impl Goldens {
     /// The golden directory.
     pub fn golden_dir(&self) -> String {
         format!("{}/tests/golden", self.dir)
+    }
+
+    /// The directory, in the workspace's ignored `target/`, into which
+    /// `cargo xtask golden --verify` draws the goldens again.
+    pub fn redrawn(&self) -> String {
+        format!("{}/target/golden/{}", self.workspace, self.package)
+    }
+
+    /// The command that runs the ignored test `test` of the crate.
+    fn writer(&self, test: &str) -> Cmd {
+        let args = [
+            "test",
+            "--locked",
+            "--manifest-path",
+            &format!("{}/Cargo.toml", self.workspace),
+            "-p",
+            self.package,
+            "--test",
+            TEST,
+            "--",
+            "--ignored",
+            "--exact",
+            test,
+        ];
+        Cmd {
+            program: check::cargo(),
+            args: args.iter().map(|arg| arg.to_string()).collect(),
+            env: Vec::new(),
+            timing: format!("{}_ms", self.package),
+        }
     }
 }
 
@@ -287,5 +336,106 @@ pub fn run(root: &Path, facts: &mut Facts) -> Result<(), String> {
         Ok(())
     } else {
         Err(lines.join("\n"))
+    }
+}
+
+/// The digests of the goldens in the directory `dir` on disk, by name. Any
+/// other file but `MANIFEST` is an error.
+pub fn digests_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+    let shown = dir.display();
+    let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {shown}: {error}"))?;
+    let mut digests = BTreeMap::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("cannot read {shown}: {error}"))?;
+        let file = entry.file_name();
+        let file = file.to_string_lossy();
+        if file == "MANIFEST" {
+            continue;
+        }
+        let name = file.strip_suffix(".px").filter(|name| is_name(name));
+        let is_file = entry.file_type().is_ok_and(|kind| kind.is_file());
+        let Some(name) = name.filter(|_| is_file) else {
+            return Err(format!("{shown}/{file} is not a golden `<name>.px`"));
+        };
+        let bytes = fs::read(entry.path())
+            .map_err(|error| format!("cannot read {shown}/{file}: {error}"))?;
+        digests.insert(name.to_string(), digest(&bytes));
+    }
+    Ok(digests)
+}
+
+/// The text of a manifest of `digests`.
+pub fn manifest_text(digests: &BTreeMap<String, String>) -> String {
+    digests
+        .iter()
+        .map(|(name, digest)| format!("{digest}  {name}\n"))
+        .collect()
+}
+
+/// `cargo xtask golden`: runs the writers of the goldens of each crate and
+/// writes its `MANIFEST`.
+pub fn update(root: &Path) -> ExitCode {
+    let result = SETS.iter().try_for_each(|set| {
+        check::run_command(root, &set.writer(WRITE))?;
+        let dir = set.golden_dir();
+        let digests = digests_in(&root.join(&dir))?;
+        fs::write(root.join(&dir).join("MANIFEST"), manifest_text(&digests))
+            .map_err(|error| format!("cannot write {dir}/MANIFEST: {error}"))?;
+        println!(
+            "golden: wrote {dir}/MANIFEST with {} goldens",
+            digests.len()
+        );
+        Ok::<(), String>(())
+    });
+    finish(result)
+}
+
+/// `cargo xtask golden --verify`: draws the goldens of each crate again
+/// into its [`Goldens::redrawn`] directory and compares each digest with
+/// `MANIFEST`.
+pub fn verify(root: &Path) -> ExitCode {
+    let mut differ = 0;
+    let result = SETS.iter().try_for_each(|set| {
+        let out = root.join(set.redrawn());
+        match fs::remove_dir_all(&out) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("cannot remove {}: {error}", set.redrawn()));
+            }
+            _ => {}
+        }
+        check::run_command(root, &set.writer(REDRAW))?;
+        let drawn = digests_in(&out)?;
+        let manifest = format!("{}/MANIFEST", set.golden_dir());
+        let text = fs::read_to_string(root.join(&manifest))
+            .map_err(|error| format!("cannot read {manifest}: {error}"))?;
+        let mut problems = Problems::default();
+        let listed = parse_manifest(&manifest, &text, &mut problems);
+        if !problems.lines().is_empty() {
+            return Err(problems.lines().join("\n"));
+        }
+        println!("golden: {} drawn into {}", set.golden_dir(), set.redrawn());
+        let names: BTreeSet<&String> = drawn.keys().chain(listed.keys()).collect();
+        for name in names {
+            let new = drawn.get(name).map_or("-", String::as_str);
+            let old = listed.get(name).map_or("-", |(_, digest)| digest.as_str());
+            let result = if new == old { "same" } else { "differs" };
+            differ += usize::from(new != old);
+            println!("{name}: drawn {new}, MANIFEST {old}: {result}");
+        }
+        Ok(())
+    });
+    match result {
+        Ok(()) if differ > 0 => finish(Err(format!("golden: {differ} goldens differ"))),
+        other => finish(other),
+    }
+}
+
+fn finish(result: Result<(), String>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
     }
 }

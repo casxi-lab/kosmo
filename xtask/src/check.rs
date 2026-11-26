@@ -249,7 +249,9 @@ pub fn failure(outcomes: &[Outcome]) -> Option<(&'static str, &str)> {
     })
 }
 
-fn run_command(root: &Path, cmd: &Cmd) -> Result<(), String> {
+/// Runs `cmd` in `root`, its output going to this process's, and fails
+/// when it does not exit with status 0.
+pub fn run_command(root: &Path, cmd: &Cmd) -> Result<(), String> {
     let shown = cmd.shown();
     println!("$ {shown}");
     let status = Command::new(&cmd.program)
