@@ -8,8 +8,9 @@ use std::collections::BTreeMap;
 
 use kosmo_backend_headless::HeadlessBackend;
 use kosmo_platform::{
-    EventSource, FaultPort, PixelSize, PlatformCaps, PlatformError, PlatformEvent,
-    PlatformTestHooks, ResourceId, ResourceProvider, SurfaceId, WaitEnd,
+    EventSource, FaultPort, PixelSize, Platform, PlatformCaps, PlatformError, PlatformEvent,
+    PlatformTestHooks, ResourceId, ResourceProvider, SurfaceId, SurfacePort, SurfaceRequest,
+    SurfaceRole, WaitEnd,
 };
 use kosmo_types::PixelFormat;
 
@@ -65,6 +66,31 @@ fn a_second_fault_at_a_port_is_busy_and_the_first_takes_effect_once() {
     );
     assert_eq!(
         backend.wait(None, &mut events),
+        Err(PlatformError::Disconnected)
+    );
+}
+
+#[test]
+fn after_shutdown_the_hooks_find_no_surface_and_take_no_fault() {
+    let mut backend = backend();
+    let surface = backend
+        .create_surface(SurfaceRequest {
+            role: SurfaceRole::Main,
+            size: PixelSize::new(8, 6).unwrap(),
+            format: PixelFormat::Rgba8Premul,
+        })
+        .unwrap();
+    assert_eq!(backend.shutdown(), Ok(()));
+    assert_eq!(
+        backend.read_back(surface).err(),
+        Some(PlatformError::StaleHandle)
+    );
+    assert_eq!(
+        backend.a11y_tree(surface).err(),
+        Some(PlatformError::StaleHandle)
+    );
+    assert_eq!(
+        backend.inject_fault(FaultPort::Wait, PlatformError::Backend),
         Err(PlatformError::Disconnected)
     );
 }

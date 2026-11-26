@@ -5,10 +5,11 @@
 use std::collections::BTreeMap;
 
 use kosmo_backend_headless::{HEADLESS_EPOCH, HeadlessBackend};
+use kosmo_platform::accesskit::{NodeId, TreeId, TreeUpdate};
 use kosmo_platform::{
-    Clock, EventSource, PixelSize, Platform, PlatformCaps, PlatformError, PlatformEvent, Presenter,
-    ResourceId, ResourceProvider, Stamp, SurfaceId, SurfacePort, SurfaceRequest, SurfaceRole,
-    WaitEnd,
+    AccessibilitySink, Clock, EventSource, PixelSize, Platform, PlatformCaps, PlatformError,
+    PlatformEvent, Presenter, ResourceId, ResourceProvider, Stamp, SurfaceId, SurfacePort,
+    SurfaceRequest, SurfaceRole, WaitEnd,
 };
 use kosmo_types::{
     DamageRect, Epoch, FocusGen, HidUsage, KeyAction, KeyEvent, KeyMeaning, ModSet, MonoTime,
@@ -219,6 +220,29 @@ fn after_shutdown_every_port_is_disconnected() {
     );
     assert_eq!(
         backend.inject(key(surface, Stamp::new(Epoch::new(1), FocusGen::new(1)), 1)),
+        Err(PlatformError::Disconnected)
+    );
+    assert_eq!(
+        backend.destroy_surface(surface),
+        Err(PlatformError::Disconnected)
+    );
+    let whole = DamageRect::new(0, 0, 8, 6).unwrap();
+    assert_eq!(
+        backend.present(surface, &[whole]),
+        Err(PlatformError::Disconnected)
+    );
+    let update = TreeUpdate {
+        nodes: vec![],
+        tree: None,
+        tree_id: TreeId::ROOT,
+        focus: NodeId(1),
+    };
+    assert_eq!(
+        backend.update(surface, update),
+        Err(PlatformError::Disconnected)
+    );
+    assert_eq!(
+        backend.advance_to(MonoTime::from_nanos(1)),
         Err(PlatformError::Disconnected)
     );
     assert_eq!(backend.shutdown(), Ok(()));
