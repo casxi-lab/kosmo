@@ -2,8 +2,7 @@
 //! fixed-point geometry of `kosmo-types`, built by appending commands and
 //! checked when construction ends.
 //!
-//! The renderer interface, planned in this crate, states what each command
-//! draws.
+//! [`Rasterizer`](crate::Rasterizer) states what each command draws.
 
 use alloc::vec;
 use alloc::vec::Vec;
