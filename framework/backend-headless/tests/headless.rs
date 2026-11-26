@@ -131,10 +131,38 @@ fn destroying_a_surface_drops_only_the_events_that_the_backend_queued_for_it() {
     let surface = backend.create_surface(main_surface()).unwrap();
     let stamp = Stamp::new(Epoch::new(1), FocusGen::new(1));
     backend.inject(key(surface, stamp, 1)).unwrap();
+    let whole = DamageRect::new(0, 0, 8, 6).unwrap();
+    backend.present(surface, &[whole]).unwrap();
     backend.destroy_surface(surface).unwrap();
+    // Neither the configuration and focus of the surface nor the release
+    // of its buffer stay.
     assert_eq!(
         wait(&mut backend, None),
         (WaitEnd::Events, vec![key(surface, stamp, 1)])
+    );
+    assert_eq!(wait(&mut backend, None), (WaitEnd::Idle, vec![]));
+}
+
+#[test]
+fn a_release_comes_back_in_the_order_it_arose() {
+    let mut backend = backend();
+    let surface = backend.create_surface(main_surface()).unwrap();
+    wait(&mut backend, None);
+    let stamp = Stamp::new(Epoch::new(1), FocusGen::new(1));
+    backend.inject(key(surface, stamp, 1)).unwrap();
+    let whole = DamageRect::new(0, 0, 8, 6).unwrap();
+    backend.present(surface, &[whole]).unwrap();
+    backend.inject(key(surface, stamp, 2)).unwrap();
+    assert_eq!(
+        wait(&mut backend, None),
+        (
+            WaitEnd::Events,
+            vec![
+                key(surface, stamp, 1),
+                PlatformEvent::Released { surface },
+                key(surface, stamp, 2),
+            ]
+        )
     );
 }
 
