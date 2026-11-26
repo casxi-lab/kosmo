@@ -45,9 +45,9 @@ const BRACED: [&str; 9] = [
 ];
 
 /// The tags of a fenced code block that rustdoc runs as Rust, besides
-/// `edition...`, `ignore-<target>` and error codes such as `E0277`.
-const RUST_TAGS: [&str; 6] = [
-    "rust",
+/// those that start with `rust`, `edition` or `ignore-` and error codes
+/// such as `E0277`.
+const RUST_TAGS: [&str; 5] = [
     "should_panic",
     "no_run",
     "compile_fail",
@@ -325,7 +325,7 @@ fn doc_blocks(stream: TokenStream, found: &mut Vec<Lines>) {
     let mut at = 0;
     while at < trees.len() {
         if let Some((attribute, after)) = attribute_at(&trees, at) {
-            doc_lines(attribute, &mut lines);
+            doc_lines(attribute.stream(), &mut lines);
             at = after;
             continue;
         }
@@ -338,11 +338,22 @@ fn doc_blocks(stream: TokenStream, found: &mut Vec<Lines>) {
     code_blocks(&lines, found);
 }
 
-/// The lines of the doc attribute `attribute`, `doc = "..."`, with the
-/// line of each. In a block doc comment whose later lines all start with
-/// `*`, that `*` is not part of them.
-fn doc_lines(attribute: &Group, lines: &mut Lines) {
-    let inner: Vec<TokenTree> = attribute.stream().into_iter().collect();
+/// The lines of the doc attribute `attribute`, `doc = "..."`, also inside
+/// `cfg_attr`, with the line of each. In a block doc comment whose later
+/// lines all start with `*`, that `*` is not part of them.
+fn doc_lines(attribute: TokenStream, lines: &mut Lines) {
+    let inner: Vec<TokenTree> = attribute.into_iter().collect();
+    if let [TokenTree::Ident(name), TokenTree::Group(arguments)] = inner.as_slice()
+        && source::unraw(name) == "cfg_attr"
+        && arguments.delimiter() == Delimiter::Parenthesis
+    {
+        let arguments: Vec<TokenTree> = arguments.stream().into_iter().collect();
+        // The condition comes first; the attributes follow it.
+        for attribute in arguments.split(|tree| is_punct(Some(tree), ',')).skip(1) {
+            doc_lines(attribute.iter().cloned().collect(), lines);
+        }
+        return;
+    }
     let [
         TokenTree::Ident(doc),
         TokenTree::Punct(equals),
@@ -414,21 +425,34 @@ fn code_blocks(lines: &[(usize, String)], found: &mut Vec<Lines>) {
     }
 }
 
-/// Whether rustdoc runs a fenced code block with the info string `info` as
-/// a Rust test: it is not marked `ignore`, and it has no tag, is marked
-/// `rust` or has only the tags of Rust tests.
+/// Whether rustdoc may run a fenced code block with the info string `info`
+/// as a Rust test: it is not marked `custom`, nor `ignore` without an
+/// `ignore-<target>` that runs it on other targets, and it has no tag
+/// besides the classes and attributes in braces, as `{.class}`, or at least
+/// one tag of Rust tests. rustdoc also reads the order of the tags, so some
+/// blocks that it does not run, as `text,no_run`, count here.
 fn is_rust(info: &str) -> bool {
-    let tags: Vec<&str> = info
-        .split(|c: char| c == ',' || c.is_whitespace())
+    // Braces hold classes and attributes, not tags.
+    let outside = info.split('{').enumerate().map(|(at, part)| {
+        if at == 0 {
+            part
+        } else {
+            part.split_once('}').map_or("", |(_, rest)| rest)
+        }
+    });
+    let tags: Vec<&str> = outside
+        .flat_map(|part| part.split(|c: char| c == ',' || c.is_whitespace()))
         .filter(|tag| !tag.is_empty())
         .collect();
     let rust_tag = |tag: &&str| {
         RUST_TAGS.contains(tag)
+            || tag.starts_with("rust")
             || tag.starts_with("edition")
             || tag.starts_with("ignore-")
             || (tag.len() == 5
                 && tag.starts_with('E')
                 && tag[1..].bytes().all(|b| b.is_ascii_digit()))
     };
-    !tags.contains(&"ignore") && (tags.contains(&"rust") || tags.iter().all(rust_tag))
+    let ignored = tags.contains(&"ignore") && !tags.iter().any(|tag| tag.starts_with("ignore-"));
+    !ignored && !tags.contains(&"custom") && (tags.is_empty() || tags.iter().any(rust_tag))
 }

@@ -305,15 +305,17 @@ attribute of a library root, do not. It checks:
   include, with the modules that those declare or include in turn; the
   whole `src/` of `kosmo-testkit` and of the crates of layers D4 and F4;
   and the doc tests under `src/`: the fenced code blocks of doc comments,
-  written with `///`, `//!`, `/** */` or `#[doc = "..."]`, that rustdoc
-  runs as Rust, without a tag or with only `rust`, `compile_fail`,
-  `no_run`, `should_panic` and the other tags of Rust tests, but not
-  `ignore`, read with their hidden lines. The uses are found as the
-  platform boundary check finds them, so imports, renames and glob imports
-  are followed, an import of either function is reported as well as each
-  use, comments and string literals do not match, and `SystemTime` used as
-  a type is not a use. Each use is reported with its file and line, and so
-  is a doc test whose tokens cannot be read;
+  written with `///`, `//!`, `/** */`, `#[doc = "..."]` or `doc` inside
+  `cfg_attr`, that rustdoc may run as Rust: not marked `custom`, nor
+  `ignore` without an `ignore-<target>`, and without a tag, with only
+  classes and attributes in braces, as `{.rust}`, or with at least one of
+  `rust`, `compile_fail`, `no_run`, `should_panic` and the other tags of
+  Rust tests, in any order, read with their hidden lines. The uses are
+  found as the platform boundary check finds them, so imports, renames and
+  glob imports are followed, an import of either function is reported as
+  well as each use, comments and string literals do not match, and
+  `SystemTime` used as a type is not a use. Each use is reported with its
+  file and line, and so is a doc test whose tokens cannot be read;
 - call probes and test hooks: in every manifest of the product workspaces,
   a dependency on `kosmo-testkit` other than a dev-dependency is optional
   and turned on only by the crate's feature `call-probes`, as

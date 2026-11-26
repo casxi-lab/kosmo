@@ -4005,6 +4005,68 @@ fn doc_tests_are_test_code() {
 }
 
 #[test]
+fn doc_tests_are_read_by_their_tags_classes_and_cfg_attr() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            r##"/// ```should_panic,text
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```no_run,foo
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```rust2021
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```{.rust}
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```{class="a b"}
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```ignore,ignore-x86_64
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```ignore-x86_64,text
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```E0277
+/// std::thread::sleep(d);
+/// ```
+#[cfg_attr(unix, cfg_attr(all(), doc = "```\nstd::thread::sleep(d);\n```"))]
+pub fn f() {}
+/// ```custom,rust
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```text {.rust}
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```ignore,rust
+/// std::thread::sleep(d);
+/// ```
+pub fn g() {}
+"##,
+        );
+    });
+    // Only `custom`, other tags and `ignore` alone keep a block out.
+    assert_eq!(
+        found,
+        [3, 7, 11, 15, 19, 23, 27, 31, 33].map(|line| clock_read(lib, line, "std::thread::sleep"))
+    );
+}
+
+#[test]
 fn a_doc_test_that_is_not_rust_tokens_is_reported() {
     let lib = "framework/math-model/src/lib.rs";
     let found = problems_with(|files| {
