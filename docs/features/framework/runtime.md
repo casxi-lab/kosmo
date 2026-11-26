@@ -7,19 +7,23 @@ caller passes in, holds the current result of a region in a versioned result
 slot, keeps one-shot timers, checks the focus stamps of key events,
 dispatches commands from the focused control to its ancestors and the
 application, resolves keys with binding tables and the minimal key map,
-finds the control at a point of a layout result, and builds the display list
-of a damage region from a layout result with its drawing pass.
+finds the control at a point of a layout result, builds the display list
+of a damage region from a layout result with its drawing pass, and drives
+rounds through the platform interface with its shell, which presents frames.
 
 The round function covers the event, update and view passes. The drawing
 pass is a function of its own, which rounds do not call yet: its layout
-results will come from the layout pass. Layout, accessibility and
-presentation, the shell `run` that waits for platform events and reads the
-clock, and the platform interface `kosmo-platform` with its backends are
-planned; until they exist, tests and other drivers build the input of each
-round and the layout results in code. `kosmo-ui` depends on `kosmo-types`
-for geometry, logical time, focus generations, epochs, key events and damage
-regions, on the versions of `kosmo-math-model`, and on `kosmo-render` for
-display lists; it depends on neither the job layer nor kalyx. The design rules that it follows are in the
+results will come from the layout pass. The [shell](#the-shell) waits for
+platform events, reads the clock, takes job reports, runs both steps of a
+round and presents frames through the platform interface `kosmo-platform`;
+the headless backend `kosmo-backend-headless` is one platform it runs on.
+Layout and accessibility are planned; until they exist, tests and other
+drivers build the layout results in code and present the frames that they
+draw. `kosmo-ui` depends on `kosmo-types` for geometry, logical time, focus
+generations, epochs, key events and damage regions, on the versions of
+`kosmo-math-model`, on `kosmo-platform` for the platform interface, and on
+`kosmo-render` for display lists and rasterization; it depends on neither
+the job layer nor kalyx. The design rules that it follows are in the
 [application model and passes](../../architecture.md#application-model-and-passes),
 [control tree](../../architecture.md#control-tree),
 [effects and the result slot](../../architecture.md#effects-and-the-result-slot),
@@ -120,10 +124,13 @@ fn main() {
 }
 ```
 
-Run the library's tests from the repository root with:
+Run the library's tests from the repository root with the first command;
+the second runs the tests of the shell on the headless backend, which need
+its test hooks:
 
 ```sh
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-ui
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-backend-headless --features test-hooks --test shell
 ```
 
 ## Applications and controls
@@ -231,7 +238,10 @@ the round's record, what the view pass did, as `ViewPass::Rebuilt`,
 earliest timer and, while `unfinished_jobs` is above 0, the round's time
 plus `JOB_POLL_INTERVAL`, 16 ms; `None` when there is neither. A driver that
 holds receipts of the round's effects runs the next round at once, without
-waiting for the deadline.
+waiting for the deadline. Its `accessibility` and `frames`, the tree updates
+and the display lists with their damage regions of each surface, which the
+[shell](#the-shell) hands to the platform, are empty until rounds run the
+accessibility and drawing passes.
 
 ## Effects and the execution port
 
@@ -403,6 +413,67 @@ the numeric representation, when a box names a control that the tree does
 not hold, and when the display list refuses a command or a control leaves a
 group open.
 
+## The shell
+
+A `Shell` holds an application's `Runtime`, the application and its
+execution port, the receipts that wait for the next round and, for each
+surface, its size and the previous frame that presentation keeps. It holds
+no platform: `Shell::run_round(platform, deadline)`, the single-round entry,
+borrows one for each round, so a driver keeps its backend between rounds.
+`Shell::new(app, port, resources)` takes the resources that the application
+or its assembly lists. Before its first round the shell fetches each of them
+through `ResourceProvider`; when one does not exist, `run_round` returns
+`ShellError::MissingResource` and runs no round, and the next call fetches
+them again. The bytes go nowhere yet: the font set of `kosmo-text` that will
+take them is planned. Then each round:
+
+1. waits once with `deadline` through `EventSource`; the headless backend
+   never blocks and returns at once;
+2. reads `Clock` once, the round's time;
+3. takes the job reports through the execution port, with the number of
+   unfinished jobs;
+4. runs `Runtime::round` with the receipts of the last round, the events and
+   the reports. `Key`, `FocusIn` and `FocusOut` become the round's `Event`s
+   in their order. The shell handles `Configure` itself, which sets the
+   surface's size, `Shell::size`, and drops a previous frame of another
+   size, and `Released`, which makes the surface's buffer available again;
+   kinds of events that later versions add are ignored;
+5. hands the effects to the execution port, which keeps the receipts for
+   the next round;
+6. runs `Round::finish`;
+7. pushes the tree updates of the output's `accessibility` through
+   `AccessibilitySink`, in their order;
+8. presents each of the output's `frames` with `Shell::present`.
+
+`run_round` returns a `RoundEnd` with how the wait ended, `WaitEnd::Events`,
+`Deadline` or `Idle`, and the round's `Output`. Rounds have no
+accessibility pass and do not run the drawing pass yet, so `accessibility`
+and `frames` are empty. `Shell::next_deadline` is the deadline for the next
+wait: the round's time while receipts wait, `Shell::has_receipts`, so that
+the wait does not block, and otherwise the round's `next_deadline`; before
+the first round it is 0, so the first round runs at once and builds the
+view. `Shell::runtime`, `app`, `port` and `port_mut` give a driver the
+control tree, the model and the execution port.
+
+`Shell::present(platform, surface, list, damage)` presents a frame: it draws
+`list` inside `damage` with `kosmo-render`'s `VelloRasterizer` into the
+surface's previous frame, a tightly packed `Rgba8Premul` buffer of the size
+of the surface's buffer, converts the rectangles of `damage` into the buffer
+that `Presenter::buffer` hands out with `RenderTarget::convert_into`, and
+presents them, and it returns the work count of the drawing. The first frame
+of a surface, and the first after a `Configure` of another size or a buffer
+of another size, starts as transparent black. An empty damage region
+presents nothing. For a surface whose buffer is presented and not released,
+`present` returns `ShellError::Platform(PlatformError::Busy)` before
+anything changes; after an error of `buffer` or of the rasterizer, too, the
+frame and the buffer are as they were. Its other errors are `Render`, for a
+display list or damage region that does not fit the frame, `Convert`, for a
+buffer whose bytes do not match its description, and `FrameTooLarge`, for a
+previous frame beyond the buffer limits. The headless backend keeps what is
+presented as its read-back.
+Until rounds draw, a driver builds a layout result, gets its display list
+with `paint(shell.runtime().tree(), &layout, &damage)` and presents it.
+
 ## The event handling record
 
 `Output::record` is the event handling record of a round: UTF-8 text, one
@@ -485,11 +556,18 @@ no wall-clock time; review checks these, as the
 
 ## Limits
 
-- The round function has no layout, drawing, accessibility or presentation
-  pass; the shell `run`, its single-round entry and the platform interface
-  are planned. Drivers build each round's input and hand effects to the
-  execution port themselves. The drawing pass has no caller outside tests,
-  and its display lists are not rasterized or presented yet.
+- The round function has no layout or accessibility pass and does not run
+  the drawing pass, so its outputs hold no tree updates and no frames. The
+  drawing pass has no caller outside tests; a driver that presents a frame
+  builds its layout result, draws it with `paint` and presents it with
+  `Shell::present`.
+- The shell creates no surface: the application's assembly or the driver
+  creates them through `SurfacePort` and destroys them before `shutdown`.
+- The resources that the shell fetches go nowhere until the font set of
+  `kosmo-text` exists, and presentation has no glyph coverage, so a frame
+  with glyph runs fails with a missing glyph.
+- The previous frame is kept for repainting by buffer age, which no backend
+  does yet: each presentation converts only its own damage region.
 - One region per surface, and the runtime has one control tree for all
   surfaces; focus does not move within a region, and there is no
   region-level focus generation.
@@ -515,7 +593,9 @@ modules under `src/` (named here with their module, such as
 `tree::tests::…`), the random rounds in `src/random.rs`, and the
 integration tests in `tests/` (named with their file), which run a one-line
 calculator whose model holds a line of `kosmo-math-model` and a result
-slot. No test sleeps or reads the wall clock.
+slot; the tests of the shell on the headless backend are in
+`framework/backend-headless/tests/shell.rs`. No test sleeps or reads the
+wall clock.
 
 1. The control tree keeps the eight properties of
    [the control tree](#the-control-tree) while views add, remove and change
@@ -680,3 +760,32 @@ slot. No test sleeps or reads the wall clock.
     `paint::tests::a_box_of_a_control_that_does_not_exist_is_refused`,
     `paint::tests::a_control_ends_only_the_groups_it_starts`,
     `paint::tests::the_groups_count_toward_the_limit_of_the_list`.
+17. A round of the shell fetches the listed resources before its first wait
+    and never again, waits with its deadline, reads the clock, takes the
+    job reports and hands the effects to the execution port, in this order;
+    the wait after a round with receipts has the round's time as its
+    deadline, and while jobs are unfinished the polling deadline; `Key`,
+    `FocusIn` and `FocusOut` become the round's events in their order,
+    `Configure` sets the surface's size, and a missing resource stops the
+    first round before its wait. Tests: `shell::tests::`
+    `a_round_waits_reads_the_clock_takes_reports_and_runs_both_steps_in_order`,
+    `while_jobs_run_the_next_wait_has_the_polling_deadline`,
+    `platform_events_become_round_events_and_the_shell_handles_the_others`,
+    `a_missing_resource_stops_the_first_round_before_its_wait`.
+18. The tree updates and frames of an output go to the platform in their
+    order; presentation draws into the previous frame and converts only the
+    damage into the buffer, presents a buffer again only after its release,
+    presents nothing for an empty damage region, changes nothing when the
+    frame cannot be drawn, refuses a previous frame beyond the buffer
+    limits, and a `Configure` of another size drops the previous frame; on
+    the headless backend, what the shell presents is what it reads back.
+    Tests: `shell::tests::`
+    `the_updates_and_frames_of_an_output_go_to_the_platform_in_order`,
+    `presenting_converts_only_the_damage_of_the_frame_into_the_buffer`,
+    `a_presented_buffer_is_not_presented_again_until_it_is_released`,
+    `an_empty_damage_region_presents_nothing`,
+    `a_frame_that_cannot_be_drawn_changes_nothing`,
+    `a_frame_beyond_the_buffer_limits_is_refused`,
+    `a_configure_with_a_new_size_drops_the_previous_frame`;
+    `framework/backend-headless/tests/shell.rs`:
+    `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`.

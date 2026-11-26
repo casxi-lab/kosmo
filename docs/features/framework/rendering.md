@@ -12,9 +12,10 @@ server share. The same display list and damage region give the same bytes on
 every run and every host, and pixel goldens check this.
 
 The framework's drawing pass in `kosmo-ui` builds display lists, but rounds
-do not call it yet, and nothing presents a frame: tests build display lists
-and draw them. Text shaping and the glyph cache of `kosmo-text`, images and
-presentation through the platform interface are planned; until they exist,
+do not call it yet; the shell of `kosmo-ui` keeps a `RenderTarget` for each
+surface and presents the frames that its driver draws through the platform
+interface, as [the shell](runtime.md#the-shell) describes. Text shaping and
+the glyph cache of `kosmo-text` and images are planned; until they exist,
 glyph coverage comes from the tests and the image store is empty.
 `kosmo-render` depends on `kosmo-types`, vello_cpu and libm, and it is a core
 library on the deterministic path. The design rules that it follows are in the
@@ -328,9 +329,9 @@ that turns on `std` or `multithreading` fails until those entries record it.
   source over, and the image store holds no images.
 - Glyph coverage comes from the caller: the glyph cache of `kosmo-text`, which
   will fill masks through `fill_coverage`, is planned.
-- Nothing presents a frame yet: the drawing pass of `kosmo-ui` builds
-  display lists that rounds do not draw, and the platform interface is
-  planned.
+- Rounds do not draw yet: the drawing pass of `kosmo-ui` builds display
+  lists that rounds do not call it for, and the shell presents only the
+  frames that its driver draws.
 - The reference rasterizer draws only the commands of its fixed scenes.
 - Goldens are drawn and compared on the AArch64 target platforms; on another
   architecture the SIMD level is that target's baseline.

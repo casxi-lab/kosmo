@@ -231,6 +231,7 @@ layer = "F1"
 export = false
 pure-core = false
 publish = false
+same-layer = ["kosmo-ui"]
 
 [crates.kosmo-scratchpad]
 path = "framework/scratchpad"

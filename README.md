@@ -121,8 +121,9 @@ the submissions of a line with their results and reuses their inputs and
 results in the line, the framework core `kosmo-ui`, which holds an
 application's [control tree](docs/features/framework/runtime.md) and runs
 the rounds of its event loop with result slots, timers, focus checks and
-the dispatch of commands, so far without layout or a shell that drives the
-platform interface and with a drawing pass that rounds do not run yet, the
+the dispatch of commands, with a shell that drives rounds through the
+platform interface and presents frames, so far without layout and with a
+drawing pass that rounds do not run yet, the
 headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance
@@ -159,8 +160,8 @@ next twelve run the tests of the terminal, of the editing structure, of the
 job layer, of rendering, with its pixel goldens and the wrapper of
 transcendental functions, of the platform interface with its test hooks, of
 formula conversion with the kalyx runner, of the Scratchpad, of the
-framework core, of the headless backend with its test hooks and the
-conformance suite, of the call probes of the test support, of the facade
+framework core, of the headless backend with its test hooks, the
+conformance suite and the shell, of the call probes of the test support, of the facade
 and of the shared types, and the last runs
 the repository checks. No version has been released yet: a release is a tagged
 commit, and the version that `main` shows is not a release until it is

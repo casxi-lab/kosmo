@@ -149,10 +149,22 @@ impl App for TestApp {
     }
 }
 
-/// A port that numbers its submissions from 1 and refuses none.
+/// A port that numbers its submissions from 1 and refuses none, and
+/// reports `unfinished` jobs. With a `calls` log it logs its submissions
+/// and takes of reports there.
 #[derive(Default)]
 pub(crate) struct TestPort {
     pub(crate) submitted: u64,
+    pub(crate) unfinished: usize,
+    pub(crate) calls: Option<std::rc::Rc<std::cell::RefCell<Vec<String>>>>,
+}
+
+impl TestPort {
+    fn log(&self, call: String) {
+        if let Some(calls) = &self.calls {
+            calls.borrow_mut().push(call);
+        }
+    }
 }
 
 impl JobPort for TestPort {
@@ -162,7 +174,8 @@ impl JobPort for TestPort {
     type CancelAnswer = &'static str;
     type Report = u64;
 
-    fn submit(&mut self, _request: &'static str) -> Result<u64, &'static str> {
+    fn submit(&mut self, request: &'static str) -> Result<u64, &'static str> {
+        self.log(format!("submit {request}"));
         self.submitted += 1;
         Ok(self.submitted)
     }
@@ -172,7 +185,8 @@ impl JobPort for TestPort {
     }
 
     fn take_reports(&mut self, _out: &mut Vec<u64>) -> usize {
-        0
+        self.log("take_reports".to_string());
+        self.unfinished
     }
 }
 

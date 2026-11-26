@@ -157,8 +157,10 @@ name = "kosmo-backend-headless"
 version = "0.1.0-dev.1"
 dependencies = [
  "kosmo-platform",
+ "kosmo-render",
  "kosmo-testkit",
  "kosmo-types",
+ "kosmo-ui",
 ]
 
 [[package]]
