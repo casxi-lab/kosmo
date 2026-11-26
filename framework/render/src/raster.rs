@@ -573,6 +573,7 @@ mod tests {
             Err(ConvertError::TargetLength)
         );
         let mut larger = Damage::new(target(8, 8).desc());
+        larger.add(0, 0, 1, 1);
         larger.add(6, 6, 1, 1);
         let shown = BufferDesc::new(8, 8, 32, PixelFormat::Rgba8Premul).unwrap();
         let mut bytes = vec![9; 256];

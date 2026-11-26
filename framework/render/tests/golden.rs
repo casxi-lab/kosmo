@@ -41,6 +41,17 @@ fn clip_groups_match_their_golden() -> Checked {
 }
 
 #[test]
+fn the_helper_of_the_comparisons_fails_without_a_scene() {
+    // Not a string literal, so the goldens step does not count it as a
+    // reference to a golden.
+    let name = String::from("nowhere");
+    assert_eq!(
+        matches_golden(&name),
+        Err("no scene is named nowhere".to_string())
+    );
+}
+
+#[test]
 #[ignore = "writes the goldens; cargo xtask golden runs it and then writes MANIFEST"]
 fn write_goldens() -> Checked {
     golden::write(golden::GOLDENS)
