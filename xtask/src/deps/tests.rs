@@ -1334,6 +1334,115 @@ fn allow_entries_record_the_resolved_features_of_all_targets() {
     );
 }
 
+/// The valid model in which `kosmo-render` depends on the raster library
+/// as the framework does: `vello_cpu` without its default features, with
+/// `libm` and `u8_pipeline`, and through it `vello_common` with `libm`,
+/// with the allow entry and the allowlist entries that the deps step
+/// prints for them.
+fn with_vello() -> Model {
+    let mut model = fixture::valid();
+    model
+        .pkg("framework", "kosmo-render@0.1.0-dev.1")
+        .deps
+        .push(Dep::new("vello_cpu@0.4.0", "=0.4.0").features(false, &["libm", "u8_pipeline"]));
+    model.add(
+        "framework",
+        Pkg::crates_io("vello_cpu", "0.4.0")
+            .resolved(&["libm", "u8_pipeline"])
+            .dep(Dep::new("vello_common@0.4.0", "^0.4").features(false, &["libm"])),
+    );
+    model.add(
+        "framework",
+        Pkg::crates_io("vello_common", "0.4.0").resolved(&["libm"]),
+    );
+    model.append(
+        "layout.toml",
+        &allow(
+            "kosmo-render",
+            "vello_cpu",
+            "=0.4.0",
+            "default-features = false\nfeatures = [\"libm\", \"u8_pipeline\"]\nresolved-features = [\"libm\", \"u8_pipeline\"]\n",
+        ),
+    );
+    model.append(
+        "framework/allowlist.toml",
+        &format!(
+            "{}{}",
+            entry("vello_common", "0.4.0", "MIT", &["libm"], &["kosmo-render"]),
+            entry(
+                "vello_cpu",
+                "0.4.0",
+                "MIT",
+                &["libm", "u8_pipeline"],
+                &["kosmo-render"]
+            )
+        ),
+    );
+    assert_eq!(model.problems(), Vec::<String>::new());
+    model
+}
+
+// The two cases below are the checks of the features of the raster library
+// inside the dependencies. Both are change detection: an entry rewritten as
+// the deps step prints it passes again.
+
+#[test]
+fn the_allowlist_detects_std_turned_on_inside_the_raster_library() {
+    let mut model = with_vello();
+    model
+        .pkg("framework", "vello_common@0.4.0")
+        .features
+        .push("std".to_string());
+    assert_eq!(
+        model.problems(),
+        [
+            "framework/allowlist.toml: vello_common 0.4.0: the resolved features are [libm, std], not [libm]"
+        ]
+    );
+    model.edit(
+        "framework/allowlist.toml",
+        "features = [\"libm\"]\ncrates = [\"kosmo-render\"]",
+        "features = [\"libm\", \"std\"]\ncrates = [\"kosmo-render\"]",
+    );
+    assert_eq!(model.problems(), Vec::<String>::new());
+}
+
+#[test]
+fn the_allow_entry_detects_multithreading_turned_on_for_the_raster_library() {
+    let mut model = with_vello();
+    // A dev dependency of another crate turns on `multithreading`; the
+    // allowlist already lists what Cargo resolves.
+    model
+        .pkg("framework", "qa@0.3.0")
+        .deps
+        .push(Dep::new("vello_cpu@0.4.0", "^0.4").features(false, &["multithreading"]));
+    model.pkg("framework", "vello_cpu@0.4.0").features = ["libm", "multithreading", "u8_pipeline"]
+        .map(str::to_string)
+        .to_vec();
+    model.edit(
+        "framework/allowlist.toml",
+        "features = [\"libm\"]\ncrates = [\"kosmo-render\"]",
+        "features = [\"libm\"]\ncrates = [\"kosmo-render\", \"kosmo-ui\"]",
+    );
+    model.edit(
+        "framework/allowlist.toml",
+        "features = [\"libm\", \"u8_pipeline\"]\ncrates = [\"kosmo-render\"]",
+        "features = [\"libm\", \"multithreading\", \"u8_pipeline\"]\ncrates = [\"kosmo-render\", \"kosmo-ui\"]",
+    );
+    assert_eq!(
+        model.problems(),
+        [
+            "layout.toml: crates.kosmo-render: vello_cpu: the resolved features [libm, multithreading, u8_pipeline] differ from the allow entry [libm, u8_pipeline]"
+        ]
+    );
+    model.edit(
+        "layout.toml",
+        "resolved-features = [\"libm\", \"u8_pipeline\"]",
+        "resolved-features = [\"libm\", \"multithreading\", \"u8_pipeline\"]",
+    );
+    assert_eq!(model.problems(), Vec::<String>::new());
+}
+
 #[test]
 fn every_resolved_package_is_in_the_allowlist() {
     let mut model = fixture::valid();
