@@ -1,4 +1,4 @@
 # The goldens are compared byte for byte, so MANIFEST keeps LF line ends in
 # every checkout and the goldens are never converted or merged as text.
-framework/render/tests/golden/MANIFEST text eol=lf
-framework/render/tests/golden/*.px binary
+**/tests/golden/MANIFEST text eol=lf
+**/tests/golden/*.px binary
