@@ -16,10 +16,11 @@ of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
 history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, part
 of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
-focus generation and epoch, and the keyboard event records, and part of the
-framework core in `kosmo-ui`: the control tree, the event, update and view
-passes of a round, result slots, timers, dispatch with the focus check, the
-minimal key map and hit testing;
+focus generation and epoch, the keyboard event records, pixel formats, buffer
+descriptions with the conversion of pixels between them, and damage regions,
+and part of the framework core in `kosmo-ui`: the control tree, the event,
+update and view passes of a round, result slots, timers, dispatch with the
+focus check, the minimal key map and hit testing;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of

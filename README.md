@@ -101,9 +101,10 @@ submissions with the reuse of their inputs and results. The repository holds
 documentation, the kosmo logo, a commit hook, the repository checks, the
 layout table `layout.toml` and three product workspaces. The `display/`
 workspace has `kosmo-types`, the shared types of the framework and the display
-server: fixed-point geometry, logical time, focus generations and epochs, and
-keyboard event records. The `framework/` workspace has the libraries
-`kosmo-math-model`, which holds
+server: fixed-point geometry, logical time, focus generations and epochs,
+keyboard event records, pixel formats, buffer descriptions with the conversion
+of pixels between them, and damage regions. The `framework/` workspace has the
+libraries `kosmo-math-model`, which holds
 [one-line formula input](docs/features/math/one-line-editing.md) while you edit
 it, `kosmo-jobs`, which runs computations as [versioned
 jobs](docs/features/framework/job-layer.md), `kosmo-math-kalyx`, which

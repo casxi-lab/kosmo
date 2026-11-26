@@ -10,16 +10,16 @@
 //! - The two layers of keyboard event records: the device record
 //!   [`InputRecord`] and the delivered key event [`KeyEvent`], with the
 //!   types of their fields.
-//! - Pixels: the four [`PixelFormat`]s and the buffer description
-//!   [`BufferDesc`], with the buffer limits [`MAX_BUFFER_SIDE`] and
-//!   [`MAX_BUFFER_BYTES`].
+//! - Pixels: the four [`PixelFormat`]s, the buffer description
+//!   [`BufferDesc`] with the buffer limits [`MAX_BUFFER_SIDE`] and
+//!   [`MAX_BUFFER_BYTES`], and [`convert`], the one conversion of pixels
+//!   between buffers.
 //! - Damage regions: the rectangles of a buffer whose pixels changed,
 //!   [`DamageRect`], and the bounded region [`Damage`].
 //!
 //! Every type is fixed-size and `Copy` and never allocates. The crate is
 //! pure core: `no_std` without `alloc`, without unsafe code, without
-//! dependencies and without interior mutability. The conversion of pixels
-//! between buffers is planned here with the renderer.
+//! dependencies and without interior mutability.
 //!
 //! ```
 //! use kosmo_types::{Fx, Point, Rect, Size, round};
@@ -36,6 +36,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+mod convert;
 mod damage;
 mod focus;
 mod geometry;
@@ -43,6 +44,7 @@ mod input;
 mod pixel;
 mod time;
 
+pub use convert::{ConvertError, convert};
 pub use damage::{Damage, DamageRect, MAX_DAMAGE_RECTS};
 pub use focus::{Epoch, FocusGen};
 pub use geometry::{Fx, Point, Rect, Round, Size, round};
@@ -80,6 +82,7 @@ mod tests {
         fixed_size::<PixelFormat>();
         fixed_size::<BufferDesc>();
         fixed_size::<BufferError>();
+        fixed_size::<ConvertError>();
         fixed_size::<DamageRect>();
         fixed_size::<Damage>();
     }
