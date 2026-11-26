@@ -10,12 +10,14 @@
 //! - The two layers of keyboard event records: the device record
 //!   [`InputRecord`] and the delivered key event [`KeyEvent`], with the
 //!   types of their fields.
+//! - Pixels: the four [`PixelFormat`]s and the buffer description
+//!   [`BufferDesc`], with the buffer limits [`MAX_BUFFER_SIDE`] and
+//!   [`MAX_BUFFER_BYTES`].
 //!
 //! Every type is fixed-size and `Copy` and never allocates. The crate is
 //! pure core: `no_std` without `alloc`, without unsafe code, without
-//! dependencies and without interior mutability. Pixel formats, buffer
-//! descriptions with their conversion, and damage regions are planned here
-//! with the renderer.
+//! dependencies and without interior mutability. The conversion of pixels
+//! between buffers and damage regions are planned here with the renderer.
 //!
 //! ```
 //! use kosmo_types::{Fx, Point, Rect, Size, round};
@@ -35,6 +37,7 @@
 mod focus;
 mod geometry;
 mod input;
+mod pixel;
 mod time;
 
 pub use focus::{Epoch, FocusGen};
@@ -42,6 +45,7 @@ pub use geometry::{Fx, Point, Rect, Round, Size, round};
 pub use input::{
     HidUsage, InputRecord, KeyAction, KeyEvent, KeyMeaning, KeyState, ModSet, NamedKey, RecordBody,
 };
+pub use pixel::{BufferDesc, BufferError, MAX_BUFFER_BYTES, MAX_BUFFER_SIDE, PixelFormat};
 pub use time::MonoTime;
 
 #[cfg(test)]
@@ -69,5 +73,8 @@ mod tests {
         fixed_size::<KeyMeaning>();
         fixed_size::<NamedKey>();
         fixed_size::<ModSet>();
+        fixed_size::<PixelFormat>();
+        fixed_size::<BufferDesc>();
+        fixed_size::<BufferError>();
     }
 }

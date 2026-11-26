@@ -1524,7 +1524,7 @@ pub trait Rasterizer {
   use library functions that detect the level themselves; the shared [conversion
   function](#pixel-formats-and-buffers) converts.
 - vello_cpu's sizes are `u16`, so a buffer is at most 65,535 pixels wide and
-  high, and the buffer limit of `kosmo-render` lies within that.
+  high, and the [buffer limit](#pixel-formats-and-buffers) lies within that.
 - guillotiere 0.7.0, a dependency of vello_cpu that cannot be turned off, states
   its license as `MIT/Apache-2.0`, which is not a valid SPDX expression, so the
   deps step requires a license exception for it: the allowlist of the framework
@@ -1636,7 +1636,12 @@ is a design change.
   `y * stride + x * bpp`, and row 0 is at the top. Construction checks that the
   width and the height are at least 1, that `stride` is at least `width * bpp`,
   and that `stride * height` neither overflows `u32` nor exceeds the buffer
-  limit of `kosmo-render`. Rotation is not part of the description.
+  limit. Rotation is not part of the description.
+- The buffer limit is two constants of `kosmo-types`: the width and the height
+  are at most `MAX_BUFFER_SIDE`, 8,192 pixels, and `stride * height` is at most
+  `MAX_BUFFER_BYTES`, $2^{26}$ bytes (64 MiB). `kosmo-types` checks them when a
+  description is built, and the previous frame of `kosmo-render` stays within
+  the same constants.
 - `kosmo-render` keeps the previous frame as a tightly packed `Rgba8Premul`
   buffer and, before presentation, converts each damage rectangle into the
   target buffer. Repainting by buffer age for double buffering is done on the
@@ -1679,7 +1684,7 @@ and uses integer arithmetic only:
 - Fixed-point values meet external libraries only at these points. Into the
   raster library, `v as f32 / 64.0` is exact up to $2^{24}$ units, and
   conversion to `f64`, the type of vello_cpu's coordinates, is always exact; the
-  buffer limit of `kosmo-render` stays within that range. Glyph outlines enter
+  buffer limit stays within that range. Glyph outlines enter
   as [glyphs](#glyphs) describes. parley's `f32` positions are multiplied by 64,
   which is exact, and rounded once by the rule above; widths passed to parley
   are converted to `f32` exactly. Accessibility bounding boxes are converted
