@@ -6,7 +6,8 @@
 //!   with geometry in the 26.6 fixed point of `kosmo-types` and
 //!   premultiplied [`Color`]s, and [`ListBuilder::finish`] gives the
 //!   [`DisplayList`]. A list holds at most [`MAX_COMMANDS`] commands and
-//!   [`MAX_ITEMS`] path elements and glyphs.
+//!   [`MAX_ITEMS`] path elements and glyphs. [`DisplayList::text`] writes
+//!   a list as text, one command per line, without floating-point numbers.
 //! - The renderer interface: the [`Rasterizer`] trait, whose documentation
 //!   states what every command draws. It draws a display list into the
 //!   kept previous frame, a [`RenderTarget`] in tightly packed
@@ -69,6 +70,7 @@ extern crate alloc;
 pub mod det_math;
 mod list;
 mod raster;
+mod text;
 mod vello;
 
 pub use list::{

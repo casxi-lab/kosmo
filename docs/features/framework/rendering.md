@@ -1,7 +1,7 @@
 # Rendering
 
-The library `kosmo-render` in the `framework/` workspace holds display lists,
-the renderer interface `Rasterizer`, the rasterizer `VelloRasterizer`, which
+The library `kosmo-render` in the `framework/` workspace holds display lists
+with their text form, the renderer interface `Rasterizer`, the rasterizer `VelloRasterizer`, which
 draws display lists on the CPU with vello_cpu 0.4.0 on one thread, the kept
 previous frame `RenderTarget` with its conversion into the buffer to be
 presented, and `det_math`, the wrapper through which deterministic code calls
@@ -96,6 +96,43 @@ and at most `MAX_ITEMS`, 65,536, path elements and glyphs together; the
 errors of `ListError` are `TooManyCommands`, `TooManyItems`,
 `NegativeRadius`, `NegativeWidth`, `UnpairedPopClip` and `UnclosedClip`.
 `Color::premultiplied` refuses a component greater than alpha.
+
+## The text form of display lists
+
+`DisplayList::text` writes a list as text, one line for each command in
+drawing order, each followed by a line feed, so that records and tests
+compare display lists byte for byte; an empty list has no text. Coordinates,
+sizes, radii and widths are the integers of their `Fx`, in 1/64 pixel, and
+colors are `#` and the 8 lowercase hexadecimal digits of the premultiplied
+red, green, blue and alpha; no floating-point number is written. A point is
+`<x>,<y>`, a size `<width>x<height>` and a rectangle
+`<x>,<y> <width>x<height>`:
+
+| Command | Line |
+| --- | --- |
+| `FillRect` | `fill-rect <color> <rect>` |
+| `FillRoundedRect` | `fill-rounded-rect <color> <rect> radius <radius>` |
+| `FillPath` | `fill-path <color>` and the elements of the path |
+| `StrokePath` | `stroke-path <color> width <width> join <join> cap <cap>` and the elements of the path; the join is `miter`, `round` or `bevel`, the cap `butt`, `round` or `square` |
+| `Glyphs` | `glyphs <color> font <font> size <size>` and ` <glyph>@<origin>` for each glyph, its number and its origin |
+| `PushClip` | `push-clip <rect> offset <point>` |
+| `PopClip` | `pop-clip` |
+
+The elements of a path are ` M <point>`, ` L <point>`,
+` Q <control> <point>`, ` C <first> <second> <point>` and ` Z`. For example,
+a red rectangle of 3 by 4 pixels at (1, 2) inside a group moved by one pixel
+to the right and half a pixel up:
+
+```text
+push-clip 64,128 192x256 offset 64,-32
+fill-rect #ff0000ff 64,128 192x256
+pop-clip
+```
+
+The text depends only on the list. A line holds at most 92 bytes, its line
+feed included, and at most 74 more for each path element or glyph, so the
+text of a list within its limits has at most
+92 × 16,384 + 74 × 65,536 bytes, about 6.1 MiB.
 
 ## The renderer interface
 
@@ -419,9 +456,16 @@ in `display/types`, and those of the checks in `xtask`.
     `the_rectangle_after_the_limit_merges_all_into_their_bounds`,
     `regions_of_buffers_of_another_size_are_not_equal`,
     `the_same_rectangles_in_the_same_order_give_the_same_region`.
-14. `det_math` gives the results of `libm`. Tests: `det_math::tests::`
+14. The text form writes each kind of command, each join and cap and each
+    kind of path element as its line states, writes nothing for an empty
+    list, and keeps each line within its bound for the widest values.
+    Tests: `text::tests::every_command_kind_has_its_line`,
+    `text::tests::an_empty_list_has_no_text`,
+    `text::tests::lines_stay_within_their_bound_at_the_extremes`, and the
+    example of `DisplayList::text`.
+15. `det_math` gives the results of `libm`. Tests: `det_math::tests::`
     `sin_of_one_is_libm_sin`, `sinf_of_one_is_libm_sinf`.
-15. Clippy, with the root `clippy.toml`, reports a method call, a path call and
+16. Clippy, with the root `clippy.toml`, reports a method call, a path call and
     a function pointer of a method with unspecified precision,
     `algebraic_add`, the maximum of two `f32` values, `libm` outside the
     wrapper module and a `HashMap` of the standard library, also through a
@@ -440,12 +484,12 @@ in `display/types`, and those of the checks in `xtask`.
     `clippy_reports_every_listed_method_function_and_type`;
     `layout::tests::rejects_an_allowance_of_the_methods_lint_outside_the_wrapper_module`,
     `layout::tests::rejects_a_clippy_configuration_beside_the_root_one`.
-16. The deps step reports `std` resolved for a package inside the raster
+17. The deps step reports `std` resolved for a package inside the raster
     library against the allowlist, and `multithreading` resolved for
     vello_cpu against the allow entry of `kosmo-render`. Tests in `xtask`:
     `deps::tests::the_allowlist_detects_std_turned_on_inside_the_raster_library`,
     `deps::tests::the_allow_entry_detects_multithreading_turned_on_for_the_raster_library`.
-17. The goldens step reports a golden edited by hand, a golden that no test
+18. The goldens step reports a golden edited by hand, a golden that no test
     refers to and a manifest that differs from the files. Tests in `xtask`:
     `golden::tests::a_hand_edited_golden_is_reported`,
     `golden::tests::a_golden_that_no_test_references_is_reported`,
