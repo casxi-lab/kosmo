@@ -51,7 +51,8 @@
 //!     that would pass the bound returns `Exhausted` and leaves the tree as
 //!     it was.
 //! 15. At most `MAX_INJECTED` injected events wait to be returned; one more
-//!     returns `Exhausted`, and the waits return exactly the injected ones.
+//!     returns `Exhausted`, the waits return exactly the injected ones, and
+//!     once they are returned, injecting works again.
 //! 16. A disconnection injected with `inject_fault` ends the next wait with
 //!     `Disconnected`, and `shutdown` then returns `Ok` without panicking.
 
@@ -753,6 +754,22 @@ fn a_tree_has_at_most_the_bound_of_nodes<P: PlatformTestHooks>(p: &mut P) -> Out
         before.as_ref().map(AccessibilityTree::node_count),
         Some(MAX_A11Y_NODES),
     )?;
+    let last = MAX_A11Y_NODES as u64 + 1;
+    let increment = TreeUpdate {
+        nodes: vec![
+            (NodeId(1), node(Role::Window, "window", 2..=last)),
+            (NodeId(last), node(Role::Label, "label", [])),
+        ],
+        tree: None,
+        tree_id: TreeId::ROOT,
+        focus: NodeId(1),
+    };
+    same(
+        "an increment that adds one node over the bound",
+        p.update(s, increment),
+        Err(PlatformError::Exhausted),
+    )?;
+    same("the tree after the increment", tree(p, s)?, before.clone())?;
     // The update holds every node again and one more.
     same(
         "an update to one node over the bound",
@@ -771,7 +788,10 @@ fn at_most_the_bound_of_injected_events_wait<P: PlatformTestHooks>(p: &mut P) ->
         p.inject(key(s, stamp(1), MAX_INJECTED as u64)),
         Err(PlatformError::Exhausted),
     )?;
-    same("the returned events", settle(p)?, at_bound)
+    same("the returned events", settle(p)?, at_bound)?;
+    let after = key(s, stamp(1), 2 * MAX_INJECTED as u64);
+    call("inject after the queue emptied", p.inject(after))?;
+    same("the events after that", settle(p)?, vec![after])
 }
 
 fn an_injected_disconnection_ends_the_next_wait<P: PlatformTestHooks>(p: &mut P) -> Outcome {

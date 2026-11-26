@@ -39,7 +39,8 @@ pub fn headless(setup: &Setup) -> HeadlessBackend {
 ///     ones;
 /// 11. a surface in an unsupported format is created in the preferred one;
 /// 12. a missing resource is empty;
-/// 13. the tree keeps only the nodes of the last update;
+/// 13. the tree keeps only the nodes of the last update, though updates are
+///     checked against the whole tree;
 /// 14. an update over the bound of nodes still renames the root;
 /// 15. injected events over the bound are queued anyway;
 /// 16. an injected disconnection is dropped.
@@ -264,6 +265,11 @@ impl AccessibilitySink for Defective {
     fn update(&mut self, s: SurfaceId, update: TreeUpdate) -> Result<(), PlatformError> {
         match self.defect {
             13 => {
+                // Updates are checked against the whole tree; only what is
+                // kept is wrong.
+                if let Some(mut whole) = self.inner.a11y_tree(s)?.cloned() {
+                    whole.apply(update.clone())?;
+                }
                 let update = if self.trees.contains(&s) {
                     self.last_nodes_only(s, update)
                 } else {
