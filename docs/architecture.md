@@ -844,8 +844,10 @@ layer and marks: export, facade (an export crate that only re-exports),
 pure core (`no_std` with `alloc`, no unsafe code, no build script, no
 external dependency and no interior mutability), provisional (with the
 condition that ends it), publishable, and whether it may have a build script
-or be a procedural-macro library, and, for a library crate at the platform
-boundary, its platform categories (see [Platform boundary](#platform-boundary)).
+or be a procedural-macro library, for a library crate at the platform
+boundary, its platform categories (see [Platform boundary](#platform-boundary)),
+and whether it is on the deterministic path (see [Transcendental
+functions](#transcendental-functions)).
 The allowed direct external dependencies of
 each crate are listed in its entry, and the allowed packages of each
 workspace's `Cargo.lock`, with the license exceptions of the workspace, in the

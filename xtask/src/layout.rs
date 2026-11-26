@@ -8,15 +8,17 @@
 //! kalyx adapter makes, the repository boundary, the Cargo
 //! configuration, pure-core crates, build scripts and procedural macros,
 //! versions and publishing, provisional and export crates, the platform
-//! boundary of library crates, the shape of the workspace roots and the
-//! workspaces that the other steps cover. It
+//! boundary of library crates, the lint attributes of deterministic crates,
+//! the shape of the workspace roots and the workspaces that the other steps
+//! cover. It
 //! collects every problem and reports them one per line, as
 //! `<path>[:<line>]: <message>`, sorted by path, then by line number and
 //! then by message. When the table does not parse or is not consistent,
 //! only the checks that need no table run: the repository root has no
 //! manifest, there is no submodule, no symbolic link leaves the repository,
-//! and the Cargo configuration.
+//! the Cargo configuration and the Clippy configuration.
 
+mod lints;
 mod platform;
 mod source;
 
@@ -48,15 +50,22 @@ pub const ALIAS: &str = "xtask";
 /// Where the list of workspaces that the format, Clippy and test steps
 /// cover is defined.
 const COVERAGE_SOURCE: &str = "xtask/src/check.rs";
-/// The Clippy lints that the root of every product workspace denies.
-pub const DENIED_LINTS: [&str; 6] = [
+/// The Clippy lints that the root of every product workspace denies: six
+/// lints of the `restriction` group, and the two determinism lints of the
+/// `style` group, whose lists the root Clippy configuration holds.
+pub const DENIED_LINTS: [&str; 8] = [
     "unwrap_used",
     "expect_used",
     "panic",
     "todo",
     "unimplemented",
     "allow_attributes_without_reason",
+    lints::LINTS[0],
+    lints::LINTS[1],
 ];
+/// The Clippy groups that hold the denied lints; at a higher priority, a
+/// lower level of a group would replace theirs.
+const DENIED_GROUPS: [&str; 3] = ["restriction", "style", "all"];
 /// Keys that no dependency entry has; `package` renames a dependency.
 const FORBIDDEN_KEYS: [&str; 7] = [
     "git",
@@ -216,6 +225,10 @@ pub struct Crate {
     /// a library crate without them is a core library.
     #[serde(default)]
     platform: Option<Vec<String>>,
+    /// Whether the crate is on the deterministic path, where no lint
+    /// attribute turns off the determinism lints.
+    #[serde(default)]
+    deterministic: bool,
     /// The allowed direct external dependencies, which the deps step
     /// compares with what Cargo resolves.
     #[serde(default)]
@@ -849,6 +862,24 @@ fn check_repository(tree: &Tree, index: Option<&Index>, problems: &mut Problems)
         }
     }
     check_cargo_configuration(tree, problems);
+    check_clippy_configuration(tree, problems);
+}
+
+/// The only Clippy configuration is the regular file `clippy.toml` at the
+/// repository root: Clippy reads the nearest one at or above a crate's
+/// directory, so another would replace its lists for the crates below it.
+fn check_clippy_configuration(tree: &Tree, problems: &mut Problems) {
+    for (path, entry) in tree
+        .entries()
+        .filter(|(path, _)| lints::is_clippy_configuration(path))
+    {
+        if path != lints::CLIPPY_CONFIG || !matches!(entry, Entry::File(_)) {
+            problems.insert(format!(
+                "{path}: the only Clippy configuration is {} at the repository root, a regular file",
+                lints::CLIPPY_CONFIG
+            ));
+        }
+    }
 }
 
 /// Whether `path`, in any letter case, is a `.cargo` entry or a Cargo
@@ -1407,12 +1438,12 @@ fn check_shape(manifest: &str, table: &Table, workspace: &Table, problems: &mut 
             ));
         }
     }
-    // The group holds the denied lints; at a higher priority, a lower level
-    // would replace theirs.
-    if let Some(level @ ("allow" | "warn")) = level("restriction") {
-        problems.insert(format!(
-            "{manifest}: [workspace.lints.clippy] restriction may not be \"{level}\"; the group holds the denied lints"
-        ));
+    for group in DENIED_GROUPS {
+        if let Some(level @ ("allow" | "warn")) = level(group) {
+            problems.insert(format!(
+                "{manifest}: [workspace.lints.clippy] {group} may not be \"{level}\"; the group holds the denied lints"
+            ));
+        }
     }
     let profiles = table.get("profile").and_then(Value::as_table);
     let overflow_checks =
@@ -1635,6 +1666,9 @@ fn check_crate<'a>(
         check_pure_sources(tree, place, repo::parent(&root.manifest), table, problems);
     }
     check_platform(tree, place, manifest, table, problems);
+    if krate.deterministic {
+        check_lowerings(tree, place, problems);
+    }
     if let Some(version) = version {
         match package_field(table, "version", root.workspace).and_then(Value::as_str) {
             Some(own) if own == version => {}
@@ -1921,6 +1955,43 @@ fn check_platform(
                 "{path}:{}: {who} may not use {}; {allowed_by}",
                 hit.line, hit.item
             ));
+        }
+    }
+}
+
+/// The lint attributes of a crate on the deterministic path: no Rust file
+/// of the crate, in any target, lowers a determinism lint, except one
+/// unconditional `allow` or `expect` of `clippy::disallowed_methods` in the
+/// wrapper module. A file whose tokens cannot be read is reported by the
+/// repository boundary instead.
+fn check_lowerings(tree: &Tree, place: Place, problems: &mut Problems) {
+    let (name, krate) = (place.name, place.krate);
+    let wrapper = format!("{}/{}", krate.path, lints::WRAPPER.1);
+    let wrapper = (name == lints::WRAPPER.0).then_some(wrapper.as_str());
+    for (path, text) in tree
+        .texts()
+        .filter(|(path, _)| is_rust_under(path, &krate.path))
+    {
+        let Ok(stream) = source::tokens(text) else {
+            continue;
+        };
+        let mut found = Vec::new();
+        lints::lowerings(stream, &mut found);
+        let mut excused = Some(path) == wrapper;
+        for lowering in found {
+            if excused && lowering.is_the_wrappers() {
+                excused = false;
+                continue;
+            }
+            for lint in &lowering.lints {
+                problems.insert(format!(
+                    "{path}:{}: the deterministic crate {name} may not {} {lint}; only one allow or expect of clippy::disallowed_methods in {} of {}, the wrapper module, may",
+                    lowering.line,
+                    lowering.level,
+                    lints::WRAPPER.1,
+                    lints::WRAPPER.0,
+                ));
+            }
         }
     }
 }

@@ -209,6 +209,11 @@ attribute of a library root, do not. It checks:
   configuration is the regular file `.cargo/config.toml`, which holds only
   `[alias]` with the single alias `xtask`; a `.cargo` entry or configuration
   file anywhere else, in any letter case, fails;
+- the Clippy configuration (also without a table): the only Clippy
+  configuration is the regular file `clippy.toml` at the repository root.
+  Clippy reads the nearest one at or above a crate's directory, so a
+  `clippy.toml` or `.clippy.toml` anywhere else, in any letter case, fails,
+  and so does a `.clippy.toml` at the root;
 - pure-core crates: everything under `src/` is a regular file, not a symbolic
   link; the library root has `#![no_std]`, not behind `cfg_attr`, and
   `#![forbid(unsafe_code)]`; the library root and every file that `include!`
@@ -251,9 +256,19 @@ attribute of a library root, do not. It checks:
   of a forbidden item, a path that names one or an item inside one, and a
   call of a forbidden macro. Compile-time `env!`, comments, doc comments and string
   literals are not uses;
+- the deterministic path: in every Rust file in the directory of a crate
+  that the table marks `deterministic`, in any of its targets, no lint
+  attribute `allow`, `expect` or `warn`, also inside `cfg_attr` and in the
+  bodies of macros, names `clippy::disallowed_methods` or
+  `clippy::disallowed_types`, their former names `clippy::disallowed_method`
+  and `clippy::disallowed_type`, or the groups `clippy::style` and
+  `clippy::all` that hold them. The one exception is a single unconditional
+  `allow` or `expect` of `clippy::disallowed_methods` alone in
+  `src/det_math.rs` of `kosmo-render`, the wrapper module that calls libm;
 - the shape of the workspace roots: a product workspace root sets
-  `resolver = "3"`, sets the six Clippy lints above to `deny` or `forbid` in
-  `[workspace.lints.clippy]` and the `restriction` group that holds them to
+  `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
+  and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`
+  and the groups that hold them, `restriction`, `style` and `all`, to
   neither `allow` nor `warn`, sets `overflow-checks = true` in
   `[profile.release]` and `false` nowhere in `[profile]`, package overrides
   and `build-override` included, and has no `exclude` or `default-members`;
@@ -271,8 +286,11 @@ attributes only by their own names: paths built by macros such as
 `use core::include_str as text;`, are not checked. Modules that a macro
 generates are not recognized either, so the `#[path]` and `#![path]` of an
 inline module such as `mod $name { ... }` in a `macro_rules!` body are not
-checked. It cannot see what build scripts, procedural macros or configuration
-outside the repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
+checked. Lint attributes are found by their own names too, so one that a
+macro assembles from parts or a procedural macro adds is not found, nor is
+one in a crate that the table does not mark `deterministic`. It cannot see
+what build scripts, procedural macros or configuration outside the
+repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
 `CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no longer runs the
 check at all; review covers these.
 What Cargo resolves from the manifests is checked by the deps step, not by this
@@ -326,8 +344,10 @@ after the crate without the prefix `kosmo-`, such as `framework/render` for
 a crate `kosmo-render`, or after the whole name when it does not start with
 the prefix: crate names keep the prefix for publishing on crates.io, and
 directories need not. The change registers the crate in `layout.toml` with
-its directory, layer and marks, and with its platform categories when it is
-a library crate at the platform boundary, adds its directory to the
+its directory, layer and marks, with its platform categories when it is
+a library crate at the platform boundary and with `deterministic = true`
+when it writes layout coordinates, layout trees, display lists, glyph
+positions, coverage or pixels, adds its directory to the
 `members` of its workspace root, and declares it in the root's
 `[workspace.dependencies]`, under its name and with the path of its
 directory, when other crates depend on it.

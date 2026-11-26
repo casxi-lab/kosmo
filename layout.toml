@@ -91,7 +91,14 @@ lock-allowlist = "xtask/allowlist.toml"
 # may publish the crate; it must agree with the manifest. `build-script`
 # and `proc-macro` allow a build script or a procedural-macro library.
 # `same-layer` lists the crates of the same layer that the crate depends
-# on.
+# on. `deterministic`: the crate is on the deterministic path, code that
+# writes layout coordinates, layout trees, display lists, glyph positions,
+# coverage or pixels, so no lint attribute in any of its Rust files allows,
+# expects or warns about clippy::disallowed_methods or
+# clippy::disallowed_types, the lints that deny the methods and types of the
+# root clippy.toml; the one exception is a single allow or expect of
+# clippy::disallowed_methods in src/det_math.rs of kosmo-render, the
+# wrapper module through which deterministic code calls libm.
 #
 # `platform`, the platform boundary column, lists at least one platform
 # category of a library crate, a crate with a library target, at the
@@ -130,6 +137,7 @@ layer = "D0"
 export = true
 pure-core = true
 publish = false
+deterministic = true
 
 [crates.kosmo-math-model]
 path = "framework/math-model"
@@ -153,6 +161,7 @@ layer = "F0"
 export = false
 pure-core = false
 publish = false
+deterministic = true
 
 [[crates.kosmo-render.external]]
 name = "libm"
@@ -188,6 +197,7 @@ layer = "F1"
 export = false
 pure-core = false
 publish = false
+deterministic = true
 
 [crates.kosmo-scratchpad]
 path = "framework/scratchpad"
