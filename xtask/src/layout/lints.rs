@@ -20,10 +20,13 @@ pub const CLIPPY_CONFIG: &str = "clippy.toml";
 /// denies with the lists of the root Clippy configuration.
 pub const LINTS: [&str; 2] = ["disallowed_methods", "disallowed_types"];
 
+/// The former names of the lints of [`LINTS`], which Clippy still
+/// accepts.
+pub const FORMER_NAMES: [&str; 2] = ["disallowed_method", "disallowed_type"];
+
 /// The names under which an attribute also reaches the lints of
-/// [`LINTS`]: their former names, which Clippy still accepts, and the
-/// groups that hold them.
-const OTHER_NAMES: [&str; 4] = ["disallowed_method", "disallowed_type", "style", "all"];
+/// [`LINTS`]: their former names and the groups that hold them.
+const OTHER_NAMES: [&str; 4] = [FORMER_NAMES[0], FORMER_NAMES[1], "style", "all"];
 
 /// The lint levels that turn a denied lint off or lower it.
 const LOWERING: [&str; 3] = ["allow", "expect", "warn"];

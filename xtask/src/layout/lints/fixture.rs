@@ -87,6 +87,56 @@ const EVERY_ENTRY: &str = "every_entry";
 /// they become stable.
 const UNSTABLE: [&str; 4] = ["gamma", "ln_gamma", "erf", "erfc"];
 
+/// The methods of `f32` and `f64` that the determinism rules list, in the
+/// order of the root configuration; a regenerated list that drops or adds
+/// one fails the test that compares them.
+const FLOAT_METHODS: [&str; 41] = [
+    "powi",
+    "powf",
+    "exp",
+    "exp2",
+    "ln",
+    "log",
+    "log2",
+    "log10",
+    "abs_sub",
+    "cbrt",
+    "hypot",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "sin_cos",
+    "exp_m1",
+    "ln_1p",
+    "sinh",
+    "cosh",
+    "tanh",
+    "asinh",
+    "acosh",
+    "atanh",
+    "gamma",
+    "ln_gamma",
+    "erf",
+    "erfc",
+    "to_degrees",
+    "to_radians",
+    "max",
+    "min",
+    "clamp",
+    "algebraic_add",
+    "algebraic_sub",
+    "algebraic_mul",
+    "algebraic_div",
+    "algebraic_rem",
+];
+
+/// The functions of libm 0.2.16 that the root configuration lists.
+const LIBM_FUNCTIONS: usize = 124;
+
 /// The types of the configuration, each as the fixture names it.
 const TYPES: [(&str, &str); 4] = [
     (
@@ -118,6 +168,24 @@ fn is_unstable(path: &str) -> bool {
         path.strip_suffix(name)
             .is_some_and(|ty| ty == "f32::" || ty == "f64::")
     })
+}
+
+#[test]
+fn the_configuration_lists_exactly_the_methods_and_functions_of_the_rules() {
+    let methods = listed(&config(), "disallowed-methods");
+    for ty in ["f32::", "f64::"] {
+        let names: Vec<&str> = methods
+            .iter()
+            .filter_map(|path| path.strip_prefix(ty))
+            .collect();
+        assert_eq!(names, FLOAT_METHODS, "{ty}");
+    }
+    let libm = methods
+        .iter()
+        .filter(|path| path.starts_with("libm::"))
+        .count();
+    assert_eq!(libm, LIBM_FUNCTIONS);
+    assert_eq!(methods.len(), 2 * FLOAT_METHODS.len() + LIBM_FUNCTIONS);
 }
 
 /// The root configuration of the repository.

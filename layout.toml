@@ -96,9 +96,11 @@ lock-allowlist = "xtask/allowlist.toml"
 # coverage or pixels, so no lint attribute in any of its Rust files allows,
 # expects or warns about clippy::disallowed_methods or
 # clippy::disallowed_types, the lints that deny the methods and types of the
-# root clippy.toml; the one exception is a single allow or expect of
-# clippy::disallowed_methods in src/det_math.rs of kosmo-render, the
-# wrapper module through which deterministic code calls libm.
+# root clippy.toml; the one exception is a single unconditional #![allow]
+# or #![expect] of clippy::disallowed_methods at the start of
+# src/det_math.rs of kosmo-render, the wrapper module through which
+# deterministic code calls libm. The crates that the architecture names on
+# the deterministic path set it.
 #
 # `platform`, the platform boundary column, lists at least one platform
 # category of a library crate, a crate with a library target, at the

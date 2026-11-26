@@ -1445,6 +1445,19 @@ fn check_shape(manifest: &str, table: &Table, workspace: &Table, problems: &mut 
             ));
         }
     }
+    // Clippy reads `disallowed-methods` and a former name as the same lint
+    // as the name this step checks, so such a key could lower it.
+    for key in clippy
+        .and_then(Value::as_table)
+        .into_iter()
+        .flat_map(Table::keys)
+    {
+        if key.contains('-') || lints::FORMER_NAMES.contains(&key.as_str()) {
+            problems.insert(format!(
+                "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads this key as another lint of the table"
+            ));
+        }
+    }
     let profiles = table.get("profile").and_then(Value::as_table);
     let overflow_checks =
         |settings: &Value| settings.get("overflow-checks").and_then(Value::as_bool);
@@ -1672,7 +1685,14 @@ fn check_crate<'a>(
         ));
     }
     if krate.deterministic {
-        check_lowerings(tree, place, repo::parent(&root.manifest), problems);
+        check_lowerings(
+            tree,
+            place,
+            manifest,
+            table,
+            repo::parent(&root.manifest),
+            problems,
+        );
     }
     if let Some(version) = version {
         match package_field(table, "version", root.workspace).and_then(Value::as_str) {
@@ -1720,6 +1740,12 @@ fn check_build_scripts(
     if has_build_script && krate.pure_core {
         problems.insert(format!(
             "{manifest}: the pure-core crate {name} may not have a build script"
+        ));
+    } else if has_build_script && krate.deterministic {
+        // A build script could point Clippy at another configuration for
+        // the crate's compilation, through `cargo::rustc-env`.
+        problems.insert(format!(
+            "{manifest}: the deterministic crate {name} may not have a build script"
         ));
     } else if has_build_script && !krate.build_script {
         problems.insert(format!(
@@ -1983,12 +2009,31 @@ fn check_platform(
 /// declares no module in another file and includes no file, so that the
 /// attribute covers that file only. So that the files read are all the
 /// files that the crate compiles, everything in the crate's directory is a
-/// regular file, and `include!` and `#[path]` bring in only `.rs` files
-/// under it. A file whose tokens cannot be read, and a path that leaves
-/// `workspace`, the crate's workspace, or passes through a symbolic link,
-/// are reported by the repository boundary instead.
-fn check_lowerings(tree: &Tree, place: Place, workspace: &str, problems: &mut Problems) {
+/// regular file, the roots of the targets that its manifest `table`, at
+/// `manifest`, names are `.rs` files under it, and `include!` and `#[path]`
+/// bring in only `.rs` files under it. A file whose tokens cannot be read,
+/// and a path that leaves `workspace`, the crate's workspace, or passes
+/// through a symbolic link, are reported by the repository boundary
+/// instead.
+fn check_lowerings(
+    tree: &Tree,
+    place: Place,
+    manifest: &str,
+    table: &Table,
+    workspace: &str,
+    problems: &mut Problems,
+) {
     let (name, krate) = (place.name, place.krate);
+    for target in target_paths(table) {
+        if let Ok(resolved) = resolve(tree, &krate.path, target)
+            && !is_rust_under(&resolved, &krate.path)
+        {
+            problems.insert(format!(
+                "{manifest}: the deterministic crate {name} has the roots of its targets in .rs files under {}/, not {target}",
+                krate.path
+            ));
+        }
+    }
     for (path, entry) in tree.entries() {
         if matches!(entry, Entry::Symlink(_)) && repo::is_within(path, &krate.path) {
             problems.insert(format!(
@@ -2303,29 +2348,6 @@ fn check_form(tree: &Tree, index: &Index, path: &str, table: &Table, problems: &
         problems.insert(format!("{path}: the package {name}: {KREPI}"));
     }
     let dir = repo::parent(path);
-    let mut target_paths: Vec<&str> = Vec::new();
-    if let Some(Value::String(build)) = table
-        .get("package")
-        .and_then(|package| package.get("build"))
-    {
-        target_paths.push(build);
-    }
-    if let Some(lib) = table
-        .get("lib")
-        .and_then(|lib| lib.get("path"))
-        .and_then(Value::as_str)
-    {
-        target_paths.push(lib);
-    }
-    for kind in TARGET_KINDS {
-        let entries = table.get(kind).and_then(Value::as_array);
-        target_paths.extend(
-            entries
-                .into_iter()
-                .flatten()
-                .filter_map(|entry| entry.get("path").and_then(Value::as_str)),
-        );
-    }
     let package = table.get("package");
     let workspace_package = table
         .get("workspace")
@@ -2352,11 +2374,41 @@ fn check_form(tree: &Tree, index: &Index, path: &str, table: &Table, problems: &
         }
     }
     let boundary = index.boundary(path);
-    for target in target_paths {
+    for target in target_paths(table) {
         if let Some(problem) = escape(tree, dir, target, boundary) {
             problems.insert(format!("{path}: the target path {target} {problem}"));
         }
     }
+}
+
+/// The paths of the build script and of the roots of the targets that the
+/// manifest `table` names: `package.build`, `[lib] path` and the `path` of
+/// each `[[bin]]`, `[[test]]`, `[[bench]]` and `[[example]]`.
+fn target_paths(table: &Table) -> Vec<&str> {
+    let mut paths: Vec<&str> = Vec::new();
+    if let Some(Value::String(build)) = table
+        .get("package")
+        .and_then(|package| package.get("build"))
+    {
+        paths.push(build);
+    }
+    if let Some(lib) = table
+        .get("lib")
+        .and_then(|lib| lib.get("path"))
+        .and_then(Value::as_str)
+    {
+        paths.push(lib);
+    }
+    for kind in TARGET_KINDS {
+        let entries = table.get(kind).and_then(Value::as_array);
+        paths.extend(
+            entries
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("path").and_then(Value::as_str)),
+        );
+    }
+    paths
 }
 
 /// The literal paths of every tracked Rust file stay inside its workspace,

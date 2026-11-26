@@ -275,14 +275,18 @@ attribute of a library root, do not. It checks:
   which declares no module in another file and includes no file; the
   exception covers every listed method in the module and in the inline
   modules inside it, so review reads that the module only forwards to
-  `libm`; a deterministic crate keeps its files as regular files, and
-  `include!` and `#[path]` in it bring in only `.rs` files under its
-  directory, so that the step reads every file that the crate compiles;
+  `libm`; a deterministic crate keeps its files as regular files, has no
+  build script, names in its manifest only `.rs` files under its directory
+  as the roots of its targets, and `include!` and `#[path]` in it bring in
+  only `.rs` files under its directory, so that the step reads every file
+  that the crate compiles;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`
   and the groups that hold them, `restriction`, `style` and `all`, to
-  neither `allow` nor `warn`, sets `overflow-checks = true` in
+  neither `allow` nor `warn`, writes every key of `[workspace.lints.clippy]`
+  with `_` and under the lint's current name, since Clippy reads
+  `disallowed-methods` or `disallowed_method` as the same lint, sets `overflow-checks = true` in
   `[profile.release]` and `false` nowhere in `[profile]`, package overrides
   and `build-override` included, and has no `exclude` or `default-members`;
   each member sets `[lints] workspace = true`;
@@ -301,7 +305,13 @@ generates are not recognized either, so the `#[path]` and `#![path]` of an
 inline module such as `mod $name { ... }` in a `macro_rules!` body are not
 checked. Lint attributes are found by their own names too, so one that a
 macro assembles from parts or a procedural macro adds is not found, nor is
-one in a crate that the table does not mark `deterministic`. It cannot see
+one in a crate that the table does not mark `deterministic`, also when a
+`macro_rules!` macro of such a crate carries it into a deterministic crate
+that calls the macro. The rule of the wrapper module reads only the tokens
+of `src/det_math.rs`, so a module declaration or an `include!` that a macro
+defined in another file expands inside the wrapper module is not found,
+and the module's exception covers the code that it brings in; review reads
+the macros that deterministic crates call. It cannot see
 what build scripts, procedural macros or configuration outside the
 repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
 `CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no longer runs the
@@ -791,7 +801,9 @@ function pointer of methods with unspecified precision, `algebraic_add`,
 `std::collections::HashMap`, also through a re-export, are each reported
 once, the method `sin` of a type of the crate is not, and every entry of
 the lists is reported where the crate names it, except the four unstable
-methods, which stable code cannot name.
+methods, which stable code cannot name. Another test checks that the lists
+hold exactly the 41 methods of `f32` and of `f64` and the 124 functions of
+libm, so that a regenerated list that drops an entry fails.
 
 The lints have limits:
 

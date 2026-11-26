@@ -1266,6 +1266,42 @@ fn the_determinism_lints_are_denied_and_their_groups_not_lowered() {
     );
 }
 
+#[test]
+fn a_lint_key_with_a_hyphen_or_a_former_name_is_reported() {
+    let found = problems_with(|files| {
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "[workspace.lints.clippy]\n",
+            "[workspace.lints.clippy]\ndisallowed-methods = \"allow\"\n",
+        );
+        edit(
+            files,
+            "display/Cargo.toml",
+            "[workspace.lints.clippy]\n",
+            "[workspace.lints.clippy]\ndisallowed_type = \"allow\"\n",
+        );
+        append(
+            files,
+            "desktop/Cargo.toml",
+            "\n[workspace.lints.clippy.unwrap-used]\nlevel = \"allow\"\npriority = 1\n",
+        );
+    });
+    let message = |manifest: &str, key: &str| {
+        format!(
+            "{manifest}: [workspace.lints.clippy] {key}: lints are written with _ and under their current names; Clippy reads this key as another lint of the table"
+        )
+    };
+    assert_problems(
+        &found,
+        &[
+            message("framework/Cargo.toml", "disallowed-methods").as_str(),
+            message("display/Cargo.toml", "disallowed_type").as_str(),
+            message("desktop/Cargo.toml", "unwrap-used").as_str(),
+        ],
+    );
+}
+
 // Members.
 
 #[test]
@@ -2336,6 +2372,57 @@ fn a_deterministic_crate_brings_in_no_rust_file_of_another_crate() {
             "framework/render/src/lib.rs:2",
             "../../math-model/src/lowered.rs"
         )]
+    );
+}
+
+#[test]
+fn a_deterministic_crate_has_the_roots_of_its_targets_in_its_rust_files() {
+    let lowering = "#![allow(clippy::disallowed_methods, reason = \"a test\")]\n";
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/render/Cargo.toml",
+            "\n[[test]]\nname = \"lowered\"\npath = \"tests/lowered.in\"\n\n[[test]]\nname = \"outside\"\npath = \"../lowered.rs\"\n",
+        );
+        files.insert(
+            "framework/render/tests/lowered.in".to_string(),
+            lowering.to_string(),
+        );
+        files.insert("framework/lowered.rs".to_string(), lowering.to_string());
+    });
+    let message = |target: &str| {
+        format!(
+            "framework/render/Cargo.toml: the deterministic crate kosmo-render has the roots of its targets in .rs files under framework/render/, not {target}"
+        )
+    };
+    assert_problems(
+        &found,
+        &[
+            message("tests/lowered.in").as_str(),
+            message("../lowered.rs").as_str(),
+        ],
+    );
+}
+
+#[test]
+fn a_deterministic_crate_has_no_build_script_even_when_marked() {
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/render/build.rs".to_string(),
+            "fn main() {}\n".to_string(),
+        );
+        edit(
+            files,
+            TABLE,
+            "[crates.kosmo-render]\npath = \"framework/render\"\n",
+            "[crates.kosmo-render]\npath = \"framework/render\"\nbuild-script = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/render/Cargo.toml: the deterministic crate kosmo-render may not have a build script"
+        ]
     );
 }
 
