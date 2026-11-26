@@ -21,7 +21,11 @@
 # layout step requires them as they are written here: changing them
 # changes those rules. The layout step also lets no crate other than the
 # kalyx adapter kosmo-math-kalyx, and not the tool workspace xtask, declare
-# the package kalyx. Every path is relative to the repository root and
+# the package kalyx. The name of a crate's directory, the last part of its
+# path, is the crate name without the prefix `kosmo-`, or the whole name
+# when it does not start with the prefix, as `ui` for kosmo-ui and `kosmo`
+# for the program: crate names keep the prefix for publishing, and
+# directories need not. Every path is relative to the repository root and
 # written without `.`, `..` or a trailing `/`.
 #
 # `targets` are the target platforms, at least one and each once, for which
@@ -121,21 +125,21 @@ lock-allowlist = "xtask/allowlist.toml"
 # resolves, the deps step prints all the entries that the crate should have,
 # or, when it should have none, says that they all go.
 [crates.kosmo-types]
-path = "display/kosmo-types"
+path = "display/types"
 layer = "D0"
 export = true
 pure-core = true
 publish = false
 
 [crates.kosmo-math-model]
-path = "framework/kosmo-math-model"
+path = "framework/math-model"
 layer = "F0"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-jobs]
-path = "framework/kosmo-jobs"
+path = "framework/jobs"
 layer = "F0"
 export = false
 pure-core = false
@@ -144,7 +148,7 @@ same-layer = ["kosmo-math-model"]
 platform = ["threads"]
 
 [crates.kosmo-math-kalyx]
-path = "framework/kosmo-math-kalyx"
+path = "framework/math-kalyx"
 layer = "F1"
 export = false
 pure-core = false
@@ -158,21 +162,21 @@ features = []
 resolved-features = []
 
 [crates.kosmo-ui]
-path = "framework/kosmo-ui"
+path = "framework/ui"
 layer = "F1"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-scratchpad]
-path = "framework/kosmo-scratchpad"
+path = "framework/scratchpad"
 layer = "F3"
 export = false
 pure-core = false
 publish = false
 
 [crates.kosmo-sdk]
-path = "framework/kosmo-sdk"
+path = "framework/sdk"
 layer = "F3"
 export = true
 facade = true

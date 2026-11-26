@@ -58,7 +58,7 @@ The crate documentation of both libraries has complete examples. `cargo test`
 runs one job on the controllable backend and a job on the host stub with a
 runner of its own. The example of a line converted, run with kalyx and read
 back into the display model is only compiled; the tests in
-`framework/kosmo-math-kalyx/tests/` run the same steps. Run the tests from
+`framework/math-kalyx/tests/` run the same steps. Run the tests from
 the repository root with:
 
 ```sh
@@ -326,12 +326,12 @@ request, and joins the worker; `HostStub::live_threads` is 0 afterwards.
 
 ## Requirements
 
-The tests are in `framework/kosmo-jobs` and `framework/kosmo-math-kalyx`: the
+The tests are in `framework/jobs` and `framework/math-kalyx`: the
 unit tests in the `tests` modules under each crate's `src/` (named here with
 their crate and module, such as `kosmo-jobs` `machine::tests::…`) and the
 integration tests in each crate's `tests/` (named with their crate and file).
 The tests of whether a result is current are the unit tests
-`kosmo-math-model` `version::tests::…` in `framework/kosmo-math-model`, and
+`kosmo-math-model` `version::tests::…` in `framework/math-model`, and
 the tests of the layout step are in `xtask/src/layout/tests.rs`.
 The integration tests of `kosmo-math-kalyx` run jobs on the host stub with
 the kalyx runner; those of `kosmo-jobs` use the controllable backend or the

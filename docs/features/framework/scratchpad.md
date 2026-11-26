@@ -271,7 +271,7 @@ history and of reuse, and finds them unchanged.
 
 ## Requirements
 
-The tests are in `framework/kosmo-scratchpad`: the unit tests in the `tests`
+The tests are in `framework/scratchpad`: the unit tests in the `tests`
 modules under `src/` (named here with their module, such as
 `scratchpad::tests::…`) and the integration tests in `tests/` (named with
 their file). The integration tests run jobs on the controllable backend of

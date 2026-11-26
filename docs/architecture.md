@@ -799,6 +799,15 @@ The repository tasks are the separate `xtask/` workspace, outside the product
 workspaces and without path dependencies. Layer identifiers, directory names
 and crate names are provisional.
 
+The directory of a crate is named after the crate without the prefix
+`kosmo-`, and a crate whose name does not start with the prefix has a
+directory of the same name: the framework core `kosmo-ui` lies in
+`framework/ui`, and the program `kosmo` in `desktop/kosmo`. Crate names keep
+the prefix because a published crate keeps its name on crates.io, where the
+names of all projects share one namespace; the name of its directory is not
+part of a published crate, so it needs no prefix. The layout step checks the
+last part of the path of every crate in the layout table.
+
 Crates of the repository depend on each other through `path` dependencies,
 only in these directions:
 
@@ -4020,14 +4029,14 @@ A component is a unit with its own role, contract and level.
 | --- | --- | --- | --- | --- |
 | Workspace base, layout and supply-chain checks | `xtask/` | Tool | A0 | `planned` |
 | Line-mode terminal frontend | `kosmo` | Frontend | A0 | [Line-mode terminal](features/desktop/line-mode-terminal.md); tests in `desktop/kosmo/src/` and `desktop/kosmo/tests/` |
-| One-line editing structure | `kosmo-math-model` | Data-structure core | A1 | [One-line editing](features/math/one-line-editing.md); tests in `framework/kosmo-math-model/src/` and `framework/kosmo-math-model/tests/` |
+| One-line editing structure | `kosmo-math-model` | Data-structure core | A1 | [One-line editing](features/math/one-line-editing.md); tests in `framework/math-model/src/` and `framework/math-model/tests/` |
 | Exact display | `kosmo-math-model`, `kosmo-math-kalyx` | Presentation | A0 | `planned` |
-| Formula conversion (linear text, range mapping, read-back) | `kosmo-math-kalyx` | Cross-project format | A1 | [Formula conversion](features/math/formula-conversion.md); tests in `framework/kosmo-math-kalyx/src/` and `framework/kosmo-math-kalyx/tests/` |
-| Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | [Job layer](features/framework/job-layer.md); tests in `framework/kosmo-jobs/src/`, `framework/kosmo-jobs/tests/`, `framework/kosmo-math-kalyx/src/runner/` and `framework/kosmo-math-kalyx/tests/` |
-| Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/kosmo-scratchpad/src/` and `framework/kosmo-scratchpad/tests/` |
-| SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/kosmo-sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
+| Formula conversion (linear text, range mapping, read-back) | `kosmo-math-kalyx` | Cross-project format | A1 | [Formula conversion](features/math/formula-conversion.md); tests in `framework/math-kalyx/src/` and `framework/math-kalyx/tests/` |
+| Job layer and protocol stub (kalyx and controllable backends) | `kosmo-jobs`, `kosmo-math-kalyx` | Cross-project protocol core | A1 | [Job layer](features/framework/job-layer.md); tests in `framework/jobs/src/`, `framework/jobs/tests/`, `framework/math-kalyx/src/runner/` and `framework/math-kalyx/tests/` |
+| Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/scratchpad/src/` and `framework/scratchpad/tests/` |
+| SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | `planned` |
-| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/kosmo-ui/src/` and `framework/kosmo-ui/tests/` |
+| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/ui/src/` and `framework/ui/tests/` |
 | Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
 | Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | `planned` |

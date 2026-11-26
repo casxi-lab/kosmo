@@ -199,7 +199,7 @@ same items, identities and versions.
 
 ## Requirements
 
-The tests are in `framework/kosmo-math-model`: the unit tests in the
+The tests are in `framework/math-model`: the unit tests in the
 `tests` modules under `src/` (named here with their module, such as
 `parse::tests::…`) and the integration tests in `tests/` (named with their
 file).

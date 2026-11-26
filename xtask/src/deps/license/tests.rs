@@ -181,9 +181,7 @@ fn the_license_of_a_kosmo_crate_is_mit() {
     });
     assert_eq!(
         found,
-        [
-            "framework/kosmo-ui/Cargo.toml: the license of a kosmo crate is MIT, not MIT OR Apache-2.0"
-        ]
+        ["framework/ui/Cargo.toml: the license of a kosmo crate is MIT, not MIT OR Apache-2.0"]
     );
     let found = problems_with(|model| {
         let render = model.pkg("framework", "kosmo-render@0.1.0-dev.1");
@@ -192,7 +190,7 @@ fn the_license_of_a_kosmo_crate_is_mit() {
     });
     assert_eq!(
         found,
-        ["framework/kosmo-render/Cargo.toml: has no license; the license of a kosmo crate is MIT"]
+        ["framework/render/Cargo.toml: has no license; the license of a kosmo crate is MIT"]
     );
     let found = problems_with(|model| {
         model.pkg("xtask", "xtask@0.1.0-dev.1").license = Some("Apache-2.0".to_string());
@@ -213,7 +211,7 @@ fn the_license_of_a_kosmo_crate_is_mit() {
 
 #[test]
 fn a_crate_with_font_assets_has_the_font_license_too() {
-    const FONT: &str = "framework/kosmo-render/assets/fonts/Math-Regular.otf";
+    const FONT: &str = "framework/render/assets/fonts/Math-Regular.otf";
     let with_font = |model: &mut Model| {
         model.files.insert(FONT.to_string(), "font".to_string());
     };
@@ -221,7 +219,7 @@ fn a_crate_with_font_assets_has_the_font_license_too() {
     assert_eq!(
         found,
         [format!(
-            "framework/kosmo-render/Cargo.toml: the license of a crate with font assets, such as {FONT}, is MIT AND OFL-1.1, not MIT"
+            "framework/render/Cargo.toml: the license of a crate with font assets, such as {FONT}, is MIT AND OFL-1.1, not MIT"
         )]
     );
     let found = problems_with(|model| {
@@ -231,7 +229,7 @@ fn a_crate_with_font_assets_has_the_font_license_too() {
     assert_eq!(
         found,
         [format!(
-            "framework/kosmo-render/Cargo.toml: has no license; the license of a crate with font assets, such as {FONT}, is MIT AND OFL-1.1"
+            "framework/render/Cargo.toml: has no license; the license of a crate with font assets, such as {FONT}, is MIT AND OFL-1.1"
         )]
     );
     let found = problems_with(|model| {
@@ -246,42 +244,40 @@ fn a_crate_with_font_assets_has_the_font_license_too() {
     });
     assert_eq!(
         found,
-        [
-            "framework/kosmo-ui/Cargo.toml: has no font asset, so its license is MIT, not MIT AND OFL-1.1"
-        ]
+        ["framework/ui/Cargo.toml: has no font asset, so its license is MIT, not MIT AND OFL-1.1"]
     );
 }
 
 #[test]
 fn font_assets_are_the_tracked_font_files_of_the_crate() {
     let tree = Tree::from_files(&[
-        ("framework/kosmo-render/Cargo.toml", ""),
-        ("framework/kosmo-render/assets/a.ttf", ""),
-        ("framework/kosmo-render/assets/b.OTF", ""),
-        ("framework/kosmo-render/assets/c.ttc", ""),
-        ("framework/kosmo-render/assets/d.woff", ""),
-        ("framework/kosmo-render/assets/e.Woff2", ""),
-        ("framework/kosmo-render/assets/OFL.txt", ""),
-        ("framework/kosmo-render/assets/ttf", ""),
-        ("framework/kosmo-render/src/woff2.rs", ""),
-        ("framework/kosmo-render/inner/Cargo.toml", ""),
-        ("framework/kosmo-render/inner/f.ttf", ""),
-        ("framework/kosmo-render-extra/g.ttf", ""),
+        ("framework/render/Cargo.toml", ""),
+        ("framework/render/assets/a.ttf", ""),
+        ("framework/render/assets/b.OTF", ""),
+        ("framework/render/assets/c.ttc", ""),
+        ("framework/render/assets/d.woff", ""),
+        ("framework/render/assets/e.Woff2", ""),
+        ("framework/render/assets/OFL.txt", ""),
+        ("framework/render/assets/ttf", ""),
+        ("framework/render/src/woff2.rs", ""),
+        ("framework/render/inner/Cargo.toml", ""),
+        ("framework/render/inner/f.ttf", ""),
+        ("framework/render-extra/g.ttf", ""),
         ("framework/h.ttf", ""),
     ]);
     assert_eq!(
-        font_assets(&tree, "framework/kosmo-render"),
+        font_assets(&tree, "framework/render"),
         [
-            "framework/kosmo-render/assets/a.ttf",
-            "framework/kosmo-render/assets/b.OTF",
-            "framework/kosmo-render/assets/c.ttc",
-            "framework/kosmo-render/assets/d.woff",
-            "framework/kosmo-render/assets/e.Woff2",
+            "framework/render/assets/a.ttf",
+            "framework/render/assets/b.OTF",
+            "framework/render/assets/c.ttc",
+            "framework/render/assets/d.woff",
+            "framework/render/assets/e.Woff2",
         ]
     );
     assert_eq!(
-        font_assets(&tree, "framework/kosmo-render/inner"),
-        ["framework/kosmo-render/inner/f.ttf"]
+        font_assets(&tree, "framework/render/inner"),
+        ["framework/render/inner/f.ttf"]
     );
 }
 

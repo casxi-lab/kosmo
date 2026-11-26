@@ -144,14 +144,14 @@ longer than the 4,096 bytes of one insertion. Nothing is inserted anywhere.
 - One-line input holds only characters. Two-dimensional templates are
   converted when two-dimensional editing adds them.
 - The tests read a copy of kalyx 0.1.0's answer vectors in
-  `framework/kosmo-math-kalyx/tests/data/`, whose README states its source and
+  `framework/math-kalyx/tests/data/`, whose README states its source and
   checksum. They check, by term, that each `ok` answer of the copy that fits
   one insertion is what the locked kalyx computes for its input, but not that
   the copy is byte for byte that version's file, nor its error cases.
 
 ## Requirements
 
-The tests are in `framework/kosmo-math-kalyx`: the unit tests in the `tests`
+The tests are in `framework/math-kalyx`: the unit tests in the `tests`
 modules under `src/` (named here with their module, such as
 `conversion::tests::…`) and the integration tests in `tests/` (named with
 their file), which read text with kalyx 0.1.0. The tests of the layout step

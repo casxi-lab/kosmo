@@ -116,7 +116,10 @@ attribute of a library root, do not. It checks:
 
 - the table: it parses, without unknown keys; layer identifiers are unique
   across workspaces; each crate's layer exists, its directory lies inside the
-  layer's workspace, and no two crates share a directory; `uses` names known
+  layer's workspace, and no two crates share a directory; the last part of
+  each crate's path is the crate name without the prefix `kosmo-`, or the
+  whole name when it does not start with the prefix, and a crate elsewhere
+  fails with the directory where it belongs; `uses` names known
   workspaces; a `provisional` condition is not empty; a facade is an export
   crate; no crate of a layer marked `publish = false` is publishable;
   `same-layer` lists crates of the same layer; `platform` lists at least one
@@ -314,11 +317,16 @@ from its checks: a pure-core crate depends only on pure-core crates, and no
 pure-core crate declares an external dependency. For an export crate of
 `display/` that is not pure core, review checks the crates it depends on.
 
-A change that adds a crate registers it in `layout.toml` with its directory,
-layer and marks, and with its platform categories when it is a library crate
-at the platform boundary, adds it to the `members` of its workspace root, and
-declares it in the root's `[workspace.dependencies]` when other crates depend
-on it.
+A change that adds a crate puts it in a directory of its workspace named
+after the crate without the prefix `kosmo-`, such as `framework/render` for
+a crate `kosmo-render`, or after the whole name when it does not start with
+the prefix: crate names keep the prefix for publishing on crates.io, and
+directories need not. The change registers the crate in `layout.toml` with
+its directory, layer and marks, and with its platform categories when it is
+a library crate at the platform boundary, adds its directory to the
+`members` of its workspace root, and declares it in the root's
+`[workspace.dependencies]`, under its name and with the path of its
+directory, when other crates depend on it.
 The first crate of a workspace also adds the workspace's root manifest,
 `Cargo.lock` and allowlist and adds the workspace to `WORKSPACES`.
 
@@ -608,7 +616,7 @@ used. kalyx 0.1.0 comes from crates.io too, and only the kalyx adapter crate
 `kosmo-math-kalyx` declares it, as the layout step checks. A change that moves
 kosmo to another kalyx version also replaces the copy of kalyx's answer
 vectors that
-[`framework/kosmo-math-kalyx/tests/data/README.md`](framework/kosmo-math-kalyx/tests/data/README.md)
+[`framework/math-kalyx/tests/data/README.md`](framework/math-kalyx/tests/data/README.md)
 describes; no step of the check compares the copy byte for byte with the
 package.
 

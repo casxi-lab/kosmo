@@ -207,7 +207,7 @@ fn rejects_a_requirement_that_is_not_exact() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-render/Cargo.toml: [dependencies] foo: the requirement ^1.0.0 is not exact (=x.y.z)"
+            "framework/render/Cargo.toml: [dependencies] foo: the requirement ^1.0.0 is not exact (=x.y.z)"
         ]
     );
 }
@@ -472,7 +472,7 @@ fn rejects_resolved_edges_against_the_workspace_directions() {
         model.add(
             "framework",
             Pkg::path(
-                &format!("{ROOT}/display/kosmo-server"),
+                &format!("{ROOT}/display/server"),
                 "kosmo-server",
                 "0.1.0-dev.1",
             ),
@@ -485,14 +485,14 @@ fn rejects_resolved_edges_against_the_workspace_directions() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-ui/Cargo.toml: kosmo-server: kosmo-server is not an export crate of the workspace display"
+            "framework/ui/Cargo.toml: kosmo-server: kosmo-server is not an export crate of the workspace display"
         ]
     );
     let found = problems_with(|model| {
         model.add(
             "desktop",
             Pkg::path(
-                &format!("{ROOT}/display/kosmo-types"),
+                &format!("{ROOT}/display/types"),
                 "kosmo-types",
                 "0.1.0-dev.1",
             ),
@@ -505,7 +505,7 @@ fn rejects_resolved_edges_against_the_workspace_directions() {
     assert_eq!(
         found,
         [
-            "desktop/kosmo-calc/Cargo.toml: kosmo-types: crates of desktop may not depend on crates of display"
+            "desktop/calc/Cargo.toml: kosmo-types: crates of desktop may not depend on crates of display"
         ]
     );
 }
@@ -518,22 +518,22 @@ pub fn desktop_through_a_facade() -> Model {
     let mut model = fixture::valid();
     model.append(
         "layout.toml",
-        "\n[crates.kosmo-sdk]\npath = \"framework/kosmo-sdk\"\nlayer = \"F3\"\nexport = true\nfacade = true\npure-core = false\npublish = false\n",
+        "\n[crates.kosmo-sdk]\npath = \"framework/sdk\"\nlayer = \"F3\"\nexport = true\nfacade = true\npure-core = false\npublish = false\n",
     );
     let on_ui = Dep::new("kosmo-ui@0.1.0-dev.1", "=0.1.0-dev.1");
     model.add(
         "framework",
-        Pkg::member("framework/kosmo-sdk", "kosmo-sdk").dep(on_ui.clone()),
+        Pkg::member("framework/sdk", "kosmo-sdk").dep(on_ui.clone()),
     );
     let at = |dir: &str| format!("{ROOT}/{dir}");
     for pkg in [
-        Pkg::path(&at("framework/kosmo-sdk"), "kosmo-sdk", "0.1.0-dev.1").dep(on_ui),
-        Pkg::path(&at("framework/kosmo-ui"), "kosmo-ui", "0.1.0-dev.1")
+        Pkg::path(&at("framework/sdk"), "kosmo-sdk", "0.1.0-dev.1").dep(on_ui),
+        Pkg::path(&at("framework/ui"), "kosmo-ui", "0.1.0-dev.1")
             .dep(Dep::new("kosmo-render@0.1.0-dev.1", "=0.1.0-dev.1"))
             .dep(Dep::new("kosmo-types@0.1.0-dev.1", "=0.1.0-dev.1")),
-        Pkg::path(&at("framework/kosmo-render"), "kosmo-render", "0.1.0-dev.1")
+        Pkg::path(&at("framework/render"), "kosmo-render", "0.1.0-dev.1")
             .dep(Dep::new("foo@1.0.0", "=1.0.0").features(false, &["x"])),
-        Pkg::path(&at("display/kosmo-types"), "kosmo-types", "0.1.0-dev.1"),
+        Pkg::path(&at("display/types"), "kosmo-types", "0.1.0-dev.1"),
         Pkg::crates_io("foo", "1.0.0")
             .resolved(&["x"])
             .dep(Dep::new("bar@2.1.0", "^2.1")),
@@ -591,7 +591,7 @@ fn crates_of_another_workspace_are_reached_through_its_export_crates() {
     assert_eq!(
         direct.problems(),
         [
-            "desktop/kosmo-calc/Cargo.toml: kosmo-ui: kosmo-ui is not an export crate of the workspace framework"
+            "desktop/calc/Cargo.toml: kosmo-ui: kosmo-ui is not an export crate of the workspace framework"
         ]
     );
 }
@@ -605,7 +605,7 @@ fn accepts_only_exact_requirements_in_every_form() {
         assert_eq!(
             found,
             [format!(
-                "framework/kosmo-render/Cargo.toml: [dependencies] foo: the requirement {req} is not exact (=x.y.z)"
+                "framework/render/Cargo.toml: [dependencies] foo: the requirement {req} is not exact (=x.y.z)"
             )]
         );
     }
@@ -619,7 +619,7 @@ fn requirements_of_dev_build_and_tool_dependencies_are_exact_too() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-ui/Cargo.toml: [dev-dependencies] qa: the requirement ^0.3.0 is not exact (=x.y.z)"
+            "framework/ui/Cargo.toml: [dev-dependencies] qa: the requirement ^0.3.0 is not exact (=x.y.z)"
         ]
     );
     let found = problems_with(|model| {
@@ -631,7 +631,7 @@ fn requirements_of_dev_build_and_tool_dependencies_are_exact_too() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-ui/Cargo.toml: [build-dependencies] qa: the requirement ^0.3.0 is not exact (=x.y.z)"
+            "framework/ui/Cargo.toml: [build-dependencies] qa: the requirement ^0.3.0 is not exact (=x.y.z)"
         ]
     );
     let found = problems_with(|model| {
@@ -710,7 +710,7 @@ fn checks_the_directions_of_the_resolved_graph_for_each_target() {
         assert_eq!(
             found,
             [
-                "framework/kosmo-math-model/Cargo.toml: kosmo-ui (aarch64-apple-darwin): a crate of layer F0 may not depend on kosmo-ui of the higher layer F1"
+                "framework/math-model/Cargo.toml: kosmo-ui (aarch64-apple-darwin): a crate of layer F0 may not depend on kosmo-ui of the higher layer F1"
             ]
         );
     }
@@ -725,14 +725,14 @@ fn rejects_a_cycle_in_the_resolved_graph() {
             .push(Dep::new("kosmo-jobs@0.1.0-dev.1", "=0.1.0-dev.1").kind("dev"));
         model.edit(
             "layout.toml",
-            "path = \"framework/kosmo-math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\n",
-            "path = \"framework/kosmo-math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\nsame-layer = [\"kosmo-jobs\"]\n",
+            "path = \"framework/math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\n",
+            "path = \"framework/math-model\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\nsame-layer = [\"kosmo-jobs\"]\n",
         );
     });
     assert_eq!(
         found,
         [
-            "framework/kosmo-jobs/Cargo.toml: the resolved internal dependency graph has a cycle: kosmo-jobs -> kosmo-math-model -> kosmo-jobs"
+            "framework/jobs/Cargo.toml: the resolved internal dependency graph has a cycle: kosmo-jobs -> kosmo-math-model -> kosmo-jobs"
         ]
     );
 }
@@ -886,15 +886,13 @@ fn every_direct_dependency_has_an_allow_entry() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-render/Cargo.toml: [dependencies] foo =1.0.0 has no allow entry in layout.toml"
+            "framework/render/Cargo.toml: [dependencies] foo =1.0.0 has no allow entry in layout.toml"
         ]
     );
     let found = problems_with(|model| model.edit("layout.toml", QA_ALLOWED, ""));
     assert_eq!(
         found,
-        [
-            "framework/kosmo-ui/Cargo.toml: [dev-dependencies] qa =0.3.0 has no allow entry in layout.toml"
-        ]
+        ["framework/ui/Cargo.toml: [dev-dependencies] qa =0.3.0 has no allow entry in layout.toml"]
     );
 }
 
@@ -998,7 +996,7 @@ fn allow_entries_cover_the_dependencies_of_every_target() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-render/Cargo.toml: [target.'cfg(target_os = \"macos\")'.dependencies] mac-only =1.0.0 (aarch64-apple-darwin) has no allow entry in layout.toml"
+            "framework/render/Cargo.toml: [target.'cfg(target_os = \"macos\")'.dependencies] mac-only =1.0.0 (aarch64-apple-darwin) has no allow entry in layout.toml"
         ]
     );
 }
@@ -1022,7 +1020,7 @@ fn optional_dependencies_count_with_all_features() {
     assert_problems(
         &optional_dependency().problems(),
         &[
-            "framework/kosmo-render/Cargo.toml: [dependencies] opt =1.0.0 has no allow entry in layout.toml",
+            "framework/render/Cargo.toml: [dependencies] opt =1.0.0 has no allow entry in layout.toml",
             "framework/Cargo.lock: opt 1.0.0 is not in framework/allowlist.toml",
         ],
     );
@@ -1222,8 +1220,8 @@ fn two_declarations_without_entries_are_not_paired_with_one_entry() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-render/Cargo.toml: [dependencies] foo =1.0.0 has no allow entry in layout.toml",
-            "framework/kosmo-render/Cargo.toml: [dev-dependencies] foo =1.0.0 has no allow entry in layout.toml",
+            "framework/render/Cargo.toml: [dependencies] foo =1.0.0 has no allow entry in layout.toml",
+            "framework/render/Cargo.toml: [dev-dependencies] foo =1.0.0 has no allow entry in layout.toml",
             "layout.toml: crates.kosmo-render: allows foo =1.0.0 in [build-dependencies], which kosmo-render does not depend on for aarch64-unknown-linux-gnu or aarch64-apple-darwin",
         ]
     );
@@ -1245,7 +1243,7 @@ fn a_dependency_and_an_entry_of_other_names_are_not_paired() {
     assert_eq!(
         found,
         [
-            "framework/kosmo-render/Cargo.toml: [dependencies] baz =1.0.0 has no allow entry in layout.toml",
+            "framework/render/Cargo.toml: [dependencies] baz =1.0.0 has no allow entry in layout.toml",
             "layout.toml: crates.kosmo-render: allows foo =1.0.0, which kosmo-render does not depend on for aarch64-unknown-linux-gnu or aarch64-apple-darwin",
         ]
     );
@@ -2240,7 +2238,7 @@ fn a_directory_beside_the_repository_that_extends_its_name_is_outside() {
     let found = problems_with(|model| {
         model.add(
             "framework",
-            Pkg::path(&format!("{ROOT}display/kosmo-types"), "beside", "0.1.0"),
+            Pkg::path(&format!("{ROOT}display/types"), "beside", "0.1.0"),
         );
         model
             .pkg("framework", "kosmo-render@0.1.0-dev.1")
@@ -2250,7 +2248,7 @@ fn a_directory_beside_the_repository_that_extends_its_name_is_outside() {
     assert_eq!(
         found,
         [
-            "framework/Cargo.lock: beside 0.1.0 is a path package outside the repository (../kosmodisplay/kosmo-types/Cargo.toml)"
+            "framework/Cargo.lock: beside 0.1.0 is a path package outside the repository (../kosmodisplay/types/Cargo.toml)"
         ]
     );
 }

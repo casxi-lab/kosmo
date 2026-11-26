@@ -471,7 +471,7 @@ wall-clock time; review checks these, as the
 
 ## Requirements
 
-The tests are in `framework/kosmo-ui`: the unit tests in the `tests`
+The tests are in `framework/ui`: the unit tests in the `tests`
 modules under `src/` (named here with their module, such as
 `tree::tests::…`), the random rounds in `src/random.rs`, and the
 integration tests in `tests/` (named with their file), which run a one-line
