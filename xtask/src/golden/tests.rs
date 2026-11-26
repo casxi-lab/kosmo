@@ -561,6 +561,34 @@ fn a_directory_with_another_file_gives_no_manifest() {
 }
 
 #[test]
+fn verify_fails_when_any_golden_differs() {
+    assert_eq!(verdict(6, 0), Ok(()));
+    assert_eq!(
+        verdict(6, 1),
+        Err("golden: 1 of 6 goldens differ from MANIFEST".to_string())
+    );
+}
+
+#[test]
+fn a_test_that_runs_only_under_a_cfg_is_reported() {
+    let message = |name: &str| {
+        format!(
+            "{TESTS}: compiles `{name}` only under a `cfg`; the tests of the goldens run on every target"
+        )
+    };
+    let attribute = "#[cfg_attr(target_os = \"linux\", ignore)]";
+    let tree = valid_with(
+        "#[test]\nfn draws()",
+        &format!("#[test]\n{attribute}\nfn draws()"),
+    );
+    assert_eq!(problems(&tree).0, [message("draws")]);
+    let tree = valid_with("#[test]\nfn draws()", "#[cfg(any())]\n#[test]\nfn draws()");
+    assert_eq!(problems(&tree).0, [message("draws")]);
+    let tree = valid_with("pub mod support;\n", "#![cfg(any())]\n\npub mod support;\n");
+    assert_eq!(problems(&tree).0, [message("crate")]);
+}
+
+#[test]
 fn verify_compares_each_golden_drawn_or_listed_by_name() {
     let of = |name: &str| digest(&bytes_of(name));
     let drawn: BTreeMap<String, String> = [

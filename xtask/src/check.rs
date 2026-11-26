@@ -376,6 +376,21 @@ mod tests {
     ];
 
     #[test]
+    fn the_test_step_runs_no_ignored_test() {
+        let step = steps()
+            .into_iter()
+            .find(|step| step.name == "test")
+            .expect("there is a test step");
+        let Action::Commands(commands) = step.action else {
+            panic!("the test step runs Cargo");
+        };
+        for cmd in &commands {
+            let ignored = |arg: &String| arg == "--ignored" || arg == "--include-ignored";
+            assert!(!cmd.args.iter().any(ignored), "{}", cmd.shown());
+        }
+    }
+
+    #[test]
     fn steps_run_in_the_documented_order() {
         let names: Vec<&str> = steps().iter().map(|step| step.name).collect();
         assert_eq!(names, ORDER);

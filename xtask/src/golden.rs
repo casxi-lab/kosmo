@@ -9,8 +9,9 @@
 //! and `-`. A test of the crate refers to a golden by calling
 //! `matches_golden` with its name as a string literal. The crate's
 //! integration test `tests/golden.rs` holds the ignored tests
-//! `write_goldens` and `redraw_goldens`, which the command runs, and no
-//! other ignored test.
+//! `write_goldens` and `redraw_goldens`, which the command runs, no other
+//! ignored test, and no `cfg` or `cfg_attr` attribute on itself, its
+//! functions or its modules, so that its tests run on every target.
 //!
 //! The goldens step reads only tracked files and does not run Cargo. It
 //! reports every problem it finds, one per line as `<path>[:<line>]:
@@ -213,24 +214,36 @@ fn references(tree: &Tree, dir: &str) -> Vec<(String, usize, String)> {
 }
 
 /// The names of the functions of the Rust file `text` with both `#[test]`
-/// and `#[ignore]`; none when it does not parse.
-fn ignored_tests(text: &str) -> BTreeSet<String> {
+/// and `#[ignore]`, and the names of its functions and modules with a `cfg`
+/// or `cfg_attr` attribute, `crate` standing for the file itself; none when
+/// it does not parse.
+fn ignored_tests(text: &str) -> (BTreeSet<String>, BTreeSet<String>) {
     let Ok(file) = syn::parse_file(text) else {
-        return BTreeSet::new();
+        return Default::default();
     };
-    file.items
-        .iter()
-        .filter_map(|item| match item {
-            syn::Item::Fn(function)
-                if ["test", "ignore"]
-                    .iter()
-                    .all(|name| function.attrs.iter().any(|attr| attr.path().is_ident(name))) =>
-            {
-                Some(function.sig.ident.to_string())
-            }
-            _ => None,
-        })
-        .collect()
+    let has = |attrs: &[syn::Attribute], names: &[&str]| {
+        attrs
+            .iter()
+            .any(|attr| names.iter().any(|name| attr.path().is_ident(name)))
+    };
+    let (mut ignored, mut conditional) = (BTreeSet::new(), BTreeSet::new());
+    if has(&file.attrs, &["cfg", "cfg_attr"]) {
+        conditional.insert("crate".to_string());
+    }
+    for item in &file.items {
+        let (name, attrs) = match item {
+            syn::Item::Fn(function) => (function.sig.ident.to_string(), &function.attrs),
+            syn::Item::Mod(module) => (module.ident.to_string(), &module.attrs),
+            _ => continue,
+        };
+        if has(attrs, &["cfg", "cfg_attr"]) {
+            conditional.insert(name.clone());
+        }
+        if matches!(item, syn::Item::Fn(_)) && has(attrs, &["test"]) && has(attrs, &["ignore"]) {
+            ignored.insert(name);
+        }
+    }
+    (ignored, conditional)
 }
 
 fn scan(stream: TokenStream, found: &mut dyn FnMut(usize, String)) {
@@ -345,7 +358,13 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
         }
     }
     let tests = format!("{}/tests/{TEST}.rs", set.dir);
-    let ignored = tree.text(&tests).map(ignored_tests).unwrap_or_default();
+    let (ignored, conditional) = tree.text(&tests).map(ignored_tests).unwrap_or_default();
+    for name in &conditional {
+        let message = format!(
+            "compiles `{name}` only under a `cfg`; the tests of the goldens run on every target"
+        );
+        problems.add(&tests, 0, message);
+    }
     for writer in [WRITE, REDRAW] {
         if !ignored.contains(writer) {
             let message =
@@ -494,11 +513,17 @@ pub fn verify(root: &Path) -> ExitCode {
         differ += differing;
         Ok(())
     });
-    match result {
-        Ok(()) if differ > 0 => finish(Err(format!(
+    finish(result.and_then(|()| verdict(compared, differ)))
+}
+
+/// The outcome of `--verify` when `differ` of the `compared` goldens differ.
+fn verdict(compared: usize, differ: usize) -> Result<(), String> {
+    if differ == 0 {
+        Ok(())
+    } else {
+        Err(format!(
             "golden: {differ} of {compared} goldens differ from MANIFEST"
-        ))),
-        other => finish(other),
+        ))
     }
 }
 

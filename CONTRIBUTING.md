@@ -380,7 +380,9 @@ by line number:
   digits, two spaces and a name, a name listed twice and lines out of order;
 - a call of `matches_golden` with a name that `MANIFEST` does not list;
 - a crate with goldens whose `tests/golden.rs` lacks the ignored tests
-  `write_goldens` and `redraw_goldens`, or ignores another test;
+  `write_goldens` and `redraw_goldens`, ignores another test, or has a
+  `cfg` or `cfg_attr` attribute on itself, a function or a module, since
+  the tests of the goldens run on every target;
 - a directory `tests/golden` of a crate that `cargo xtask golden` does not
   write.
 
