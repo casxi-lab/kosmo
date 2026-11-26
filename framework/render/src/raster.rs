@@ -38,11 +38,18 @@ use crate::list::{DisplayList, FontId, GlyphId, Path};
 /// - [`FillPath`](crate::Command::FillPath): the points of the path's
 ///   subpaths, each closed by a straight segment to its start, whose
 ///   winding number is not zero.
-/// - [`StrokePath`](crate::Command::StrokePath): the points within half the
-///   width of the path's segments, with the [`Join`](crate::Join) at every
-///   joint, also where a closed subpath ends, and the [`Cap`](crate::Cap)
-///   at both ends of each open subpath; the rasterizer computes the
-///   outline of the stroke.
+/// - [`StrokePath`](crate::Command::StrokePath): the area that a line of
+///   the width, centered on the path and perpendicular to it, sweeps along
+///   each segment, with the [`Join`](crate::Join) at every joint, also
+///   where a closed subpath ends, and the [`Cap`](crate::Cap) at both ends
+///   of each open subpath. A miter join extends the outer edges until they
+///   meet, or is a bevel join where they would meet farther than 4 half
+///   widths from the joint; a round join adds a circle of the half width
+///   around the joint; a bevel join adds the straight edge between the
+///   outer corners. A butt cap ends at the end point, a round cap adds a
+///   half circle of the half width, and a square cap goes on by the half
+///   width. A stroke without width covers nothing. The rasterizer computes
+///   the outline of the stroke.
 /// - [`Glyphs`](crate::Command::Glyphs): each glyph's origin (x, y), with
 ///   the offsets of the enclosing groups added, is placed as
 ///   [`place_glyph`] states: x to the nearest quarter pixel and y to the

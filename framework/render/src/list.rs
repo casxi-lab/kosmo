@@ -187,24 +187,22 @@ impl Path {
 /// How a stroke joins two segments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Join {
-    /// The outer edges meet in a point, or are cut off as by
-    /// [`Join::Bevel`] where the point would lie farther than 4 times the
-    /// half width from the joint.
+    /// A miter join, as [`Rasterizer`](crate::Rasterizer) states.
     Miter,
-    /// A circular arc of the half width around the joint.
+    /// A round join, as [`Rasterizer`](crate::Rasterizer) states.
     Round,
-    /// A straight edge between the outer corners.
+    /// A bevel join, as [`Rasterizer`](crate::Rasterizer) states.
     Bevel,
 }
 
 /// How a stroke ends an open subpath.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Cap {
-    /// The stroke ends at the end point.
+    /// A butt cap, as [`Rasterizer`](crate::Rasterizer) states.
     Butt,
-    /// A half circle of the half width around the end point.
+    /// A round cap, as [`Rasterizer`](crate::Rasterizer) states.
     Round,
-    /// A half square: the stroke goes on by the half width.
+    /// A square cap, as [`Rasterizer`](crate::Rasterizer) states.
     Square,
 }
 
