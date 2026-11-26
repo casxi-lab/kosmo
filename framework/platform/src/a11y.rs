@@ -203,6 +203,21 @@ mod tests {
     }
 
     #[test]
+    fn the_focus_is_that_of_the_last_update() {
+        let mut first = update(
+            vec![(1, node(&[2, 3])), (2, node(&[])), (3, node(&[]))],
+            Some(1),
+        );
+        first.focus = NodeId(2);
+        let mut tree = AccessibilityTree::new(first).unwrap();
+        assert_eq!(tree.focus(), NodeId(2));
+        let mut moved = update(vec![(3, node(&[]))], None);
+        moved.focus = NodeId(3);
+        tree.apply(moved).unwrap();
+        assert_eq!(tree.focus(), NodeId(3));
+    }
+
+    #[test]
     fn a_rejected_update_leaves_the_tree_as_it_was() {
         let mut tree = three();
         let before = tree.clone();
