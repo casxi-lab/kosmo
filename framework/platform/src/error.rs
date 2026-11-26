@@ -18,7 +18,8 @@ pub enum PlatformError {
     /// earlier than the clock or a first tree update without the whole
     /// tree.
     InvalidArgument,
-    /// The surface's buffer is presented and not given back yet.
+    /// The surface's buffer is presented and not given back yet, or, for
+    /// the test hooks, a fault already waits at the port.
     Busy,
     /// The operation would pass one of the bounds of the interface.
     Exhausted,
