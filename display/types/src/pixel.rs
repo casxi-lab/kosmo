@@ -13,6 +13,10 @@
 /// `f32` exactly, so every buffer lies within both.
 pub const MAX_BUFFER_SIDE: u32 = 8_192;
 
+// The side limit stays within the raster library's `u16` sizes and the 2^18
+// pixels whose positions convert to `f32` exactly.
+const _: () = assert!(MAX_BUFFER_SIDE <= u16::MAX as u32 && MAX_BUFFER_SIDE <= 1 << 18);
+
 /// The most bytes that a buffer holds, its stride times its height: 2^26,
 /// 64 MiB. A 3840 by 2160 buffer of four bytes per pixel holds 33,177,600.
 pub const MAX_BUFFER_BYTES: u32 = 1 << 26;
@@ -213,6 +217,12 @@ mod tests {
         );
         assert_eq!(
             BufferDesc::new(u32::MAX, 1, u32::MAX, PixelFormat::Rgb565),
+            Err(BufferError::SideTooLong)
+        );
+        // The limit is 8,192 pixels.
+        assert!(BufferDesc::new(8_192, 1, 32_768, PixelFormat::Rgba8Premul).is_ok());
+        assert_eq!(
+            BufferDesc::new(8_193, 1, 32_772, PixelFormat::Rgba8Premul),
             Err(BufferError::SideTooLong)
         );
     }

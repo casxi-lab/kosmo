@@ -282,6 +282,18 @@ mod tests {
     }
 
     #[test]
+    fn regions_of_buffers_of_another_size_are_not_equal() {
+        let other = Damage::new(BufferDesc::new(32, 48, 128, PixelFormat::Rgba8Premul).unwrap());
+        assert_ne!(damage(), other);
+        let (mut first, mut second) = (damage(), other);
+        first.add(1, 1, 2, 2);
+        second.add(1, 1, 2, 2);
+        // The same rectangles, in buffers of another width.
+        assert_eq!(first.rects(), second.rects());
+        assert_ne!(first, second);
+    }
+
+    #[test]
     fn the_same_rectangles_in_the_same_order_give_the_same_region() {
         let fill = |region: &mut Damage| {
             for i in 0..40 {
