@@ -1,4 +1,4 @@
-use kosmo_render::{Color, Command};
+use kosmo_render::{Color, Command, MAX_COMMANDS};
 use kosmo_types::{BufferDesc, PixelFormat};
 
 use super::*;
@@ -7,11 +7,12 @@ use crate::hit::LayoutBox;
 use crate::testing::TestPort;
 use crate::tree::{Key, Kind, View};
 
-/// A control that fills its box with a shade of red, draws nothing, or
-/// misuses groups.
+/// A control that fills its box with a shade of red, fills it a number of
+/// times, draws nothing, or misuses groups.
 #[derive(Clone, Debug, PartialEq)]
 enum Painter {
     Fill(u8),
+    Many(usize),
     Nothing,
     Pops,
     Opens,
@@ -44,6 +45,14 @@ impl Control<Painting> for Painter {
                 rect: Rect::new(Point::default(), cx.size()),
                 color: Color::opaque(shade, 0, 0),
             }),
+            Painter::Many(times) => {
+                for _ in 0..times {
+                    cx.draw(Command::FillRect {
+                        rect: Rect::new(Point::default(), cx.size()),
+                        color: Color::opaque(1, 0, 0),
+                    });
+                }
+            }
             Painter::Nothing => {}
             Painter::Pops => cx.draw(Command::PopClip),
             Painter::Opens => cx.draw(Command::PushClip {
@@ -259,5 +268,22 @@ fn a_control_ends_only_the_groups_it_starts() {
     assert_eq!(
         paint(&tree, &layout(&boxes(ids)), &damage(&[(0, 0, 100, 80)])),
         Err(PaintError::List(ListError::UnclosedClip))
+    );
+}
+
+/// The group around a control's commands counts toward the limit of the
+/// display list: the start of the root's group and its 16,383 commands
+/// fill the list, and the end of the group is refused.
+#[test]
+fn the_groups_count_toward_the_limit_of_the_list() {
+    let (tree, ids) = build([
+        Painter::Many(MAX_COMMANDS - 1),
+        Painter::Nothing,
+        Painter::Nothing,
+        Painter::Nothing,
+    ]);
+    assert_eq!(
+        paint(&tree, &layout(&boxes(ids)), &damage(&[(0, 0, 100, 80)])),
+        Err(PaintError::List(ListError::TooManyCommands))
     );
 }

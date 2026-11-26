@@ -55,6 +55,11 @@ struct Open {
 /// first command, so a control that draws nothing adds no group of its
 /// own; the group of a box's children starts with its first child that is
 /// visible in the damage, and holds no command when none of them draws.
+/// Each control that draws adds a group of two commands around its
+/// commands, and each box with a child visible in the damage adds a group
+/// of two around its children; these count toward the limits of the
+/// display list, and a frame beyond them makes the pass return
+/// [`PaintError::List`].
 ///
 /// The pass reads only its input. It returns an error, and no list, when a
 /// visible box is out of preorder, when a position does not fit, when a box
