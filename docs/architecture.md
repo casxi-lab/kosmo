@@ -14,14 +14,16 @@ job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, the
+history and reuse, the SDK facade `kosmo-sdk`, which re-exports them,
+display lists, the renderer interface, the rasterizer on vello_cpu and the
 wrapper of transcendental functions in `kosmo-render`, part
 of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
 focus generation and epoch, the keyboard event records, pixel formats, buffer
 descriptions with the conversion of pixels between them, and damage regions,
 and part of the framework core in `kosmo-ui`: the control tree, the event,
-update and view passes of a round, result slots, timers, dispatch with the
-focus check, the minimal key map and hit testing;
+update and view passes of a round, the drawing pass, which rounds do not run
+yet, result slots, timers, dispatch with the focus check, the minimal key map
+and hit testing;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -1520,11 +1522,19 @@ pub trait Rasterizer {
 - Without `text`, vello_cpu reads no fonts. Glyph outlines come from skrifa, and
   vello_cpu fills their coverage through `fill_coverage`, as it draws shapes.
 - Partial redraws use the library's default drawing, with which redrawing only
-  the update region gives the same bytes as redrawing the whole frame.
+  the update region gives the same bytes as redrawing the whole frame:
+  `kosmo-render` records the frame once and rasterizes each rectangle of the
+  update region as a cut-out of it. A render context of only the rectangle's
+  size would not give the same bytes, because the `u8` pipeline rounds a
+  source that is not opaque differently inside a shape and near its edges,
+  and which pixels count as near the edges depends on where the context
+  starts.
 - The SIMD level is given explicitly through vello_cpu's `RenderSettings` as
   Neon, the baseline common to the target platforms, instead of the default,
-  which detects the level at run time. Conversion between pixel formats does not
-  use library functions that detect the level themselves; the shared [conversion
+  which detects the level at run time; on another architecture, which is not
+  a target platform, it is the compile-time baseline of the target.
+  Conversion between pixel formats does not use library functions that detect
+  the level themselves; the shared [conversion
   function](#pixel-formats-and-buffers) converts.
 - vello_cpu's sizes are `u16`, so a buffer is at most 65,535 pixels wide and
   high, and the [buffer limit](#pixel-formats-and-buffers) lies within that.
