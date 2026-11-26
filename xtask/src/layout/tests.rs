@@ -3852,6 +3852,34 @@ fn the_files_of_test_modules_are_test_code() {
 }
 
 #[test]
+fn files_that_tests_bring_in_by_path_are_test_code() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/jobs/src/lib.rs",
+            "#[cfg(test)]\n#[path = \"fixtures/clock.rs\"]\nmod clock;\n#[test]\nfn waits() {\n    include!(\"waits.rs\");\n}\n",
+        );
+        for name in ["fixtures/clock.rs", "waits.rs"] {
+            files.insert(
+                format!("framework/jobs/src/{name}"),
+                "std::thread::sleep(core::time::Duration::ZERO);\n".to_string(),
+            );
+        }
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(
+                "framework/jobs/src/fixtures/clock.rs",
+                1,
+                "std::thread::sleep"
+            ),
+            clock_read("framework/jobs/src/waits.rs", 1, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
 fn test_functions_and_cfg_conditions_with_test_are_test_code() {
     let lib = "framework/jobs/src/lib.rs";
     let found = problems_with(|files| {

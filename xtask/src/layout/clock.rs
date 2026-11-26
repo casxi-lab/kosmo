@@ -17,7 +17,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 
-use super::{Index, Problems, platform, resolve, source};
+use super::source::{self, is_punct};
+use super::{Index, Problems, platform, resolve};
 use crate::repo::{self, Tree};
 
 /// The crate whose whole `src/` is test support.
@@ -62,6 +63,9 @@ type Lines = Vec<(usize, String)>;
 /// modules and Rust files that it declares or includes.
 struct Read {
     stream: TokenStream,
+    /// Whether the text holds `sleep` or `now`, without which no use is
+    /// found.
+    names: bool,
     tests: Vec<(usize, usize)>,
     brings_in: Vec<source::SourcePath>,
 }
@@ -104,15 +108,7 @@ fn check_crate(tree: &Tree, dir: &str, all: bool, problems: &mut Problems) {
         let Ok(stream) = source::tokens(text) else {
             continue;
         };
-        let stem = super::stem(path);
-        let mut brings_in = source::declared_modules(stream.clone(), stem);
-        let mut paths = Vec::new();
-        source::source_paths(stream.clone(), stem, &mut paths);
-        brings_in.extend(
-            paths
-                .into_iter()
-                .filter(|found| found.kind == source::Kind::Code),
-        );
+        let brings_in = source::code_files(stream.clone(), super::stem(path));
         let mut tests = Vec::new();
         test_lines(stream.clone(), &mut tests);
         let under_tests = TEST_DIRS
@@ -125,6 +121,7 @@ fn check_crate(tree: &Tree, dir: &str, all: bool, problems: &mut Problems) {
             path.to_string(),
             Read {
                 stream,
+                names: text.contains("sleep") || text.contains("now"),
                 tests,
                 brings_in,
             },
@@ -155,7 +152,7 @@ fn check_crate(tree: &Tree, dir: &str, all: bool, problems: &mut Problems) {
     }
     for (path, read) in &reads {
         let whole = test_files.contains(path);
-        if whole || !read.tests.is_empty() {
+        if read.names && (whole || !read.tests.is_empty()) {
             for hit in platform::clock_reads(read.stream.clone()) {
                 if whole || read.in_test(hit.line) {
                     report(path, hit.line, &hit.item, problems);
@@ -172,10 +169,6 @@ fn report(path: &str, line: usize, item: &str, problems: &mut Problems) {
     problems.insert(format!(
         "{path}:{line}: {item} in test code; tests take time from an injected clock"
     ));
-}
-
-fn is_punct(tree: Option<&TokenTree>, char: char) -> bool {
-    source::is_punct(tree, char)
 }
 
 /// The attribute brackets at `at`, after `#` or `#!`, and the index after

@@ -122,14 +122,15 @@ pub fn source_paths(stream: TokenStream, stem: Option<&str>, found: &mut Vec<Sou
     found.extend(all.into_iter().filter(|path| path.kind != Kind::Module));
 }
 
-/// The modules that `stream`, the tokens of a file with `stem` as for
-/// [`source_paths`], declares with `mod name;` at any depth, each with the
-/// files that rustc may read it from: `name.rs` and `name/mod.rs` in each
+/// The Rust code that `stream`, the tokens of a file with `stem` as for
+/// [`source_paths`], brings in at any depth: the literal paths of Rust
+/// code, and the modules declared with `mod name;`, each with the files
+/// that rustc may read it from, `name.rs` and `name/mod.rs` in each
 /// directory that the module around it may have.
-pub fn declared_modules(stream: TokenStream, stem: Option<&str>) -> Vec<SourcePath> {
+pub fn code_files(stream: TokenStream, stem: Option<&str>) -> Vec<SourcePath> {
     let mut all = Vec::new();
     scan(stream, &[], stem, &mut all);
-    all.retain(|path| path.kind == Kind::Module);
+    all.retain(|path| matches!(path.kind, Kind::Code | Kind::Module));
     all
 }
 
