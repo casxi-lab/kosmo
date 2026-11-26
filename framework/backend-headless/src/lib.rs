@@ -18,8 +18,9 @@
 //!   queues [`PlatformEvent::Configure`] with its size and
 //!   [`PlatformEvent::FocusIn`] with the epoch [`HEADLESS_EPOCH`] and a
 //!   focus generation that counts from 1, so input needs no focus of its
-//!   own. Destroying a surface drops the events that the backend queued for
-//!   it; injected events stay.
+//!   own. Each surface of the role `Main` gets its own `FocusIn`; the
+//!   backend does not move focus between them. Destroying a surface drops
+//!   the events that the backend queued for it; injected events stay.
 //! - Each surface has one buffer. [`Presenter::present`] keeps a copy of
 //!   the buffer's bytes and the update rectangles as what the surface
 //!   presented, which the test hooks read back, and queues
@@ -35,7 +36,9 @@
 //! implements [`PlatformTestHooks`](kosmo_platform::PlatformTestHooks): a
 //! fault injected at a port makes that port's next call return the error
 //! once, and a second fault at a port that has one waiting returns
-//! [`PlatformError::Busy`].
+//! [`PlatformError::Busy`]. With the feature, the backend is not `Sync`: it
+//! keeps the fault of [`ResourceProvider::resource`], which takes `&self`,
+//! in a `Cell`.
 //!
 //! ```
 //! use std::collections::BTreeMap;
