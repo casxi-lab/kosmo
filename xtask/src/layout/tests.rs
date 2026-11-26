@@ -4073,14 +4073,78 @@ fn a_doc_test_that_is_not_rust_tokens_is_reported() {
         append(
             files,
             lib,
-            "/// ```\n/// let s = \"open;\n/// ```\npub fn f() {}\n",
+            "/// ```\n/// let a = 1;\n/// let s = \"open;\n/// ```\npub fn f() {}\n",
         );
     });
+    // The line in the file is that of the string in the block.
     assert_problems(
         &found,
         &[&format!(
-            "{lib}:3: the doc test cannot be read as Rust tokens"
+            "{lib}:4: the doc test cannot be read as Rust tokens"
         )],
+    );
+}
+
+#[test]
+fn benches_examples_and_nested_items_are_test_code() {
+    // kosmo-jobs is registered for threads, so only the test clock reports.
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/math-model/benches/b.rs".to_string(),
+            "fn main() { std::thread::sleep(core::time::Duration::ZERO); }\n".to_string(),
+        );
+        files.insert(
+            "framework/math-model/examples/e.rs".to_string(),
+            "fn main() { let _ = std::time::SystemTime::now(); }\n".to_string(),
+        );
+        append(
+            files,
+            lib,
+            r##"pub struct S;
+impl S {
+    /// ```
+    /// std::thread::sleep(d);
+    /// ```
+    pub fn f() {}
+    /// A block that is not closed ends with the document.
+    ///
+    /// ```
+    /// std::thread::sleep(d);
+    pub fn h() {}
+    #[cfg(test)]
+    fn g()
+    where
+        u8: Copy,
+        u16: Copy,
+    {
+        std::thread::sleep(core::time::Duration::ZERO);
+    }
+}
+mod inner {
+    #![cfg(test)]
+    fn a() {}
+    fn waits(d: core::time::Duration) {
+        std::thread::sleep(d);
+    }
+}
+"##,
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(lib, 5, "std::thread::sleep"),
+            clock_read(lib, 11, "std::thread::sleep"),
+            clock_read(lib, 19, "std::thread::sleep"),
+            clock_read(lib, 26, "std::thread::sleep"),
+            clock_read("framework/math-model/benches/b.rs", 1, "std::thread::sleep"),
+            clock_read(
+                "framework/math-model/examples/e.rs",
+                1,
+                "std::time::SystemTime::now"
+            ),
+        ]
     );
 }
 
