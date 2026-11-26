@@ -29,8 +29,10 @@
 //!   [`PlatformError::Busy`].
 //! - It keeps the accessibility tree of each surface as an
 //!   [`AccessibilityTree`], built from the updates in order.
-//! - After [`Platform::shutdown`] every other port method returns
-//!   [`PlatformError::Disconnected`]; `shutdown` itself returns `Ok` again.
+//! - After [`Platform::shutdown`] every other port method that can fail
+//!   returns [`PlatformError::Disconnected`], except the test hooks'
+//!   `read_back` and `a11y_tree`, which find no surface and return
+//!   [`PlatformError::StaleHandle`]; `shutdown` itself returns `Ok` again.
 //!
 //! With the feature `test-hooks`, which only test builds turn on, it
 //! implements [`PlatformTestHooks`](kosmo_platform::PlatformTestHooks): a

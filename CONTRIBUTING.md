@@ -381,13 +381,14 @@ included. A test module in its own file does not see what its parent
 module imports, so a `sleep` taken with `use super::*` from a parent that
 imports `std::thread::sleep` is not found. It finds test targets by their
 directories, not by a `path` of `[[test]]`, `[[bench]]` or `[[example]]`
-elsewhere, and does not read indented code blocks, which rustdoc also
-runs, doc comments that a macro writes, as `#[doc = include_str!("...")]`
-does, or a test attribute that `cfg_attr` adds. It cannot see
-what build scripts, procedural macros or configuration outside the
-repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
-`CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no longer runs the
-check at all; review covers these.
+elsewhere, and does not read indented code blocks or fenced ones in a
+block quote or on the line of a list marker, as ``> ``` `` and ``- ``` ``
+begin them, all of which rustdoc also runs, doc comments that a macro
+writes, as `#[doc = include_str!("...")]` does, or a test attribute that
+`cfg_attr` adds. It cannot see what build scripts, procedural macros or
+configuration outside the repository, such as `$CARGO_HOME/config.toml`,
+`RUSTFLAGS` or `CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no
+longer runs the check at all; review covers these.
 What Cargo resolves from the manifests is checked by the deps step, not by this
 one.
 
