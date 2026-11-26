@@ -56,7 +56,7 @@
   `docs/architecture.md` describes. So far `display/`, with the shared types
   `kosmo-types`, `framework/`, with the libraries `kosmo-math-model`,
   `kosmo-jobs`, `kosmo-render`, `kosmo-platform`, `kosmo-math-kalyx`,
-  `kosmo-ui` and `kosmo-scratchpad` and the facade `kosmo-sdk`, `desktop/`, with the program
+  `kosmo-ui`, `kosmo-backend-headless` and `kosmo-scratchpad` and the facade `kosmo-sdk`, `desktop/`, with the program
   `kosmo`, and `xtask/` exist; a workspace root is added with the workspace's
   first crate.
   There is no `Cargo.toml` at the repository root.

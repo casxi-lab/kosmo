@@ -15,6 +15,16 @@ use crate::{commits, deps, docs, fetch, golden, layout, receipt, workflows};
 /// layout table, which the fetch and deps steps read from the table.
 pub const WORKSPACES: [&str; 4] = ["xtask", "display", "framework", "desktop"];
 
+/// The packages that the clippy and test steps build once more with a
+/// feature of their own turned on, as `(workspace, package, feature)`: the
+/// test hooks of the headless backend, which only tests turn on. The
+/// workspace's command builds the package without the feature and skips
+/// the test targets that name the feature in `required-features`; this
+/// pass, run after the workspace commands, builds the package with it and
+/// runs those targets too.
+pub const FEATURE_PASSES: [(&str, &str, &str); 1] =
+    [("framework", "kosmo-backend-headless", "test-hooks")];
+
 /// The environment variable, and its value, that keeps Cargo off the
 /// network. Every Cargo command after the fetch step sets it; `cargo fmt`
 /// does not accept `--offline`.
@@ -118,6 +128,32 @@ fn per_workspace(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
         .collect()
 }
 
+/// The same Cargo command for each package of `FEATURE_PASSES`, with its
+/// feature on, offline; its time is recorded as `<package>_<feature>_ms`.
+fn feature_passes(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
+    FEATURE_PASSES
+        .iter()
+        .map(|(workspace, package, feature)| {
+            let mut all: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+            all.extend([
+                "--package".to_string(),
+                package.to_string(),
+                "--features".to_string(),
+                feature.to_string(),
+                "--manifest-path".to_string(),
+                format!("{workspace}/Cargo.toml"),
+            ]);
+            all.extend(trailing.iter().map(|arg| arg.to_string()));
+            Cmd {
+                program: cargo(),
+                args: all,
+                env: offline(),
+                timing: format!("{package}_{feature}_ms"),
+            }
+        })
+        .collect()
+}
+
 /// The steps of `cargo xtask check`, in the order they run.
 pub fn steps() -> Vec<Step> {
     vec![
@@ -143,14 +179,29 @@ pub fn steps() -> Vec<Step> {
         },
         Step {
             name: "clippy",
-            action: Action::Commands(per_workspace(
-                &["clippy", "--workspace", "--all-targets", "--locked"],
-                &["--", "-D", "warnings"],
-            )),
+            action: Action::Commands(
+                [
+                    per_workspace(
+                        &["clippy", "--workspace", "--all-targets", "--locked"],
+                        &["--", "-D", "warnings"],
+                    ),
+                    feature_passes(
+                        &["clippy", "--all-targets", "--locked"],
+                        &["--", "-D", "warnings"],
+                    ),
+                ]
+                .concat(),
+            ),
         },
         Step {
             name: "test",
-            action: Action::Commands(per_workspace(&["test", "--workspace", "--locked"], &[])),
+            action: Action::Commands(
+                [
+                    per_workspace(&["test", "--workspace", "--locked"], &[]),
+                    feature_passes(&["test", "--locked"], &[]),
+                ]
+                .concat(),
+            ),
         },
         Step {
             name: "docs",
@@ -407,16 +458,50 @@ mod tests {
                         cmd.args[at.expect("each command names a manifest") + 1].as_str()
                     })
                     .collect();
-                assert_eq!(
-                    targets,
-                    [
-                        "xtask/Cargo.toml",
-                        "display/Cargo.toml",
-                        "framework/Cargo.toml",
-                        "desktop/Cargo.toml"
-                    ]
+                let mut expected = vec![
+                    "xtask/Cargo.toml",
+                    "display/Cargo.toml",
+                    "framework/Cargo.toml",
+                    "desktop/Cargo.toml",
+                ];
+                if step.name == "clippy" || step.name == "test" {
+                    expected.push("framework/Cargo.toml");
+                }
+                assert_eq!(targets, expected, "{}", step.name);
+            }
+        }
+    }
+
+    #[test]
+    fn clippy_and_test_build_the_test_hooks_in_a_pass_of_their_own() {
+        for step in steps() {
+            if step.name != "clippy" && step.name != "test" {
+                continue;
+            }
+            let Action::Commands(commands) = step.action else {
+                panic!("the {} step runs Cargo", step.name);
+            };
+            let (pass, workspaces) = commands.split_last().expect("there are commands");
+            for cmd in workspaces {
+                assert!(
+                    !cmd.args.iter().any(|arg| arg == "--features"),
+                    "{}",
+                    cmd.shown()
                 );
             }
+            let wanted = [
+                "--package",
+                "kosmo-backend-headless",
+                "--features",
+                "test-hooks",
+            ];
+            assert!(
+                pass.args.windows(4).any(|window| window == wanted),
+                "{}",
+                pass.shown()
+            );
+            assert!(!pass.args.iter().any(|arg| arg == "--workspace"));
+            assert_eq!(pass.timing, "kosmo-backend-headless_test-hooks_ms");
         }
     }
 
@@ -637,7 +722,11 @@ mod tests {
             }
         }
         let online = online_after_fetch(&steps);
-        assert_eq!(online.len(), WORKSPACES.len(), "{online:?}");
+        assert_eq!(
+            online.len(),
+            WORKSPACES.len() + FEATURE_PASSES.len(),
+            "{online:?}"
+        );
         assert!(
             online.iter().all(|cmd| cmd.contains(" clippy ")),
             "{online:?}"

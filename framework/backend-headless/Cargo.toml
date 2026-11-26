@@ -1,0 +1,20 @@
+[package]
+name = "kosmo-backend-headless"
+description = "The headless backend of the platform interface: no threads, never blocking, with a virtual clock that only its driver advances"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# The test hooks of the platform interface, implemented for this backend.
+# Off by default; only test builds turn it on.
+test-hooks = ["kosmo-platform/test-hooks"]
+
+[dependencies]
+kosmo-platform.workspace = true
+kosmo-types.workspace = true
+
+[lints]
+workspace = true

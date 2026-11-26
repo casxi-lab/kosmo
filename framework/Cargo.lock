@@ -153,6 +153,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kosmo-backend-headless"
+version = "0.1.0-dev.1"
+dependencies = [
+ "kosmo-platform",
+ "kosmo-types",
+]
+
+[[package]]
 name = "kosmo-jobs"
 version = "0.1.0-dev.1"
 dependencies = [

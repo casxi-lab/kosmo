@@ -217,6 +217,13 @@ pure-core = false
 publish = false
 deterministic = true
 
+[crates.kosmo-backend-headless]
+path = "framework/backend-headless"
+layer = "F1"
+export = false
+pure-core = false
+publish = false
+
 [crates.kosmo-scratchpad]
 path = "framework/scratchpad"
 layer = "F3"
