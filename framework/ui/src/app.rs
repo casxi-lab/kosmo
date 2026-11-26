@@ -1,7 +1,8 @@
 //! The application and control interfaces: what `update`, `view`, the
 //! event handlers of controls and the drawing entry receive.
 
-use kosmo_types::MonoTime;
+use kosmo_render::{ListBuilder, ListError};
+use kosmo_types::{MonoTime, Rect, Size};
 
 use crate::command::{Binding, Command};
 use crate::port::{Effect, JobPort};
@@ -319,7 +320,8 @@ pub trait Control<A: App>: Clone {
     }
 
     /// The drawing entry. The drawing pass calls it in preorder; its
-    /// context holds only the control's identity and presentation state.
+    /// context holds only the control's identity and presentation state,
+    /// the size of its box and the display list that it draws into.
     fn draw(&self, cx: &mut DrawContext<'_, Self::State>);
 }
 
@@ -437,17 +439,30 @@ impl<A: App, S> Context<'_, A, S> {
 }
 
 /// What the drawing entry of a control reaches: the control's identity and
-/// its presentation state, which it can only read.
+/// its presentation state, which it can only read, the size of its box, and
+/// the display list of the drawing pass, to which it appends commands.
 pub struct DrawContext<'a, S> {
     id: WidgetId,
     state: &'a S,
+    size: Size,
+    canvas: Canvas<'a>,
 }
 
 impl<'a, S> DrawContext<'a, S> {
-    /// The context for drawing the control `id` with `state`.
-    #[cfg(test)]
-    pub(crate) fn new(id: WidgetId, state: &'a S) -> DrawContext<'a, S> {
-        DrawContext { id, state }
+    /// The context for drawing the control `id` with `state` into `canvas`,
+    /// with a box of `size`.
+    pub(crate) fn new(
+        id: WidgetId,
+        state: &'a S,
+        size: Size,
+        canvas: Canvas<'a>,
+    ) -> DrawContext<'a, S> {
+        DrawContext {
+            id,
+            state,
+            size,
+            canvas,
+        }
     }
 
     /// The control's identity.
@@ -458,6 +473,100 @@ impl<'a, S> DrawContext<'a, S> {
     /// The control's presentation state.
     pub fn state(&self) -> &S {
         self.state
+    }
+
+    /// The size of the control's box.
+    pub fn size(&self) -> Size {
+        self.size
+    }
+
+    /// Appends `command` to the display list, relative to the control's box:
+    /// (0, 0) is the box's top-left corner, and drawing is clipped to the
+    /// box. A [`PopClip`](kosmo_render::Command::PopClip) ends only a group that the control
+    /// started, and the control ends each group that it starts. A command
+    /// that the list refuses, or a group left open, makes the drawing pass
+    /// return the error, and the control's later commands are dropped.
+    pub fn draw(&mut self, command: kosmo_render::Command) {
+        self.canvas.push(command);
+    }
+
+    /// The canvas, to end the control's drawing.
+    pub(crate) fn into_canvas(self) -> Canvas<'a> {
+        self.canvas
+    }
+}
+
+/// The display list as the drawing entry of one control reaches it: the
+/// control's commands go into a group that clips them to its box and moves
+/// them to the box's position, started with the control's first command.
+pub(crate) struct Canvas<'a> {
+    list: &'a mut ListBuilder,
+    /// The control's box, in the coordinates of the group around it.
+    rect: Rect,
+    /// Whether the group of the box is started.
+    started: bool,
+    /// The groups that the control started and has not ended.
+    depth: usize,
+    /// The first command that the list refused.
+    error: Option<ListError>,
+}
+
+impl<'a> Canvas<'a> {
+    /// The canvas of a control whose box is `rect` in the coordinates of the
+    /// group around it.
+    pub(crate) fn new(list: &'a mut ListBuilder, rect: Rect) -> Canvas<'a> {
+        Canvas {
+            list,
+            rect,
+            started: false,
+            depth: 0,
+            error: None,
+        }
+    }
+
+    fn push(&mut self, command: kosmo_render::Command) {
+        if self.error.is_some() {
+            return;
+        }
+        if let Err(error) = self.append(command) {
+            self.error = Some(error);
+        }
+    }
+
+    fn append(&mut self, command: kosmo_render::Command) -> Result<(), ListError> {
+        let depth = match command {
+            kosmo_render::Command::PushClip { .. } => self.depth + 1,
+            kosmo_render::Command::PopClip => self
+                .depth
+                .checked_sub(1)
+                .ok_or(ListError::UnpairedPopClip)?,
+            _ => self.depth,
+        };
+        if !self.started {
+            self.list.push(kosmo_render::Command::PushClip {
+                rect: self.rect,
+                offset: self.rect.origin(),
+            })?;
+            self.started = true;
+        }
+        self.list.push(command)?;
+        self.depth = depth;
+        Ok(())
+    }
+
+    /// Ends the control's drawing: the first error, a group that the
+    /// control left open, or the end of the group of its box.
+    pub(crate) fn finish(self) -> Result<(), ListError> {
+        if let Some(error) = self.error {
+            return Err(error);
+        }
+        if self.depth > 0 {
+            return Err(ListError::UnclosedClip);
+        }
+        if self.started {
+            self.list.push(kosmo_render::Command::PopClip)?;
+        }
+        Ok(())
     }
 }
 

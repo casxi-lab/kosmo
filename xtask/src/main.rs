@@ -6,6 +6,7 @@ mod commits;
 mod deps;
 mod docs;
 mod fetch;
+mod golden;
 mod layout;
 mod receipt;
 mod repo;
@@ -24,7 +25,11 @@ struct Command {
 const COMMANDS: &[Command] = &[
     Command {
         name: "check",
-        about: "Run the layout, fetch, dependency, format, Clippy, test, documentation, commit message and workflow checks; with --receipt <path>, also write a JSON receipt of the run",
+        about: "Run the layout, golden, fetch, dependency, format, Clippy, test, documentation, commit message and workflow checks; with --receipt <path>, also write a JSON receipt of the run",
+    },
+    Command {
+        name: "golden",
+        about: "Write the pixel goldens and their MANIFEST; with --verify, draw them again into the build directory and compare each digest with MANIFEST",
     },
     Command {
         name: "help",
@@ -49,6 +54,8 @@ fn main() -> ExitCode {
     {
         ["check"] => check::run(repo::root(), None),
         ["check", "--receipt", path] => check::run(repo::root(), Some(PathBuf::from(path))),
+        ["golden"] => golden::update(&repo::root()),
+        ["golden", "--verify"] => golden::verify(&repo::root()),
         [] | ["help"] => {
             print_help();
             ExitCode::SUCCESS

@@ -83,25 +83,16 @@ impl LayoutResult {
 pub fn hit_test(layout: &LayoutResult, point: Point) -> Result<Option<Vec<WidgetId>>, LayoutError> {
     // For each box: the origin of its content, and the part of the surface
     // where it is visible.
-    let mut placed: Vec<(Point, Rect)> = Vec::with_capacity(layout.boxes.len());
+    let mut placed: Vec<Placed> = Vec::with_capacity(layout.boxes.len());
     let mut hit = None;
     for (index, layout_box) in layout.boxes.iter().enumerate() {
-        let (base, clip) = match layout_box.parent.and_then(|parent| placed.get(parent)) {
-            Some(&(content, visible)) => (content, Some(visible)),
-            None => (Point::default(), None),
-        };
-        let at = layout_box.rect.origin();
-        let origin = base.translated(at.x, at.y).ok_or(LayoutError::Overflow)?;
-        let own = Rect::new(origin, layout_box.rect.size());
-        let visible = match clip {
-            Some(clip) => clip.intersection(own).ok_or(LayoutError::Overflow)?,
-            None => own,
-        };
-        let content = origin
-            .translated(negate(layout_box.scroll.x)?, negate(layout_box.scroll.y)?)
-            .ok_or(LayoutError::Overflow)?;
-        placed.push((content, visible));
-        if layout_box.draws && visible.contains(point).ok_or(LayoutError::Overflow)? {
+        let parent = layout_box
+            .parent
+            .and_then(|parent| placed.get(parent))
+            .copied();
+        let place = Placed::of(parent, layout_box)?;
+        placed.push(place);
+        if layout_box.draws && place.visible.contains(point).ok_or(LayoutError::Overflow)? {
             hit = Some(index);
         }
     }
@@ -121,7 +112,43 @@ pub fn hit_test(layout: &LayoutResult, point: Point) -> Result<Option<Vec<Widget
     Ok(Some(path))
 }
 
-fn negate(value: Fx) -> Result<Fx, LayoutError> {
+/// Where a box lies on its surface.
+#[derive(Clone, Copy)]
+pub(crate) struct Placed {
+    /// The origin of the box's content: its position moved back by its
+    /// scroll offset.
+    pub(crate) content: Point,
+    /// The part of the surface where the box is visible: the box, clipped
+    /// by the boxes of all its ancestors.
+    pub(crate) visible: Rect,
+}
+
+impl Placed {
+    /// The place of `layout_box`, whose parent lies at `parent`, or at the
+    /// surface's origin when it has none.
+    pub(crate) fn of(
+        parent: Option<Placed>,
+        layout_box: &LayoutBox,
+    ) -> Result<Placed, LayoutError> {
+        let base = parent.map_or(Point::default(), |parent| parent.content);
+        let at = layout_box.rect.origin();
+        let origin = base.translated(at.x, at.y).ok_or(LayoutError::Overflow)?;
+        let own = Rect::new(origin, layout_box.rect.size());
+        let visible = match parent {
+            Some(parent) => parent
+                .visible
+                .intersection(own)
+                .ok_or(LayoutError::Overflow)?,
+            None => own,
+        };
+        let content = origin
+            .translated(negate(layout_box.scroll.x)?, negate(layout_box.scroll.y)?)
+            .ok_or(LayoutError::Overflow)?;
+        Ok(Placed { content, visible })
+    }
+}
+
+pub(crate) fn negate(value: Fx) -> Result<Fx, LayoutError> {
     Fx::ZERO.checked_sub(value).ok_or(LayoutError::Overflow)
 }
 

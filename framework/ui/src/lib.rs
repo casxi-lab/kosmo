@@ -1,7 +1,7 @@
 //! The core of kosmo's framework: the control tree with its passes, the
 //! round function of the single-threaded event loop, versioned result
 //! slots, timers, the dispatch of key events with focus checks, command
-//! tables with the minimal key map, and hit testing.
+//! tables with the minimal key map, hit testing and the drawing pass.
 //!
 //! An application is a model that implements [`App`]: `update` handles
 //! [`Message`]s one at a time and is the only place that changes the model;
@@ -104,8 +104,9 @@
 //! [`MAX_DEPTH`] deep; a view beyond either leaves the tree as it was and
 //! the round reports a [`RebuildError`]. The timer table holds at most
 //! [`TIMER_CAPACITY`] timers. [`hit_test`] finds the control at a point of
-//! a [`LayoutResult`], and [`ResultSlot`] holds the current result of a
-//! region against the versions of `kosmo-math-model`.
+//! a [`LayoutResult`], [`paint`] builds the display list of a damage region
+//! from one, which rounds do not do yet, and [`ResultSlot`] holds the
+//! current result of a region against the versions of `kosmo-math-model`.
 
 #![forbid(unsafe_code)]
 
@@ -113,6 +114,7 @@ mod app;
 mod command;
 mod focus;
 mod hit;
+mod paint;
 mod port;
 mod record;
 mod round;
@@ -132,6 +134,7 @@ pub use command::{
 };
 pub use focus::{Event, Stamp, SurfaceId};
 pub use hit::{LayoutBox, LayoutError, LayoutResult, hit_test};
+pub use paint::{PaintError, paint};
 pub use port::{Effect, JobPort, Receipt, execute};
 pub use record::Record;
 pub use round::{Counts, Input, Output, Round, Runtime, ViewPass};

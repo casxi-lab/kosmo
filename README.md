@@ -107,9 +107,10 @@ of pixels between them, and damage regions. The `framework/` workspace has the
 libraries `kosmo-math-model`, which holds
 [one-line formula input](docs/features/math/one-line-editing.md) while you edit
 it, `kosmo-jobs`, which runs computations as [versioned
-jobs](docs/features/framework/job-layer.md), `kosmo-render`, which so far holds
-only the wrapper of the transcendental functions that rendering and layout
-will call, `kosmo-math-kalyx`, which
+jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
+display lists, the renderer interface, the rasterizer on vello_cpu that draws
+display lists on the CPU and the wrapper of the transcendental functions that
+rendering and layout are to call, `kosmo-math-kalyx`, which
 [converts](docs/features/math/formula-conversion.md) the input into the text
 that kalyx reads and runs the jobs with kalyx, `kosmo-scratchpad`, the
 [Scratchpad](docs/features/framework/scratchpad.md), which keeps a history of
@@ -117,8 +118,9 @@ the submissions of a line with their results and reuses their inputs and
 results in the line, the framework core `kosmo-ui`, which holds an
 application's [control tree](docs/features/framework/runtime.md) and runs
 the rounds of its event loop with result slots, timers, focus checks and
-the dispatch of commands, so far without layout, drawing or a platform
-interface, and the facade `kosmo-sdk`, which re-exports all of them but
+the dispatch of commands, so far without layout or a platform interface and
+with a drawing pass that rounds do not run yet, and the facade `kosmo-sdk`,
+which re-exports all of them but
 `kosmo-render` and `kosmo-ui` and through which the `desktop/` workspace
 uses them. The
 `desktop/` workspace has the `kosmo` program. CI runs the repository checks on every pull request to
@@ -143,10 +145,10 @@ The first runs two derivatives and lists the history in the terminal; without
 the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo`
 reads the lines that you type. The second prints `kosmo` and its version. The
 next nine run the tests of the terminal, of the editing structure, of the job
-layer, of the wrapper of transcendental functions, of formula conversion with
-the kalyx runner, of the Scratchpad, of the framework core, of the facade and
-of the shared types, and the last runs the
-repository checks. No version has been released yet: a release is a tagged
+layer, of rendering, with its pixel goldens and the wrapper of transcendental
+functions, of formula conversion with the kalyx runner, of the Scratchpad, of
+the framework core, of the facade and of the shared types, and the last runs
+the repository checks. No version has been released yet: a release is a tagged
 commit, and the version that `main` shows is not a release until it is
 tagged.
 

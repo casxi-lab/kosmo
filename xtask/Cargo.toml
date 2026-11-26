@@ -28,6 +28,10 @@ serde = { version = "=1.0.229", default-features = false, features = ["alloc", "
 # string into types that derive `Deserialize`. So the standard-library
 # support of the default feature is left out.
 serde_json = { version = "=1.0.154", default-features = false, features = ["preserve_order"] }
+# The goldens step and `cargo xtask golden` take the SHA-256 digest of each
+# pixel golden. Only the digest itself is used, so the allocation support
+# and the object identifiers of the default features stay off.
+sha2 = { version = "=0.11.1", default-features = false }
 # The deps step parses the license expression of each crates.io package in
 # the strict mode of this SPDX parser and evaluates it against the allowed
 # licenses, so the accepted forms are those of this version and of the
@@ -36,9 +40,10 @@ serde_json = { version = "=1.0.154", default-features = false, features = ["pres
 # the default features are empty and stay off too.
 spdx = { version = "=0.13.6", default-features = false }
 # The layout step reads the inner attributes of the library root of each
-# pure-core crate with the parser of the full syntax. Printing, the `Clone`
-# implementations and the procedural-macro support of the default features
-# are not used.
+# pure-core crate, and the goldens step the attributes of the tests in
+# `tests/golden.rs` of each crate with goldens, with the parser of the full
+# syntax. Printing, the `Clone` implementations and the procedural-macro
+# support of the default features are not used.
 syn = { version = "=3.0.9", default-features = false, features = ["full", "parsing"] }
 # The layout step parses `layout.toml` into its types and the Cargo
 # manifests and the Cargo configuration into tables, and the deps step reads

@@ -31,18 +31,20 @@ order and stops at the first one that fails:
 
 1. `layout`: the source layout, as [the layout step](#the-layout-step)
    describes;
-2. `fetch` and `deps`: the packages of each workspace, downloaded once and
+2. `goldens`: the pixel goldens against their manifests, as
+   [the goldens step](#the-goldens-step-and-cargo-xtask-golden) describes;
+3. `fetch` and `deps`: the packages of each workspace, downloaded once and
    then checked offline, as
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
-3. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
+4. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
    workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask`,
    `display`, `framework` and `desktop`;
-4. `docs`: relative links and anchors in the Markdown files;
-5. `commits`: the header of every commit message in `<base>..HEAD` keeps to
+5. `docs`: relative links and anchors in the Markdown files;
+6. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
    environment variable `CHECK_BASE` names; when it is unset, empty or all
    zeros, the base is the merge base of `origin/main` and `HEAD`;
-6. `workflows`: `.github/workflows/` holds only regular files, and every
+7. `workflows`: `.github/workflows/` holds only regular files, and every
    `.yml` or `.yaml` file there, in any subdirectory, is UTF-8 and one YAML
    document with scalar keys, without anchors, aliases, merge keys, repeated
    keys or characters that YAML parsers read differently. No workflow
@@ -54,11 +56,11 @@ order and stops at the first one that fails:
    string literal.
 
 The `fetch` step is the only one that uses the network: the Cargo commands of
-the later steps run with `CARGO_NET_OFFLINE=true`. The `layout`, `docs` and
-`workflows` steps read only files that Git tracks, and so does the `deps` step
-for the files it reads itself, so build output and ignored files do not change
-the result; add a new file to the index with `git add` before running the
-check.
+the later steps run with `CARGO_NET_OFFLINE=true`. The `layout`, `goldens`,
+`docs` and `workflows` steps read only files that Git tracks, and so does the
+`deps` step for the files it reads itself, so build output and ignored files
+do not change the result; add a new file to the index with `git add` before
+running the check.
 
 Every workspace denies the Clippy lints `unwrap_used`, `expect_used`, `panic`,
 `todo`, `unimplemented` and `allow_attributes_without_reason`, and
@@ -76,11 +78,12 @@ status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
 `<workspace>_ms`; for the `fetch` step and the `cargo metadata` commands of
 the `deps` step, the duration of each command as `<workspace>_<target>_ms`;
-for the `deps` step also the observations that its section lists), the first
-line of `rustc --version`, the runner image (`ImageOS`, `ImageVersion`) and
-the GitHub Actions run (`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`,
-`GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a value the environment
-does not provide is `null`.
+for the `deps` step also the observations that its section lists; for the
+`goldens` step, the number of goldens that the manifests list, as
+`goldens`), the first line of `rustc --version`, the runner image
+(`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
+`GITHUB_RUN_ATTEMPT`, `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a
+value the environment does not provide is `null`.
 
 CI runs the check as the job `cargo xtask check` of
 `.github/workflows/check.yml` on a GitHub-hosted `ubuntu-24.04-arm` runner,
@@ -330,6 +333,66 @@ a library crate at the platform boundary, adds its directory to the
 directory, when other crates depend on it.
 The first crate of a workspace also adds the workspace's root manifest,
 `Cargo.lock` and allowlist and adds the workspace to `WORKSPACES`.
+
+### The goldens step and `cargo xtask golden`
+
+A crate with pixel goldens, so far `kosmo-render`, keeps them in its
+directory `tests/golden/`: a file `<name>.px` for each golden, which holds a
+drawn buffer as the [digests rule](docs/architecture.md#determinism-rules)
+encodes it, and `MANIFEST`, with one line `<digest>  <name>` for each
+golden: the SHA-256 of the file in 64 lowercase hexadecimal digits, two
+spaces and the name, sorted by name. Names are lowercase letters, digits and
+`-`. A test refers to a golden by calling `matches_golden` with the name as
+a string literal; the call draws the golden's scene, encodes it in memory and
+compares it with the file byte for byte. These commands write and verify the
+goldens:
+
+```sh
+cargo xtask golden
+cargo xtask golden --verify
+```
+
+The first runs the ignored test `write_goldens` of each crate with goldens,
+which writes its `.px` files, and then writes `MANIFEST` from the `.px`
+files in `tests/golden/`; run without a change to the drawing code, it
+leaves every file as it was. It removes the `.px` files of the goldens
+before it runs the test, so the file of a golden whose scene is gone goes
+too, and it fails when the test writes no golden. When it fails, `MANIFEST`
+is as it was, the files it removed stay removed and those that the test
+wrote stay written, until it runs again without failing or
+`git checkout -- <crate>/tests/golden` restores them. Add a new golden's
+file with `git add`. The second runs the ignored test `redraw_goldens`, which
+draws the goldens again into `target/golden/<package>/` of the workspace,
+and prints for each golden the new digest and the digest in `MANIFEST`. It
+fails when one differs and changes no tracked file. Both leave out files
+whose names start with `.`, such as `.DS_Store`. The ignored tests are run
+only through these commands.
+
+The `goldens` step reads the tracked files of the golden directories and of
+the crates with goldens, without running Cargo, and reports every problem it
+finds, one per line as `<path>[:<line>]: <message>`, sorted by path and then
+by line number:
+
+- a golden whose file has another SHA-256 than `MANIFEST` lists;
+- a golden of `MANIFEST` without a file, or that no test refers to;
+- a `.px` file that `MANIFEST` does not list, and any other file in a golden
+  directory but `MANIFEST`;
+- a line of `MANIFEST` that is not a digest of 64 lowercase hexadecimal
+  digits, two spaces and a name, a name listed twice and lines out of order;
+- a call of `matches_golden` with a name that `MANIFEST` does not list, and
+  a call in `tests/golden.rs` outside its top-level tests;
+- a crate with goldens whose `tests/golden.rs` lacks the ignored tests
+  `write_goldens` and `redraw_goldens`, ignores another top-level test, or
+  has a `cfg` or `cfg_attr` attribute on itself or on a top-level function
+  or module, since the tests of the goldens run on every target and only
+  its top-level tests compare goldens;
+- a directory `tests/golden` of a crate that `cargo xtask golden` does not
+  write.
+
+It finds the calls of `matches_golden` in the tokens of the crate's Rust
+files, so calls in comments and string literals do not count, nor do calls
+whose first argument is not a string literal. A golden directory without
+`MANIFEST` lists no goldens.
 
 ### The fetch and deps steps
 

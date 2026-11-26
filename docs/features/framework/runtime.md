@@ -6,17 +6,20 @@ tree to it, runs the event loop one round at a time with the time that its
 caller passes in, holds the current result of a region in a versioned result
 slot, keeps one-shot timers, checks the focus stamps of key events,
 dispatches commands from the focused control to its ancestors and the
-application, resolves keys with binding tables and the minimal key map, and
-finds the control at a point of a layout result.
+application, resolves keys with binding tables and the minimal key map,
+finds the control at a point of a layout result, and builds the display list
+of a damage region from a layout result with its drawing pass.
 
-The round function covers the event, update and view passes. Layout,
-drawing, accessibility and presentation, the shell `run` that waits for
-platform events and reads the clock, and the platform interface
-`kosmo-platform` with its backends are planned; until they exist, tests and
-other drivers build the input of each round in code. `kosmo-ui` depends on
-`kosmo-types` for geometry, logical time, focus generations, epochs and key
-events, and on the versions of `kosmo-math-model`; it depends on neither the
-job layer nor kalyx. The design rules that it follows are in the
+The round function covers the event, update and view passes. The drawing
+pass is a function of its own, which rounds do not call yet: its layout
+results will come from the layout pass. Layout, accessibility and
+presentation, the shell `run` that waits for platform events and reads the
+clock, and the platform interface `kosmo-platform` with its backends are
+planned; until they exist, tests and other drivers build the input of each
+round and the layout results in code. `kosmo-ui` depends on `kosmo-types`
+for geometry, logical time, focus generations, epochs, key events and damage
+regions, on the versions of `kosmo-math-model`, and on `kosmo-render` for
+display lists; it depends on neither the job layer nor kalyx. The design rules that it follows are in the
 [application model and passes](../../architecture.md#application-model-and-passes),
 [control tree](../../architecture.md#control-tree),
 [effects and the result slot](../../architecture.md#effects-and-the-result-slot),
@@ -359,16 +362,46 @@ far only tests build layout results, and the layout pass will produce them.
 
 ## The drawing entry
 
-`Control::draw` takes the control and a `DrawContext`, which gives only the
-control's identity and its presentation state, to read. The drawing pass
-will call it in preorder; it is not called yet. Through its parameters the
-drawing entry reaches neither a mutable model, nor the execution port, nor a
-port of the platform interface. Three examples of the documentation of
-`Control` check this: each tries one of the three in the drawing entry and
-fails to compile, and the same code without that line compiles. The
-platform interface does not exist yet, so the third uses a stand-in trait
-for one of its ports. The toolchain does not check the error code of an
-example that fails to compile, so the examples state none.
+`Control::draw` takes the control and a `DrawContext`, which gives the
+control's identity and its presentation state, to read, and the size of its
+box, and appends commands of `kosmo-render`'s display lists with
+`DrawContext::draw`. The commands are relative to the control's box, whose
+top-left corner is (0, 0), and are clipped to the box. A control ends every
+group that it starts with `PushClip` and ends no other; a command that the
+display list refuses, or a group left open, makes the drawing pass return
+an error, and the control's later commands are dropped. Through its
+parameters the drawing entry reaches neither a mutable model, nor the
+execution port, nor a port of the platform interface. Three examples of the
+documentation of `Control` check this: each tries one of the three in the
+drawing entry and fails to compile, and the same code without that line
+compiles. The platform interface does not exist yet, so the third uses a
+stand-in trait for one of its ports. The toolchain does not check the error
+code of an example that fails to compile, so the examples state none.
+
+## The drawing pass
+
+`paint(tree, layout, damage)` returns the display list of a surface's
+controls for the damage region `damage` of the surface. It visits the boxes
+of the layout result in preorder, the drawing order, and skips a box that is
+visible inside no rectangle of the damage, together with its descendants;
+visibility is computed as hit testing computes it, with the scroll offsets
+of the ancestors and the clips of their boxes. Each other box whose control
+draws has `Control::draw` called. The commands of a control go into a group
+that clips them to its box and moves them to its position, and the children
+of a box go into a group that clips them to the box and moves them to its
+content, its position minus its scroll offset; the group of a control's own
+commands starts with its first command, so a control that draws nothing
+adds no group of its own; the group of a box's children starts with its
+first child that is visible in the damage, and holds no command when none
+of them draws. Each control that draws adds a group of two commands around
+its commands, and each box with a child visible in the damage adds a group
+of two around its children; these count toward the limits of the display
+list, and a frame beyond them makes the pass return `PaintError::List`. The
+pass reads only its input. It returns a `PaintError` and
+no list when a visible box is out of preorder, when a position does not fit
+the numeric representation, when a box names a control that the tree does
+not hold, and when the display list refuses a command or a control leaves a
+group open.
 
 ## The event handling record
 
@@ -450,7 +483,8 @@ wall-clock time; review checks these, as the
 - The round function has no layout, drawing, accessibility or presentation
   pass; the shell `run`, its single-round entry and the platform interface
   are planned. Drivers build each round's input and hand effects to the
-  execution port themselves.
+  execution port themselves. The drawing pass has no caller outside tests,
+  and its display lists are not rasterized or presented yet.
 - One region per surface, and the runtime has one control tree for all
   surfaces; focus does not move within a region, and there is no
   region-level focus generation.
@@ -616,9 +650,10 @@ slot. No test sleeps or reads the wall clock.
 14. The drawing entry reaches neither a mutable model, nor the execution
     port, nor a port of the platform interface: three examples of the
     documentation of `Control` fail to compile, and the same three without
-    the offending line compile; its context gives the control's identity
-    and presentation state. Tests: the examples of `Control`, which
-    `cargo test` runs; `tree::tests::the_drawing_entry_gets_the_identity_and_presentation_state`.
+    the offending line compile; its context gives the control's identity,
+    presentation state and the size of its box. Tests: the examples of
+    `Control`, which `cargo test` runs;
+    `tree::tests::the_drawing_entry_gets_the_identity_and_presentation_state`.
 15. `kosmo-ui` is a core library: the layout step of `cargo xtask check`
     reads its `src/` for the items that the platform boundary forbids, and
     the crate forbids unsafe code. The layout step checks this on every run
@@ -626,3 +661,17 @@ slot. No test sleeps or reads the wall clock.
     `xtask/src/layout/tests.rs`: `a_core_library_may_not_use_standard_io`.
     `#![forbid(unsafe_code)]` is in `src/lib.rs`, beside the `unsafe_code`
     lint of the workspace.
+16. The drawing pass draws the controls in preorder, each relative to its
+    box and its children moved by its scroll offset; it skips the controls
+    outside the damage with their descendants, adds no group for a control
+    that draws nothing, counts its groups toward the limits of the display
+    list, and refuses a box out of preorder, a box of a control that does
+    not exist and a control that ends a group it did not start or leaves
+    one open. Tests:
+    `paint::tests::every_control_draws_in_preorder_relative_to_its_box`,
+    `paint::tests::controls_outside_the_damage_are_skipped_with_their_descendants`,
+    `paint::tests::a_control_that_draws_nothing_adds_no_group`,
+    `paint::tests::a_box_out_of_preorder_is_refused`,
+    `paint::tests::a_box_of_a_control_that_does_not_exist_is_refused`,
+    `paint::tests::a_control_ends_only_the_groups_it_starts`,
+    `paint::tests::the_groups_count_toward_the_limit_of_the_list`.

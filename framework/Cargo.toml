@@ -24,6 +24,7 @@ kalyx = "=0.1.0"
 kosmo-jobs = { path = "jobs", version = "=0.1.0-dev.1" }
 kosmo-math-kalyx = { path = "math-kalyx", version = "=0.1.0-dev.1" }
 kosmo-math-model = { path = "math-model", version = "=0.1.0-dev.1" }
+kosmo-render = { path = "render", version = "=0.1.0-dev.1" }
 kosmo-scratchpad = { path = "scratchpad", version = "=0.1.0-dev.1" }
 kosmo-types = { path = "../display/types", version = "=0.1.0-dev.1" }
 libm = { version = "=0.2.16", default-features = false }
