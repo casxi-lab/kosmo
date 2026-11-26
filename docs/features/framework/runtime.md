@@ -389,12 +389,15 @@ of the ancestors and the clips of their boxes. Each other box whose control
 draws has `Control::draw` called. The commands of a control go into a group
 that clips them to its box and moves them to its position, and the children
 of a box go into a group that clips them to the box and moves them to its
-content, its position minus its scroll offset; a group starts only when
-something is drawn in it. The pass reads only its input. It returns a
-`PaintError` and no list when a box is out of preorder, when a position does
-not fit the numeric representation, when a box names a control that the
-tree does not hold, and when the display list refuses a command or a control
-leaves a group open.
+content, its position minus its scroll offset; the group of a control's own
+commands starts with its first command, so a control that draws nothing
+adds no group of its own; the group of a box's children starts with its
+first child that is visible in the damage, and holds no command when none
+of them draws. The pass reads only its input. It returns a `PaintError` and
+no list when a visible box is out of preorder, when a position does not fit
+the numeric representation, when a box names a control that the tree does
+not hold, and when the display list refuses a command or a control leaves a
+group open.
 
 ## The event handling record
 

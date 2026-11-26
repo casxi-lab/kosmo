@@ -51,13 +51,15 @@ struct Open {
 /// has [`Control::draw`] called, with commands relative to the box and
 /// clipped to it. The children of a box are drawn in a group that clips
 /// them to the box and moves them to its content, its position minus its
-/// scroll offset. A group starts only when something is drawn in it, so a
-/// box that draws nothing adds no command.
+/// scroll offset. The group of a control's own commands starts with its
+/// first command, so a control that draws nothing adds no group of its
+/// own; the group of a box's children starts with its first child that is
+/// visible in the damage, and holds no command when none of them draws.
 ///
 /// The pass reads only its input. It returns an error, and no list, when a
-/// box is out of preorder, when a position does not fit, when a box names
-/// no control of `tree`, and when the list refuses a command or a control
-/// leaves a group open.
+/// visible box is out of preorder, when a position does not fit, when a box
+/// names no control of `tree`, and when the list refuses a command or a
+/// control leaves a group open.
 pub fn paint<A: App>(
     tree: &Tree<A>,
     layout: &LayoutResult,
