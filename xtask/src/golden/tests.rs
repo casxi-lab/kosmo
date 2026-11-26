@@ -147,6 +147,11 @@ fn references_are_found_anywhere_in_the_crate_and_only_in_code() {
         "framework/ui/tests/draw.rs",
         Entry::File(b"fn f() { matches_golden(\"orphan\"); }\n".to_vec()),
     );
+    // Nor does a call in a file that is not Rust.
+    tree.insert(
+        "framework/render/README.md",
+        Entry::File(b"matches_golden(\"orphan\")\n".to_vec()),
+    );
     let manifest = line_of("fill-rect") + &line_of("glyphs") + &line_of("orphan");
     tree.insert(MANIFEST, Entry::File(manifest.into_bytes()));
     tree.insert(&format!("{DIR}/orphan.px"), Entry::File(bytes_of("orphan")));
