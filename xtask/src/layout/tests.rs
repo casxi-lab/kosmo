@@ -4087,6 +4087,21 @@ pub fn g() {}
 }
 
 #[test]
+fn doc_tests_with_an_edition_a_harness_or_spaces_are_rust() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "/// ```edition2021\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```test_harness,text\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```standalone_crate,text\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```should_panic text\n/// std::thread::sleep(d);\n/// ```\npub fn f() {}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [3, 7, 11, 15].map(|line| clock_read(lib, line, "std::thread::sleep"))
+    );
+}
+#[test]
 fn a_doc_test_that_is_not_rust_tokens_is_reported() {
     let lib = "framework/math-model/src/lib.rs";
     let found = problems_with(|files| {
