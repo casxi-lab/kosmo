@@ -2,10 +2,10 @@
 //! its dependency on `kosmo-testkit` only through its own feature
 //! `call-probes`; no dependency declaration turns on the `call-probes` of a
 //! crate, and none but a dev-dependency, or the dependency of
-//! `kosmo-testkit` on `kosmo-platform`, turns on the `test-hooks` of the
-//! platform interface or of a backend; and no feature of a crate but
-//! `call-probes` and `test-hooks`, its default features included, turns on
-//! either.
+//! `kosmo-testkit` on `kosmo-platform`, turns on the `test-hooks` of a
+//! crate; the `test-hooks` of a crate turns on no call probes; and no
+//! feature of a crate but `call-probes` and `test-hooks`, its default
+//! features included, turns on either.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,12 +31,6 @@ const OFF_BY_DEFAULT: &str = "call probes and test hooks stay off by default";
 
 /// What the other features may not turn on.
 const ONLY_THEIR_OWN: &str = "only call-probes and test-hooks turn them on";
-
-/// Whether the crate `name` has test hooks: the platform interface or a
-/// backend.
-fn has_hooks(name: &str) -> bool {
-    name == PLATFORM || name.starts_with("kosmo-backend-")
-}
 
 /// The dependency and the feature that a feature value names:
 /// `<dependency>/<feature>` and `<dependency>?/<feature>`, or a feature of
@@ -75,7 +69,7 @@ fn check_declaration(
                 "{manifest}: {kind} {dependency}: turns on {owner}/{PROBES}; only the command line turns on call probes"
             ));
         }
-        if feature == HOOKS && has_hooks(owner) && !dev && !(exempt && value == HOOKS) {
+        if feature == HOOKS && !dev && !(exempt && value == HOOKS) {
             problems.insert(format!(
                 "{manifest}: {kind} {dependency}: turns on {owner}/{HOOKS}; only dev-dependencies and the dependency of {TESTKIT} on {PLATFORM} turn on test hooks"
             ));
@@ -140,7 +134,7 @@ pub fn check_crate(manifest: &str, name: &str, table: &Table, problems: &mut Pro
         }
     }
     for start in features.keys() {
-        if *start != PROBES && *start != HOOKS {
+        if *start != PROBES {
             check_expansion(manifest, start, &features, problems);
         }
     }
@@ -159,12 +153,15 @@ fn check_expansion(
     problems: &mut Problems,
 ) {
     let default = start == "default";
+    let hooks = start == HOOKS;
     let report = |value: &str, through: Option<&str>, problems: &mut Problems| {
         let through = through
             .map(|feature| format!(" through {feature}"))
             .unwrap_or_default();
         problems.insert(if default {
             format!("{manifest}: the default features turn on {value}{through}; {OFF_BY_DEFAULT}")
+        } else if hooks {
+            format!("{manifest}: the feature {HOOKS} turns on {value}{through}; only the command line turns on call probes")
         } else {
             format!("{manifest}: the feature {start} turns on {value}{through}; {ONLY_THEIR_OWN}")
         });
@@ -175,7 +172,9 @@ fn check_expansion(
         if !seen.insert(feature) {
             continue;
         }
-        if feature == PROBES || feature == HOOKS || (default && feature == TESTKIT) {
+        if feature != start
+            && (feature == PROBES || feature == HOOKS || (default && feature == TESTKIT))
+        {
             report(feature, through, problems);
             continue;
         }
@@ -187,7 +186,10 @@ fn check_expansion(
                 }
             } else if let Some((dependency, feature)) = value.split_once('/') {
                 let dependency = dependency.trim_end_matches('?');
-                if (default && dependency == TESTKIT) || feature == PROBES || feature == HOOKS {
+                if (default && dependency == TESTKIT)
+                    || feature == PROBES
+                    || (feature == HOOKS && !hooks)
+                {
                     report(value, through, problems);
                 }
             } else {
