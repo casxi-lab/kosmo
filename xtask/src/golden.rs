@@ -394,7 +394,7 @@ pub fn update(root: &Path) -> ExitCode {
 /// into its [`Goldens::redrawn`] directory and compares each digest with
 /// `MANIFEST`.
 pub fn verify(root: &Path) -> ExitCode {
-    let mut differ = 0;
+    let (mut compared, mut differ) = (0, 0);
     let result = SETS.iter().try_for_each(|set| {
         let out = root.join(set.redrawn());
         match fs::remove_dir_all(&out) {
@@ -419,13 +419,16 @@ pub fn verify(root: &Path) -> ExitCode {
             let new = drawn.get(name).map_or("-", String::as_str);
             let old = listed.get(name).map_or("-", |(_, digest)| digest.as_str());
             let result = if new == old { "same" } else { "differs" };
+            compared += 1;
             differ += usize::from(new != old);
             println!("{name}: drawn {new}, MANIFEST {old}: {result}");
         }
         Ok(())
     });
     match result {
-        Ok(()) if differ > 0 => finish(Err(format!("golden: {differ} goldens differ"))),
+        Ok(()) if differ > 0 => finish(Err(format!(
+            "golden: {differ} of {compared} goldens differ from MANIFEST"
+        ))),
         other => finish(other),
     }
 }
