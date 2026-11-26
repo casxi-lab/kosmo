@@ -6,7 +6,6 @@ pub mod support;
 
 use std::fs;
 
-use kosmo_render::RenderTarget;
 use kosmo_types::{BufferDesc, PixelFormat};
 use support::golden::{self, matches_golden};
 use support::{Checked, failed};
@@ -64,15 +63,13 @@ fn the_encoding_is_the_description_and_the_bytes() -> Checked {
     for (format, code) in codes {
         let desc = BufferDesc::new(3, 2, 7 * format.bytes_per_pixel(), format).map_err(failed)?;
         let bytes: Vec<u8> = (0..desc.byte_len()).map(|byte| byte as u8).collect();
-        let target =
-            RenderTarget::from_bytes(desc, bytes.clone()).ok_or("not the buffer's size")?;
         let stride = 7 * format.bytes_per_pixel();
         let mut expected = Vec::new();
         for field in [3, 2, stride, code] {
             expected.extend_from_slice(&field.to_le_bytes());
         }
         expected.extend_from_slice(&bytes);
-        assert_eq!(golden::encode(&target)?, expected, "{format:?}");
+        assert_eq!(golden::encode(desc, &bytes)?, expected, "{format:?}");
     }
     Ok(())
 }

@@ -35,7 +35,7 @@ impl Scene {
     /// The scene drawn whole by `rasterizer` into a new canvas, checking
     /// the work count.
     pub fn draw(&self, rasterizer: &mut dyn Rasterizer) -> Checked<RenderTarget> {
-        let mut target = RenderTarget::new(self.desc);
+        let mut target = RenderTarget::new(self.desc).ok_or_else(|| failed("the target"))?;
         let whole = target.whole();
         let work = rasterizer
             .render(
@@ -446,7 +446,7 @@ impl Case {
     /// The canvas that `rasterizer` draws for the case, and the work count
     /// of drawing its list.
     pub fn draw(&self, rasterizer: &mut dyn Rasterizer) -> Checked<(RenderTarget, WorkCount)> {
-        let mut target = RenderTarget::new(self.desc);
+        let mut target = RenderTarget::new(self.desc).ok_or_else(|| failed("the target"))?;
         let whole = target.whole();
         let damage = match &self.previous {
             Some(previous) => {

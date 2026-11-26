@@ -9,9 +9,11 @@
 //!   [`MAX_ITEMS`] path elements and glyphs.
 //! - The renderer interface: the [`Rasterizer`] trait, whose documentation
 //!   states what every command draws. It draws a display list into the
-//!   kept previous frame, a [`RenderTarget`], only inside a damage region,
-//!   with glyph coverage from a [`GlyphCoverage`], and fills outlines into
-//!   [`CoverageMask`]s.
+//!   kept previous frame, a [`RenderTarget`] in tightly packed
+//!   `Rgba8Premul`, only inside a damage region, with glyph coverage from a
+//!   [`GlyphCoverage`], and fills outlines into [`CoverageMask`]s.
+//!   [`RenderTarget::convert_into`] converts the damage into the buffer to
+//!   be presented.
 //! - [`VelloRasterizer`], the rasterizer on vello_cpu 0.4.0. No type of
 //!   vello_cpu appears in the interface of this crate.
 //! - [`det_math`], the wrapper through which code that writes layout,
@@ -31,7 +33,7 @@
 //! let list = builder.finish().unwrap();
 //!
 //! let desc = BufferDesc::new(4, 3, 16, PixelFormat::Rgba8Premul).unwrap();
-//! let mut target = RenderTarget::new(desc);
+//! let mut target = RenderTarget::new(desc).unwrap();
 //! let whole = target.whole();
 //! let mut rasterizer = VelloRasterizer::new();
 //! let work = rasterizer

@@ -7,7 +7,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt;
 
-use kosmo_types::{BufferDesc, Damage, Fx, MAX_BUFFER_SIDE};
+use kosmo_types::{
+    BufferDesc, ConvertError, Damage, DamageRect, Fx, MAX_BUFFER_SIDE, PixelFormat, convert,
+};
 
 use crate::list::{DisplayList, FontId, GlyphId, Path};
 
@@ -75,8 +77,7 @@ use crate::list::{DisplayList, FontId, GlyphId, Path};
 /// the target's size. For each rectangle of the region, in order, every
 /// pixel inside it starts as transparent black, (0, 0, 0, 0) in
 /// `Rgba8Premul`, the commands are drawn in order, and the rectangle is
-/// written into the target with [`kosmo_types::convert`], which copies it
-/// when the target's format is `Rgba8Premul` and converts it to any other.
+/// written into the target, a tightly packed `Rgba8Premul` buffer.
 /// Drawing is clipped to the rectangle, and pixels outside every rectangle
 /// of the region keep the bytes they had. A pixel inside the region does
 /// not depend on the previous frame or on the other rectangles, so drawing
@@ -170,10 +171,14 @@ impl WorkCount {
     }
 }
 
-/// The previous frame that a rasterizer draws into: a buffer of the
-/// [`BufferDesc`] it was made with, which lies within
-/// [`MAX_BUFFER_SIDE`] and [`MAX_BUFFER_BYTES`](kosmo_types::MAX_BUFFER_BYTES),
-/// with its bytes.
+/// The previous frame that a rasterizer draws into and that rendering
+/// keeps: a tightly packed `Rgba8Premul` buffer of the [`BufferDesc`] it
+/// was made with, which lies within [`MAX_BUFFER_SIDE`] and
+/// [`MAX_BUFFER_BYTES`](kosmo_types::MAX_BUFFER_BYTES), with its bytes.
+/// Before presentation, [`convert_into`](RenderTarget::convert_into)
+/// converts each damage rectangle into the buffer to be presented, of any
+/// pixel format; repainting by buffer age, for double buffering, converts
+/// any rectangle again.
 #[derive(Clone, PartialEq, Eq)]
 pub struct RenderTarget {
     desc: BufferDesc,
@@ -181,18 +186,21 @@ pub struct RenderTarget {
 }
 
 impl RenderTarget {
-    /// A target of `desc` whose bytes are all 0.
-    pub fn new(desc: BufferDesc) -> RenderTarget {
-        RenderTarget {
+    /// A target of `desc` whose bytes are all 0, or `None` when `desc` is
+    /// not a tightly packed `Rgba8Premul` buffer.
+    pub fn new(desc: BufferDesc) -> Option<RenderTarget> {
+        tight(desc).then(|| RenderTarget {
             desc,
             bytes: vec![0; desc.byte_len() as usize],
-        }
+        })
     }
 
-    /// A target of `desc` that holds `bytes`, or `None` when they are not
-    /// as many as the description's [`byte_len`](BufferDesc::byte_len).
+    /// A target of `desc` that holds `bytes`, or `None` when `desc` is not
+    /// a tightly packed `Rgba8Premul` buffer or the bytes are not as many
+    /// as the description's [`byte_len`](BufferDesc::byte_len).
     pub fn from_bytes(desc: BufferDesc, bytes: Vec<u8>) -> Option<RenderTarget> {
-        (bytes.len() == desc.byte_len() as usize).then_some(RenderTarget { desc, bytes })
+        (tight(desc) && bytes.len() == desc.byte_len() as usize)
+            .then_some(RenderTarget { desc, bytes })
     }
 
     /// The description of the buffer.
@@ -232,6 +240,54 @@ impl RenderTarget {
         }
         own == *damage
     }
+
+    /// Writes each rectangle of `damage` into the buffer to be presented,
+    /// described by `target` and held in `target_bytes`, at the same place,
+    /// converted to the target's format with [`kosmo_types::convert`];
+    /// every other byte of the target stays as it was. It writes nothing
+    /// and returns an error when the target bytes are not as many as the
+    /// description says, or when a rectangle does not lie inside this
+    /// frame or the target.
+    pub fn convert_into(
+        &self,
+        damage: &Damage,
+        target: BufferDesc,
+        target_bytes: &mut [u8],
+    ) -> Result<(), ConvertError> {
+        if target_bytes.len() as u64 != u64::from(target.byte_len()) {
+            return Err(ConvertError::TargetLength);
+        }
+        let inside = |rect: &DamageRect, desc: BufferDesc| {
+            u64::from(rect.x()) + u64::from(rect.width()) <= u64::from(desc.width())
+                && u64::from(rect.y()) + u64::from(rect.height()) <= u64::from(desc.height())
+        };
+        for rect in damage.rects() {
+            if !inside(rect, self.desc) {
+                return Err(ConvertError::OutsideSource);
+            }
+            if !inside(rect, target) {
+                return Err(ConvertError::OutsideTarget);
+            }
+        }
+        for rect in damage.rects() {
+            convert(
+                self.desc,
+                &self.bytes,
+                *rect,
+                target,
+                target_bytes,
+                rect.x(),
+                rect.y(),
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// Whether `desc` is a tightly packed `Rgba8Premul` buffer.
+fn tight(desc: BufferDesc) -> bool {
+    desc.format() == PixelFormat::Rgba8Premul
+        && u64::from(desc.stride()) == u64::from(desc.width()) * 4
 }
 
 impl fmt::Debug for RenderTarget {
@@ -426,7 +482,7 @@ impl ImageStore {
 
 #[cfg(test)]
 mod tests {
-    use kosmo_types::{MAX_BUFFER_BYTES, PixelFormat};
+    use kosmo_types::MAX_BUFFER_BYTES;
 
     use super::*;
 
@@ -434,6 +490,7 @@ mod tests {
         RenderTarget::new(
             BufferDesc::new(width, height, width * 4, PixelFormat::Rgba8Premul).unwrap(),
         )
+        .unwrap()
     }
 
     #[test]
@@ -451,12 +508,79 @@ mod tests {
 
     #[test]
     fn a_target_from_bytes_needs_the_length_of_its_description() {
-        let desc = BufferDesc::new(2, 2, 12, PixelFormat::Rgb565).unwrap();
-        assert_eq!(RenderTarget::from_bytes(desc, vec![0; 23]), None);
+        let desc = BufferDesc::new(2, 2, 8, PixelFormat::Rgba8Premul).unwrap();
+        assert_eq!(RenderTarget::from_bytes(desc, vec![0; 15]), None);
         assert_eq!(
-            RenderTarget::from_bytes(desc, vec![7; 24]).map(|t| t.bytes()[23]),
+            RenderTarget::from_bytes(desc, vec![7; 16]).map(|t| t.bytes()[15]),
             Some(7)
         );
+    }
+
+    #[test]
+    fn a_target_is_a_tightly_packed_rgba8_premul_buffer() {
+        let desc = |stride, format| BufferDesc::new(2, 2, stride, format).unwrap();
+        assert!(RenderTarget::new(desc(8, PixelFormat::Rgba8Premul)).is_some());
+        assert_eq!(RenderTarget::new(desc(12, PixelFormat::Rgba8Premul)), None);
+        assert_eq!(RenderTarget::new(desc(8, PixelFormat::Xrgb8888)), None);
+        assert_eq!(RenderTarget::new(desc(4, PixelFormat::Rgb565)), None);
+        let bytes = |len| vec![0; len];
+        assert_eq!(
+            RenderTarget::from_bytes(desc(12, PixelFormat::Rgba8Premul), bytes(24)),
+            None
+        );
+        assert_eq!(
+            RenderTarget::from_bytes(desc(8, PixelFormat::Argb8888Premul), bytes(16)),
+            None
+        );
+    }
+
+    #[test]
+    fn the_damage_is_converted_into_the_buffer_to_present() {
+        // A 3 by 2 frame, pixel (x, y) of red x * 10 + y, green 1, blue 2.
+        let mut frame = target(3, 2);
+        for (i, pixel) in frame.bytes_mut().chunks_mut(4).enumerate() {
+            let (x, y) = (i % 3, i / 3);
+            pixel.copy_from_slice(&[(x * 10 + y) as u8, 1, 2, 255]);
+        }
+        let mut damage = Damage::new(frame.desc());
+        damage.add(1, 0, 1, 1);
+        damage.add(2, 1, 1, 1);
+        let shown = BufferDesc::new(3, 2, 16, PixelFormat::Xrgb8888).unwrap();
+        let mut bytes = vec![0x11; 32];
+        frame.convert_into(&damage, shown, &mut bytes).unwrap();
+        let mut expected = vec![0x11; 32];
+        // B, G, R, X at (1, 0) and at (2, 1), in rows of 16 bytes.
+        expected[4..8].copy_from_slice(&[2, 1, 10, 0xFF]);
+        expected[24..28].copy_from_slice(&[2, 1, 21, 0xFF]);
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn a_conversion_that_cannot_be_done_writes_nothing() {
+        let frame = target(4, 4);
+        let mut damage = Damage::new(frame.desc());
+        damage.add(0, 0, 1, 1);
+        damage.add(3, 3, 1, 1);
+        let small = BufferDesc::new(3, 3, 12, PixelFormat::Rgba8Premul).unwrap();
+        let mut bytes = vec![9; 36];
+        assert_eq!(
+            frame.convert_into(&damage, small, &mut bytes),
+            Err(ConvertError::OutsideTarget)
+        );
+        assert!(bytes.iter().all(|&byte| byte == 9));
+        assert_eq!(
+            frame.convert_into(&damage, small, &mut [9; 35]),
+            Err(ConvertError::TargetLength)
+        );
+        let mut larger = Damage::new(target(8, 8).desc());
+        larger.add(6, 6, 1, 1);
+        let shown = BufferDesc::new(8, 8, 32, PixelFormat::Rgba8Premul).unwrap();
+        let mut bytes = vec![9; 256];
+        assert_eq!(
+            frame.convert_into(&larger, shown, &mut bytes),
+            Err(ConvertError::OutsideSource)
+        );
+        assert!(bytes.iter().all(|&byte| byte == 9));
     }
 
     #[test]

@@ -12,7 +12,7 @@
 use std::fs;
 
 use kosmo_render::{RenderTarget, VelloRasterizer};
-use kosmo_types::PixelFormat;
+use kosmo_types::{BufferDesc, PixelFormat};
 
 use super::scenes;
 use super::{Checked, failed};
@@ -53,16 +53,21 @@ fn format_of(code: u32) -> Checked<PixelFormat> {
         .ok_or_else(|| format!("format code {code} is unknown"))
 }
 
-/// The encoding of `target`: its description and its bytes.
-pub fn encode(target: &RenderTarget) -> Checked<Vec<u8>> {
-    let desc = target.desc();
+/// The encoding of a buffer of `desc` that holds `pixels`: its
+/// description and its bytes.
+pub fn encode(desc: BufferDesc, pixels: &[u8]) -> Checked<Vec<u8>> {
     let code = format_code(desc.format())?;
-    let mut bytes = Vec::with_capacity(HEADER + target.bytes().len());
+    let mut bytes = Vec::with_capacity(HEADER + pixels.len());
     for field in [desc.width(), desc.height(), desc.stride(), code] {
         bytes.extend_from_slice(&field.to_le_bytes());
     }
-    bytes.extend_from_slice(target.bytes());
+    bytes.extend_from_slice(pixels);
     Ok(bytes)
+}
+
+/// The encoding of the frame `target`.
+pub fn encode_frame(target: &RenderTarget) -> Checked<Vec<u8>> {
+    encode(target.desc(), target.bytes())
 }
 
 /// The width, height, stride and format code of an encoding.
@@ -134,7 +139,7 @@ pub fn drawings() -> Checked<Vec<(&'static str, Vec<u8>)>> {
     let scenes = scenes::primitives(&mut rasterizer)?;
     let mut drawings = Vec::new();
     for scene in scenes {
-        drawings.push((scene.name, encode(&scene.draw(&mut rasterizer)?)?));
+        drawings.push((scene.name, encode_frame(&scene.draw(&mut rasterizer)?)?));
     }
     Ok(drawings)
 }
@@ -155,7 +160,7 @@ pub fn matches_file_in(dir: &str, name: &str) -> Checked {
         .into_iter()
         .find(|scene| scene.name == name)
         .ok_or_else(|| format!("no scene is named {name}"))?;
-    let drawn = encode(&scene.draw(&mut rasterizer)?)?;
+    let drawn = encode_frame(&scene.draw(&mut rasterizer)?)?;
     let path = format!("{dir}/{name}.px");
     let golden = fs::read(&path).map_err(|error| format!("{path}: {error}"))?;
     compare(name, &golden, &drawn)

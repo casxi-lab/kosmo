@@ -115,7 +115,7 @@ fn glyphs_with_coverage_of_0_and_255_at_whole_pixels_are_drawn_alike() -> Checke
 
 #[test]
 fn the_reference_reports_other_commands_as_unsupported() -> Checked {
-    let mut target = RenderTarget::new(canvas(4, 4)?);
+    let mut target = RenderTarget::new(canvas(4, 4)?).ok_or_else(|| failed("the target"))?;
     let whole = target.whole();
     let half = Color::premultiplied(0, 0, 64, 128).unwrap();
     let rounded = Command::FillRoundedRect {
