@@ -473,9 +473,12 @@ scripts, their runner and its records are planned in `kosmo-testkit`.
 unit tests included, uses none of the interfaces that the
 [platform boundary](../../architecture.md#platform-boundary) forbids, among
 them threads, clocks, the environment, files and input and output, which
-the layout step of `cargo xtask check` checks. It uses no floating-point
-arithmetic, no hash containers and no locale, and its record holds no
-wall-clock time; review checks these, as the
+the layout step of `cargo xtask check` checks. It is on the deterministic
+path, so Clippy rejects the hash containers of the standard library and the
+floating-point methods that [the determinism
+lints](../../../CONTRIBUTING.md#the-determinism-lints) list. It uses no
+floating-point arithmetic and no locale, and its record holds no wall-clock
+time; review checks these, as the
 [determinism rules](../../architecture.md#determinism-rules) describe.
 
 ## Limits
