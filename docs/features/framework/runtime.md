@@ -664,12 +664,14 @@ slot. No test sleeps or reads the wall clock.
 16. The drawing pass draws the controls in preorder, each relative to its
     box and its children moved by its scroll offset; it skips the controls
     outside the damage with their descendants, adds no group for a control
-    that draws nothing, and refuses a box out of preorder, a box of a
-    control that does not exist and a control that ends a group it did not
-    start or leaves one open. Tests:
+    that draws nothing, counts its groups toward the limits of the display
+    list, and refuses a box out of preorder, a box of a control that does
+    not exist and a control that ends a group it did not start or leaves
+    one open. Tests:
     `paint::tests::every_control_draws_in_preorder_relative_to_its_box`,
     `paint::tests::controls_outside_the_damage_are_skipped_with_their_descendants`,
     `paint::tests::a_control_that_draws_nothing_adds_no_group`,
     `paint::tests::a_box_out_of_preorder_is_refused`,
     `paint::tests::a_box_of_a_control_that_does_not_exist_is_refused`,
-    `paint::tests::a_control_ends_only_the_groups_it_starts`.
+    `paint::tests::a_control_ends_only_the_groups_it_starts`,
+    `paint::tests::the_groups_count_toward_the_limit_of_the_list`.

@@ -110,7 +110,7 @@ it, `kosmo-jobs`, which runs computations as [versioned
 jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 display lists, the renderer interface, the rasterizer on vello_cpu that draws
 display lists on the CPU and the wrapper of the transcendental functions that
-rendering and layout call, `kosmo-math-kalyx`, which
+rendering and layout are to call, `kosmo-math-kalyx`, which
 [converts](docs/features/math/formula-conversion.md) the input into the text
 that kalyx reads and runs the jobs with kalyx, `kosmo-scratchpad`, the
 [Scratchpad](docs/features/framework/scratchpad.md), which keeps a history of

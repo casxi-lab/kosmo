@@ -135,8 +135,8 @@ pub enum RenderError {
     MissingGlyph(GlyphKey),
     /// The damage region is not a region of a buffer of the target's size.
     DamageMismatch,
-    /// A position with the offsets of its groups does not fit in an
-    /// [`Fx`].
+    /// A position, or the offsets of nested groups, added together do not
+    /// fit in an [`Fx`].
     OutOfRange,
 }
 

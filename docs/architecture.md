@@ -14,16 +14,16 @@ job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
-history and reuse, the SDK facade `kosmo-sdk`, which re-exports them,
-display lists, the renderer interface, the rasterizer on vello_cpu and the
-wrapper of transcendental functions in `kosmo-render`, part
-of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
-focus generation and epoch, the keyboard event records, pixel formats, buffer
-descriptions with the conversion of pixels between them, and damage regions,
-and part of the framework core in `kosmo-ui`: the control tree, the event,
-update and view passes of a round, the drawing pass, which rounds do not run
-yet, result slots, timers, dispatch with the focus check, the minimal key map
-and hit testing;
+history and reuse, the display lists, the renderer interface, the rasterizer on
+vello_cpu and the wrapper of transcendental functions in `kosmo-render`, the SDK
+facade `kosmo-sdk`, which re-exports these crates but `kosmo-render`, part of
+the shared types in `kosmo-types`: fixed-point geometry, logical time, the focus
+generation and epoch, the keyboard event records, pixel formats, buffer
+descriptions with the conversion of pixels between them, and damage regions, and
+part of the framework core in `kosmo-ui`: the control tree, the event, update
+and view passes of a round, the drawing pass, which rounds do not run yet,
+result slots, timers, dispatch with the focus check, the minimal key map and hit
+testing;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
