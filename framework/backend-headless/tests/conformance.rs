@@ -3,6 +3,10 @@
 //! requirement a backend with a defect against it fails that requirement
 //! and no other (one test per defect).
 
+// The suite needs the test hooks: the check builds this package once
+// more with them, and a build without them compiles this file empty.
+#![cfg(feature = "test-hooks")]
+
 mod support;
 
 use kosmo_testkit::conformance::{self, REQUIREMENTS};

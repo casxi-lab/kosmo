@@ -18,10 +18,10 @@ pub const WORKSPACES: [&str; 4] = ["xtask", "display", "framework", "desktop"];
 /// The packages that the clippy and test steps build once more with a
 /// feature of their own turned on, as `(workspace, package, feature)`: the
 /// test hooks of the headless backend, which only tests turn on. The
-/// workspace's command builds the package without the feature and skips
-/// the test targets that name the feature in `required-features`; this
-/// pass, run after the workspace commands, builds the package with it and
-/// runs those targets too.
+/// workspace's command builds the package without the feature, which
+/// compiles the test files that `#![cfg(feature = ...)]` gates on it
+/// empty; this pass, run after the workspace commands, builds the package
+/// with it and runs them.
 pub const FEATURE_PASSES: [(&str, &str, &str); 1] =
     [("framework", "kosmo-backend-headless", "test-hooks")];
 

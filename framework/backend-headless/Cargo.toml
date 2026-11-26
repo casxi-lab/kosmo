@@ -19,12 +19,5 @@ kosmo-types.workspace = true
 [dev-dependencies]
 kosmo-testkit.workspace = true
 
-# The conformance suite needs the test hooks: the check builds this package
-# once more with them, and a build without them skips it.
-[[test]]
-name = "conformance"
-path = "tests/conformance.rs"
-required-features = ["test-hooks"]
-
 [lints]
 workspace = true

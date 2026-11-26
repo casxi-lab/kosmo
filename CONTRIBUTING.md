@@ -42,9 +42,9 @@ order and stops at the first one that fails:
    `display`, `framework` and `desktop`. `clippy` and `test` then build each
    package that `FEATURE_PASSES` lists once more with its feature on, so far
    `kosmo-backend-headless` with `test-hooks`: the workspace's command builds
-   it without its test hooks and skips the test targets whose
-   `required-features` name them, and this pass builds the hooks and runs
-   those targets;
+   it without its test hooks, which compiles the test files that
+   `#![cfg(feature = "test-hooks")]` gates on them empty, and this pass
+   builds the hooks and runs those tests;
 5. `docs`: relative links and anchors in the Markdown files;
 6. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
