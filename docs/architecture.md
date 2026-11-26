@@ -1810,7 +1810,9 @@ Besides the rules above:
   deterministic.
 - **Digests.** Pixel goldens come only from the CPU rasterizer. Pixels are
   compared by the SHA-256 of the buffer description and the raw bytes, without
-  image encoding.
+  image encoding. The description takes 16 bytes: the width, the height, the
+  stride and a format code, each a little-endian `u32`; the codes are 1 for
+  `Rgba8Premul`, 2 for `Xrgb8888`, 3 for `Rgb565` and 4 for `Argb8888Premul`.
 - **Pinning.** The toolchain and the chosen libraries are pinned exactly. Each
   upgrade is a pull request of its own, which updates the goldens by category,
   and the list of forbidden methods is generated again with a toolchain upgrade.
