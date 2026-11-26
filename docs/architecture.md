@@ -1742,8 +1742,10 @@ Clippy enforces these rules with the lists of the root `clippy.toml`, as
 [the determinism lints](../CONTRIBUTING.md#the-determinism-lints) describes.
 It rejects:
 
-- a direct call to `libm`, `core_maths` or a similar crate outside the wrapper
-  module; only `kosmo-render` depends on `libm` directly;
+- a direct call to `libm` outside the wrapper module; only `kosmo-render`
+  depends on `libm` directly, and `core_maths` or a similar crate is kept out
+  by the allow entries of the layout table, since adding a package is a design
+  change;
 - an `f32` or `f64` method whose documentation has an "Unspecified precision"
   section. In toolchain 1.99.0 these are the 29 stable methods `powi`, `powf`,
   `exp`, `exp2`, `ln`, `log`, `log2`, `log10`, `abs_sub`, `cbrt`, `hypot`,

@@ -804,6 +804,9 @@ The lints have limits:
   containers of other crates, such as hashbrown, are not; a direct
   dependency on a crate such as core_maths or hashbrown needs an allow
   entry, which review judges.
+- Clippy does not check the examples in documentation comments, which
+  `cargo test` runs as doc tests, so a doc test that calls a listed method
+  passes the `clippy` step; review covers them.
 - The lints see kosmo's code only. Floating point inside dependencies is
   examined when a library is chosen, and the features of the raster
   library and the text stack are compared by the deps step, as the rules
@@ -935,10 +938,10 @@ architecture that it links:
 
 1. Deterministic code calls transcendental functions only through
    `det_math` in `kosmo-render`, which calls `libm` 0.2.16, uses otherwise
-   only the basic floating-point operations and those whose result is fully
-   determined, and never calls a method of unspecified precision, an
-   `algebraic_*` method or a floating-point `min`, `max` or `clamp`, as
-   [the determinism lints](#the-determinism-lints) check
+   only the basic floating-point operations, `sqrt`, `mul_add` and the
+   operations whose result is fully determined, and never calls a method of
+   unspecified precision, an `algebraic_*` method or a floating-point `min`,
+   `max` or `clamp`, as [the determinism lints](#the-determinism-lints) check
    ([transcendental functions](docs/architecture.md#transcendental-functions)).
 2. The raster library and the text stack are built without `std` and with
    the same `libm`, and the deps step compares their resolved features with
@@ -958,10 +961,11 @@ architecture that it links:
 5. The deterministic path starts no threads, the threading features of the
    libraries stay off, and no package of the rayon or crossbeam families is
    allowed ([threads](docs/architecture.md#determinism-rules)).
-6. Colors are 8-bit sRGB-encoded constants that the raster library
-   composites with its `u8_pipeline`, and RGB565 is produced only by the
-   conversion function of `kosmo-types` when a buffer is submitted, without
-   dithering ([color](docs/architecture.md#determinism-rules)).
+6. Colors are 8-bit sRGB-encoded constants without color management, which
+   the raster library composites with its `u8_pipeline`, and RGB565 is
+   produced only by the conversion function of `kosmo-types` when a buffer is
+   submitted, without dithering
+   ([color](docs/architecture.md#determinism-rules)).
 7. Fonts come only from the asset directory of `kosmo-text` through
    `ResourceProvider`, with system font discovery off
    ([font sources](docs/architecture.md#determinism-rules)).
@@ -983,8 +987,10 @@ architecture that it links:
     is authoritative: the digests that `cargo xtask golden --verify` prints
     on a local host, run with a fresh `CARGO_HOME` and reported with whether
     the volume of the checkout is case-sensitive, are compared with those of
-    CI one by one, and a local digest that differs stops the work and goes
-    to the maintainers, without taking CI's digest instead
+    CI one by one, which are those of `MANIFEST`, as
+    [the goldens step](#the-goldens-step-and-cargo-xtask-golden) states for
+    CI, and a local digest that differs stops the work and goes to the
+    maintainers, without taking CI's digest instead
     ([authority](docs/architecture.md#determinism-rules)).
 
 ## License
