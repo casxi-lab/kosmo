@@ -207,14 +207,18 @@ impl VelloRasterizer {
     /// `top` of `width` by `height` pixels into the scratch buffer, which
     /// starts as transparent black. The scene is cut out at the rectangle,
     /// so each pixel gets the bytes that rasterizing the whole scene gives
-    /// it.
-    fn rasterize(&mut self, (left, top): (i32, i32), (width, height): (u16, u16)) {
+    /// it. It returns [`RenderError::OverLimit`] when vello_cpu does not
+    /// take the buffer, which holds exactly the rectangle's bytes.
+    fn rasterize(
+        &mut self,
+        (left, top): (i32, i32),
+        (width, height): (u16, u16),
+    ) -> Result<(), RenderError> {
         self.scratch.clear();
         self.scratch
             .resize(usize::from(width) * usize::from(height) * 4, 0);
-        let Some(pixmap) = PixmapMut::new(width, height, &mut self.scratch) else {
-            return;
-        };
+        let pixmap =
+            PixmapMut::new(width, height, &mut self.scratch).ok_or(RenderError::OverLimit)?;
         let settings = RasterizerSettings {
             render_mode: RenderMode::OptimizeSpeed,
             target_init: TargetInit::Clear(AlphaColor::TRANSPARENT),
@@ -223,42 +227,93 @@ impl VelloRasterizer {
         };
         self.context
             .render_with(pixmap, &mut self.resources, settings);
+        Ok(())
     }
 
-    /// Writes the scratch buffer, `width` by `height` pixels, into
-    /// `target` at `left`, `top`, `CONVERT_ROWS` rows at a time.
-    fn write(
-        &self,
-        target: &mut RenderTarget,
-        (left, top, width, height): (u32, u32, u32, u32),
-    ) -> Result<(), RenderError> {
+    /// Writes the scratch buffer, the rectangle of `cut` drawn, into
+    /// `target` at the rectangle, `CONVERT_ROWS` rows at a time. The
+    /// conversions are those that [`Cut::of`] checked, and the buffer is
+    /// checked to hold the rectangle before the first of them, so none
+    /// fails after another has written.
+    fn write(&self, target: &mut RenderTarget, cut: &Cut) -> Result<(), RenderError> {
+        let rect = cut.rect;
         let desc = target.desc();
-        let row_bytes = width as usize * 4;
+        let row_bytes = rect.width() as usize * 4;
+        if self.scratch.len() != row_bytes * rect.height() as usize {
+            return Err(RenderError::OverLimit);
+        }
         let mut row = 0;
-        while row < height {
-            let rows = CONVERT_ROWS.min(height - row);
-            let source = BufferDesc::new(width, rows, width * 4, PixelFormat::Rgba8Premul)
-                .map_err(|_| RenderError::OverLimit)?;
+        while row < rect.height() {
+            let rows = CONVERT_ROWS.min(rect.height() - row);
+            let source = scratch_rows(rect.width(), rows)?;
             let start = row as usize * row_bytes;
             let bytes = self
                 .scratch
                 .get(start..start + rows as usize * row_bytes)
                 .ok_or(RenderError::OverLimit)?;
-            let rect = DamageRect::new(0, 0, width, rows).ok_or(RenderError::OverLimit)?;
+            let part = DamageRect::new(0, 0, rect.width(), rows).ok_or(RenderError::OverLimit)?;
             convert(
                 source,
                 bytes,
-                rect,
+                part,
                 desc,
                 target.bytes_mut(),
-                left,
-                top + row,
+                rect.x(),
+                rect.y() + row,
             )
             .map_err(|_| RenderError::OverLimit)?;
             row += rows;
         }
         Ok(())
     }
+}
+
+/// A damage rectangle that [`VelloRasterizer::render`] checks before it
+/// draws anything: its corner and size as vello_cpu takes them, and its
+/// conversions of at most `CONVERT_ROWS` rows into the target, which lie
+/// inside the target and within the buffer limits.
+struct Cut {
+    rect: DamageRect,
+    corner: (i32, i32),
+    size: (u16, u16),
+}
+
+impl Cut {
+    /// The checked rectangle `rect` of a target of `desc`, or
+    /// [`RenderError::OverLimit`].
+    fn of(desc: BufferDesc, rect: DamageRect) -> Result<Cut, RenderError> {
+        let inside = u64::from(rect.x()) + u64::from(rect.width()) <= u64::from(desc.width())
+            && u64::from(rect.y()) + u64::from(rect.height()) <= u64::from(desc.height());
+        if !inside {
+            return Err(RenderError::OverLimit);
+        }
+        // The first conversion is the largest; the others have as many rows
+        // or fewer.
+        scratch_rows(rect.width(), CONVERT_ROWS.min(rect.height()))?;
+        Ok(Cut {
+            rect,
+            corner: (corner(rect.x())?, corner(rect.y())?),
+            size: (side(rect.width())?, side(rect.height())?),
+        })
+    }
+}
+
+/// The description of `rows` rows of `width` pixels of the scratch buffer.
+fn scratch_rows(width: u32, rows: u32) -> Result<BufferDesc, RenderError> {
+    let stride = width.checked_mul(4).ok_or(RenderError::OverLimit)?;
+    BufferDesc::new(width, rows, stride, PixelFormat::Rgba8Premul)
+        .map_err(|_| RenderError::OverLimit)
+}
+
+/// A side of a buffer as vello_cpu takes it: within the buffer limits, so
+/// at most 8,192 pixels.
+fn side(value: u32) -> Result<u16, RenderError> {
+    u16::try_from(value).map_err(|_| RenderError::OverLimit)
+}
+
+/// A coordinate in a buffer as vello_cpu takes it.
+fn corner(value: u32) -> Result<i32, RenderError> {
+    i32::try_from(value).map_err(|_| RenderError::OverLimit)
 }
 
 impl Default for VelloRasterizer {
@@ -281,14 +336,18 @@ impl Rasterizer for VelloRasterizer {
         }
         let plan = Plan::of(list, glyphs)?;
         let desc = target.desc();
-        // Within the buffer limits, so at most 8,192 pixels each.
-        let side = |value: u32| u16::try_from(value).map_err(|_| RenderError::OverLimit);
-        let corner = |value: u32| i32::try_from(value).map_err(|_| RenderError::OverLimit);
-        self.record(list, &plan, (side(desc.width())?, side(desc.height())?));
-        for rect in damage.rects() {
-            let size = (side(rect.width())?, side(rect.height())?);
-            self.rasterize((corner(rect.x())?, corner(rect.y())?), size);
-            self.write(target, (rect.x(), rect.y(), rect.width(), rect.height()))?;
+        let size = (side(desc.width())?, side(desc.height())?);
+        // Every rectangle is checked before the first is drawn, so an error
+        // leaves the target as it was.
+        let cuts = damage
+            .rects()
+            .iter()
+            .map(|&rect| Cut::of(desc, rect))
+            .collect::<Result<Vec<Cut>, RenderError>>()?;
+        self.record(list, &plan, size);
+        for cut in &cuts {
+            self.rasterize(cut.corner, cut.size)?;
+            self.write(target, cut)?;
         }
         Ok(WorkCount::of(list, damage))
     }
@@ -316,7 +375,7 @@ impl Rasterizer for VelloRasterizer {
         context.set_paint(straight(Color::opaque(255, 255, 255)));
         context.fill_path(&self.path);
         context.flush();
-        self.rasterize((0, 0), (width, height));
+        self.rasterize((0, 0), (width, height))?;
         for (value, pixel) in out
             .coverage_mut()
             .iter_mut()
