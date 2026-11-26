@@ -1716,7 +1716,8 @@ and uses integer arithmetic only:
   trees, display lists, glyph positions, coverage or pixels. In the first
   release it is every target (`src/`, tests and examples) of `kosmo-types`,
   `kosmo-ui`, `kosmo-render`, `kosmo-text`, `kosmo-controls` and
-  `kosmo-math-controls`; a later crate is judged by the same definition. In
+  `kosmo-math-controls`; a later crate is judged by the same definition, and
+  the layout table marks each crate of the path `deterministic`. In
   `display/`, `kosmo-compositor` and later server modules that write pixels
   belong to it. `display/` needs no transcendental functions in the first
   release; if it needs them later, their source is a design change.
@@ -1737,7 +1738,9 @@ and uses integer arithmetic only:
   and `as` conversions. Minimum, maximum and clamping are written with explicit
   comparisons or on integers.
 
-A planned check enforces these rules on the deterministic path. It rejects:
+Clippy enforces these rules with the lists of the root `clippy.toml`, as
+[the determinism lints](../CONTRIBUTING.md#the-determinism-lints) describes.
+It rejects:
 
 - a direct call to `libm`, `core_maths` or a similar crate outside the wrapper
   module; only `kosmo-render` depends on `libm` directly;

@@ -69,7 +69,9 @@ Every workspace denies the Clippy lints `unwrap_used`, `expect_used`, `panic`,
 modules and in `#[test]` functions. `todo!()` is rejected in tests too. A
 helper function in `tests/` outside a `#[test]` function returns a `Result`
 or carries an `#[allow]`, and every `#[allow]` states its reason with
-`reason = "..."`.
+`reason = "..."`. The product workspaces also deny `disallowed_methods` and
+`disallowed_types`, whose lists the root `clippy.toml` holds, as
+[the determinism lints](#the-determinism-lints) describes.
 
 `cargo xtask check --receipt <path>` also writes a JSON receipt of the run to
 `<path>`, whether the check passes or fails. It records the commit, whether
@@ -412,7 +414,13 @@ by line number:
 It finds the calls of `matches_golden` in the tokens of the crate's Rust
 files, so calls in comments and string literals do not count, nor do calls
 whose first argument is not a string literal. A golden directory without
-`MANIFEST` lists no goldens.
+`MANIFEST` lists no goldens. The step does not check that a test returns
+or checks the result of each call, nor that the crate's manifest runs
+`tests/golden.rs`, which `autotests = false` without a `[[test]]` table
+for it would turn off; review covers these. In CI, the goldens step
+compares every file with `MANIFEST` and the test step every drawing with
+its file, byte for byte, so the digests of what CI draws are those of
+`MANIFEST`.
 
 ### The fetch and deps steps
 
@@ -668,6 +676,12 @@ The fetch and deps steps have limits:
   lists it and the packages that only it brings in, the features that they
   turn on count in the resolved features of the packages they depend on,
   and the build compiles none of those packages.
+- Cargo compares a package with the checksum in `Cargo.lock` only when it
+  downloads it. It does not compare again the sources that it unpacked
+  into a local `CARGO_HOME` or the `.crate` files that it keeps there, so a
+  changed cache changes a local build without failing a step. CI starts
+  from an empty `CARGO_HOME`, and a local comparison of golden digests
+  uses a fresh one.
 - `cargo xtask` downloads and builds xtask before any step runs, outside the
   fetch step, so the build scripts and procedural macros of xtask's own
   dependencies run before the check reads `xtask/allowlist.toml` and checks
@@ -688,6 +702,112 @@ The fetch and deps steps have limits:
 - The checks find dependencies that were added by mistake. They cannot stop a
   build script, a procedural macro or configuration outside the repository
   that hides a change on purpose.
+
+### The determinism lints
+
+Clippy's lints `disallowed_methods` and `disallowed_types`, with the lists of
+the root `clippy.toml`, keep deterministic code to the rules of
+[transcendental functions](docs/architecture.md#transcendental-functions)
+and [hash containers](docs/architecture.md#determinism-rules). Each product
+workspace denies both in `[workspace.lints.clippy]`, so the `clippy` step
+fails on a call of a listed method or function and on a use of a listed
+type in any crate of `display/`, `framework/` and `desktop/`, tests
+included; in `xtask`, which reads the same file, the lints keep their
+default level, warn, which `-D warnings` of the step makes an error.
+Clippy reports by the path that the compiler resolves: a method call such
+as `x.sin()`, a path call such as `f32::sin(x)` or `<f32>::sin(x)`, a
+function as a value such as `f32::sin`, and a type through any re-export,
+such as `std::collections::hash_map::HashMap`; a method of the same name of
+another type is not reported. The lists are:
+
+- methods of `f32` and `f64`, in `std` and in `core` outside its unstable
+  module `math`, whose documentation has an "Unspecified precision"
+  section, calls its result non-deterministic or refers to algebraic
+  operators: in toolchain 1.99.0 the 41 methods of each type that the
+  [transcendental functions](docs/architecture.md#transcendental-functions)
+  list, among them the unstable `gamma`, `ln_gamma`, `erf` and `erfc`;
+- every function that `libm` 0.2.16 exports, 124 of them;
+- the types `std::collections::HashMap`, `std::collections::HashSet`,
+  `std::hash::RandomState` and `libm::Libm`, through which the functions
+  of `libm` can be called too.
+
+The layout table marks the crates of the deterministic path
+`deterministic`, and in their Rust files the layout step allows no
+attribute that lowers either lint, except one in the wrapper module
+`det_math` of `kosmo-render`, the one place that calls `libm`, as
+[the layout step](#the-layout-step) describes. A crate off the
+deterministic path may allow them with a reason.
+
+The methods and functions are generated, in this order, by this command,
+run from the repository root with the `rust-src` component of the pinned
+toolchain (`rustup component add rust-src`) and with `libm` 0.2.16 in
+Cargo's registry, which the fetch step downloads:
+
+```sh
+library="$(rustc --print sysroot)/lib/rustlib/src/rust/library"
+for type in f32 f64; do
+    awk -v type="$type" '
+        /^pub mod math / { exit }
+        /^ *\/\/\// { if (!doc) text = ""; doc = 1; text = text $0 "\n"; next }
+        { doc = 0 }
+        /^ *pub (const )?fn / {
+            if (text ~ /# Unspecified precision/) why = "its precision is unspecified and differs between hosts; deterministic code calls det_math in kosmo-render"
+            else if (text ~ /algebraic-operators/) why = "its result is not deterministic; deterministic code uses the basic operations"
+            else if (text ~ /non-deterministic/) why = "it may return either of two inputs that compare equal, such as +0.0 and -0.0; deterministic code compares explicitly"
+            else why = ""
+            if (why != "") {
+                match($0, /fn [a-z0-9_]+/)
+                printf "    { path = \"%s::%s\", reason = \"%s\" },\n", type, substr($0, RSTART + 3, RLENGTH - 3), why
+            }
+        }
+        /^ *pub (const )?fn / || /^ *$/ || /^ *}/ { text = "" }
+    ' "$library/std/src/num/$type.rs" "$library/core/src/num/$type.rs"
+done
+set -- "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/libm-0.2.16/src/math/mod.rs
+sed -n 's/^pub use self::[a-z0-9_]*::{*\([a-z0-9_, ]*\)}*;$/\1/p' "$1" | tr ',' '\n' | tr -d ' ' |
+    awk '{ printf "    { path = \"libm::%s\", reason = \"deterministic code calls libm only through det_math in kosmo-render\" },\n", $0 }'
+```
+
+Its output, one entry per line, replaces the entries of `disallowed-methods`
+in `clippy.toml`; the four types are written by hand. A pull request that
+upgrades the toolchain or `libm` runs the command again and states the
+versions in the comment above the list. The tests of the lints are in
+`xtask/src/layout/lints/fixture.rs`: they write a crate that denies both
+lints into the build directory of `xtask` and run the pinned Clippy on it
+with the root `clippy.toml`, offline. A method call, a path call and a
+function pointer of methods with unspecified precision, `algebraic_add`,
+`f32::max`, `libm::sinf` outside a module that expects the lint and
+`std::collections::HashMap`, also through a re-export, are each reported
+once, the method `sin` of a type of the crate is not, and every entry of
+the lists is reported where the crate names it, except the four unstable
+methods, which stable code cannot name.
+
+The lints have limits:
+
+- Clippy reads the nearest `clippy.toml` at or above a crate's directory,
+  or the directory that `CLIPPY_CONF_DIR` names; configuration outside the
+  repository can make it read another file, and review covers that.
+- Clippy warns about an entry whose crate resolves but whose item does
+  not, and `-D warnings` makes that an error. It ignores without a warning
+  an entry whose crate does not resolve, such as the functions of `libm`
+  in a crate that does not reach it, and a method that `f32` or `f64` does
+  not have, among them their methods of `std` in a `no_std` crate, whose
+  code cannot call them; the fixture names every entry, so an entry that
+  names nothing fails its test.
+- The command finds the methods by the words of their documentation; a
+  method of a new toolchain that states an unspecified or
+  non-deterministic result in other words is not found, so the pull
+  request of the upgrade reads the new methods of `f32` and `f64`.
+- Only `libm` among the math crates is listed. The methods of traits of
+  dependencies that compute transcendental functions, such as the
+  `FloatFuncs` trait of kurbo, which vello_cpu re-exports, and the hash
+  containers of other crates, such as hashbrown, are not; a direct
+  dependency on a crate such as core_maths or hashbrown needs an allow
+  entry, which review judges.
+- The lints see kosmo's code only. Floating point inside dependencies is
+  examined when a library is chosen, and the features of the raster
+  library and the text stack are compared by the deps step, as the rules
+  of [golden images and determinism](#golden-images-and-determinism) state.
 
 ## Dependencies
 
@@ -806,6 +926,66 @@ Tests produce observations; they do not admit a release. The release decision
 is recorded separately in the coordination records. Creating a tag or
 publishing is a
 separate authorized action.
+
+### Golden images and determinism
+
+Rendering is tested against pixel goldens, and code on the deterministic
+path keeps to these rules, each following the paragraph of the
+architecture that it links:
+
+1. Deterministic code calls transcendental functions only through
+   `det_math` in `kosmo-render`, which calls `libm` 0.2.16, uses otherwise
+   only the basic floating-point operations and those whose result is fully
+   determined, and never calls a method of unspecified precision, an
+   `algebraic_*` method or a floating-point `min`, `max` or `clamp`, as
+   [the determinism lints](#the-determinism-lints) check
+   ([transcendental functions](docs/architecture.md#transcendental-functions)).
+2. The raster library and the text stack are built without `std` and with
+   the same `libm`, and the deps step compares their resolved features with
+   the allow entries and the allowlists, which detects a change such as
+   `std` turned on but passes once the entries are rewritten as the step
+   prints them, so review rejects `std` and threading features in such a
+   change ([transcendental functions](docs/architecture.md#transcendental-functions)).
+3. The SIMD level of the pixel and text paths depends only on the
+   compilation target and is given to the raster library explicitly, and
+   builds add neither `-C target-cpu` nor `-C target-feature`
+   ([SIMD and code generation](docs/architecture.md#determinism-rules)).
+4. Deterministic code uses ordered containers and never `HashMap`,
+   `HashSet` or `RandomState` of the standard library, also through
+   re-exports, as the determinism lints check, and the hash containers
+   inside dependencies are covered by comparing golden digests across
+   separate processes ([hash containers](docs/architecture.md#determinism-rules)).
+5. The deterministic path starts no threads, the threading features of the
+   libraries stay off, and no package of the rayon or crossbeam families is
+   allowed ([threads](docs/architecture.md#determinism-rules)).
+6. Colors are 8-bit sRGB-encoded constants that the raster library
+   composites with its `u8_pipeline`, and RGB565 is produced only by the
+   conversion function of `kosmo-types` when a buffer is submitted, without
+   dithering ([color](docs/architecture.md#determinism-rules)).
+7. Fonts come only from the asset directory of `kosmo-text` through
+   `ResourceProvider`, with system font discovery off
+   ([font sources](docs/architecture.md#determinism-rules)).
+8. Output depends only on input: nothing reads the locale or environment
+   variables, options are constants, and records hold no wall-clock time
+   ([environment](docs/architecture.md#determinism-rules)).
+9. Layout trees, display lists and their serialization hold no NaN and no
+   infinity ([finite values](docs/architecture.md#determinism-rules)).
+10. Pixel goldens come only from the CPU rasterizer and are compared by the
+    SHA-256 of the buffer description and the raw bytes, without image
+    encoding, as [the goldens step](#the-goldens-step-and-cargo-xtask-golden)
+    describes ([digests](docs/architecture.md#determinism-rules)).
+11. The toolchain and the chosen libraries are pinned exactly, and each
+    upgrade is a pull request of its own that updates the goldens by
+    category with `cargo xtask golden` and, for the toolchain, generates the
+    lists of the determinism lints again
+    ([pinning](docs/architecture.md#determinism-rules)).
+12. Pixel goldens have zero tolerance, and the check on GitHub-hosted runners
+    is authoritative: the digests that `cargo xtask golden --verify` prints
+    on a local host, run with a fresh `CARGO_HOME` and reported with whether
+    the volume of the checkout is case-sensitive, are compared with those of
+    CI one by one, and a local digest that differs stops the work and goes
+    to the maintainers, without taking CI's digest instead
+    ([authority](docs/architecture.md#determinism-rules)).
 
 ## License
 
