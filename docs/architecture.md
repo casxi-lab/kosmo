@@ -13,7 +13,8 @@ structure in `kosmo-math-model`, formula conversion in `kosmo-math-kalyx`, the
 job layer in `kosmo-jobs` with its host stub and its controllable backend,
 the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
-kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
+kalyx's output lines, the wrapper of transcendental functions in
+`kosmo-render`, the Scratchpad in `kosmo-scratchpad`, with its
 history and reuse, the SDK facade `kosmo-sdk`, which re-exports them, part
 of the shared types in `kosmo-types`: fixed-point geometry, logical time, the
 focus generation and epoch, the keyboard event records, pixel formats, buffer
@@ -852,9 +853,9 @@ licenses and build scripts of the packages.
 
 Crates and workspaces appear with their first code. So far `display/` exists,
 with the shared types `kosmo-types`, `framework/`, with the libraries
-`kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx`, `kosmo-ui` and
-`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`, with the program
-`kosmo`. A change that
+`kosmo-math-model`, `kosmo-jobs`, `kosmo-render`, `kosmo-math-kalyx`,
+`kosmo-ui` and `kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`,
+with the program `kosmo`. A change that
 adds a crate registers it in the table, and the first crate of a workspace adds
 the workspace root. The layout step of `cargo xtask check` enforces this layout
 on the tracked files, and the deps step on what Cargo resolves; Contributing
@@ -894,10 +895,11 @@ and their limits.
 - First-release registration: `kosmo` is a boundary crate for standard
   streams, arguments, exit code and the real clock, and `kosmo-jobs` for
   threads; `kosmo-types`, `kosmo-math-model`, `kosmo-math-kalyx`,
-  `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui` are core libraries. Other
-  crates are registered by the change that creates them; `kosmo-testkit` is
-  expected to be a boundary crate, and [host programs](#host-programs) lists the
-  boundary crates of the display stack with their categories.
+  `kosmo-render`, `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui` are core
+  libraries. Other crates are registered by the change that creates them;
+  `kosmo-testkit` is expected to be a boundary crate, and [host
+  programs](#host-programs) lists the boundary crates of the display stack with
+  their categories.
 - The layout step of `cargo xtask check` parses the Rust files under the
   `src/` of every library crate, unit tests included, expands `use` trees and
   reports every forbidden path, macro and type with file and line, and in a
@@ -1529,7 +1531,7 @@ pub trait Rasterizer {
 - guillotiere 0.7.0, a dependency of vello_cpu that cannot be turned off, states
   its license as `MIT/Apache-2.0`, which is not a valid SPDX expression, so the
   deps step requires a license exception for it: the allowlist of the framework
-  will list one that reads it as `MIT OR Apache-2.0`, with its reason.
+  lists one that reads it as `MIT OR Apache-2.0`, with its reason.
 
 ### Glyphs
 
@@ -1810,7 +1812,8 @@ Besides the rules above:
 ### External dependencies
 
 The libraries chosen above enter as these direct external dependencies, which
-the layout table will list for their crates:
+the layout table lists for their crates; so far it lists those of
+`kosmo-render`, and the others are added with their crates:
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |

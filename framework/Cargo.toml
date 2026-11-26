@@ -7,6 +7,7 @@ members = [
     "jobs",
     "math-kalyx",
     "math-model",
+    "render",
     "scratchpad",
     "sdk",
     "ui",
@@ -25,6 +26,8 @@ kosmo-math-kalyx = { path = "math-kalyx", version = "=0.1.0-dev.1" }
 kosmo-math-model = { path = "math-model", version = "=0.1.0-dev.1" }
 kosmo-scratchpad = { path = "scratchpad", version = "=0.1.0-dev.1" }
 kosmo-types = { path = "../display/types", version = "=0.1.0-dev.1" }
+libm = { version = "=0.2.16", default-features = false }
+vello_cpu = { version = "=0.4.0", default-features = false, features = ["libm", "u8_pipeline"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

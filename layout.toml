@@ -147,6 +147,27 @@ publish = false
 same-layer = ["kosmo-math-model"]
 platform = ["threads"]
 
+[crates.kosmo-render]
+path = "framework/render"
+layer = "F0"
+export = false
+pure-core = false
+publish = false
+
+[[crates.kosmo-render.external]]
+name = "libm"
+version = "=0.2.16"
+default-features = false
+features = []
+resolved-features = ["arch", "default"]
+
+[[crates.kosmo-render.external]]
+name = "vello_cpu"
+version = "=0.4.0"
+default-features = false
+features = ["libm", "u8_pipeline"]
+resolved-features = ["libm", "u8_pipeline"]
+
 [crates.kosmo-math-kalyx]
 path = "framework/math-kalyx"
 layer = "F1"
