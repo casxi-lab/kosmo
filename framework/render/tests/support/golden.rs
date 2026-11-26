@@ -143,11 +143,20 @@ pub fn drawings() -> Checked<Vec<(&'static str, Vec<u8>)>> {
 /// byte. The goldens step of `cargo xtask check` finds the goldens that
 /// the tests refer to by the calls of this function with a string literal.
 pub fn matches_golden(name: &str) -> Checked {
-    let (_, drawn) = drawings()?
+    matches_file_in(GOLDENS, name)
+}
+
+/// The scene `name`, drawn alone by one new vello_cpu rasterizer, which
+/// also fills the glyph masks, matches the file `<dir>/<name>.px` byte for
+/// byte.
+pub fn matches_file_in(dir: &str, name: &str) -> Checked {
+    let mut rasterizer = VelloRasterizer::new();
+    let scene = scenes::primitives(&mut rasterizer)?
         .into_iter()
-        .find(|(scene, _)| *scene == name)
+        .find(|scene| scene.name == name)
         .ok_or_else(|| format!("no scene is named {name}"))?;
-    let path = format!("{GOLDENS}/{name}.px");
+    let drawn = encode(&scene.draw(&mut rasterizer)?)?;
+    let path = format!("{dir}/{name}.px");
     let golden = fs::read(&path).map_err(|error| format!("{path}: {error}"))?;
     compare(name, &golden, &drawn)
 }

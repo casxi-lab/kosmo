@@ -4,6 +4,8 @@
 
 pub mod support;
 
+use std::fs;
+
 use kosmo_render::RenderTarget;
 use kosmo_types::{BufferDesc, PixelFormat};
 use support::golden::{self, matches_golden};
@@ -96,6 +98,24 @@ fn a_drawing_one_byte_off_its_golden_fails_at_the_first_differing_pixel() -> Che
         )
     );
     assert_eq!(golden::compare(name, &golden, &golden), Ok(()));
+    Ok(())
+}
+
+#[test]
+fn a_golden_file_one_byte_off_its_drawing_fails() -> Checked {
+    let dir = concat!(env!("CARGO_TARGET_TMPDIR"), "/golden-one-byte-off");
+    fs::create_dir_all(dir).map_err(failed)?;
+    let mut bytes = fs::read(format!("{}/fill-rect.px", golden::GOLDENS)).map_err(failed)?;
+    fs::write(format!("{dir}/fill-rect.px"), &bytes).map_err(failed)?;
+    golden::matches_file_in(dir, "fill-rect")?;
+    // The green component of pixel (30, 20) of the 64-pixel rows.
+    bytes[16 + 20 * 64 * 4 + 30 * 4 + 1] ^= 1;
+    fs::write(format!("{dir}/fill-rect.px"), &bytes).map_err(failed)?;
+    let error = golden::matches_file_in(dir, "fill-rect").unwrap_err();
+    assert!(
+        error.starts_with("fill-rect: pixel (30, 20) is "),
+        "{error}"
+    );
     Ok(())
 }
 
