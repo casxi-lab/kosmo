@@ -18,6 +18,51 @@ features = ["default", "std"]
 crates = ["xtask"]
 
 [[package]]
+name = "block-buffer"
+version = "0.12.1"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "cfg-if"
+version = "1.0.5"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "cpufeatures"
+version = "0.3.1"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "crypto-common"
+version = "0.2.2"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "digest"
+version = "0.11.3"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["block-api", "default"]
+crates = ["xtask"]
+
+[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "crates.io"
@@ -54,6 +99,15 @@ features = []
 crates = ["xtask"]
 
 [[package]]
+name = "hybrid-array"
+version = "0.4.15"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
 name = "indexmap"
 version = "2.14.2"
 source = "crates.io"
@@ -68,6 +122,15 @@ version = "1.0.18"
 source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
+name = "libc"
+version = "0.2.191"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
 features = []
 crates = ["xtask"]
 
@@ -145,6 +208,15 @@ features = ["alloc", "serde"]
 crates = ["xtask"]
 
 [[package]]
+name = "sha2"
+version = "0.11.1"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["xtask"]
+
+[[package]]
 name = "smallvec"
 version = "1.16.5"
 source = "crates.io"
@@ -205,6 +277,15 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["alloc"]
+crates = ["xtask"]
+
+[[package]]
+name = "typenum"
+version = "1.20.1"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = ["const-generics"]
 crates = ["xtask"]
 
 [[package]]

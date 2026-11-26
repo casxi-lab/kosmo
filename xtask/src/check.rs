@@ -7,7 +7,7 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
 use crate::repo::{Entry, Tree};
-use crate::{commits, deps, docs, fetch, layout, receipt, workflows};
+use crate::{commits, deps, docs, fetch, golden, layout, receipt, workflows};
 
 /// The Cargo workspaces that the format, Clippy and test steps cover, as
 /// repository-relative directories. The layout step checks that they are
@@ -124,6 +124,10 @@ pub fn steps() -> Vec<Step> {
         Step {
             name: "layout",
             action: Action::Internal(Box::new(layout::run)),
+        },
+        Step {
+            name: "goldens",
+            action: Action::Internal(Box::new(golden::run)),
         },
         Step {
             name: "fetch",
@@ -356,8 +360,9 @@ mod tests {
 
     use super::*;
 
-    const ORDER: [&str; 9] = [
+    const ORDER: [&str; 10] = [
         "layout",
+        "goldens",
         "fetch",
         "deps",
         "fmt",
@@ -485,6 +490,11 @@ mod tests {
     }
 
     #[test]
+    fn a_goldens_failure_stops_the_check() {
+        assert_fails_at("goldens");
+    }
+
+    #[test]
     fn a_fetch_failure_stops_the_check() {
         assert_fails_at("fetch");
     }
@@ -528,13 +538,13 @@ mod tests {
     fn a_failing_step_keeps_the_facts_it_added() {
         let ran = Rc::new(RefCell::new(Vec::new()));
         let outcomes = run_steps(Path::new("."), &with_failure("docs", &ran));
-        assert_eq!(outcomes[6].step, "docs");
+        assert_eq!(outcomes[7].step, "docs");
         assert_eq!(
-            outcomes[6].facts,
+            outcomes[7].facts,
             [("seen".to_string(), "before failing".to_string())]
         );
         assert_eq!(
-            outcomes[6].status,
+            outcomes[7].status,
             Status::Failed("forced failure".to_string())
         );
     }
