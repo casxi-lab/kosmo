@@ -22,7 +22,8 @@ The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
 workspaces `display/`, with the shared types `kosmo-types`, `framework/`, with
 the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-render`,
-`kosmo-math-kalyx`, `kosmo-ui` and `kosmo-scratchpad` and the facade
+`kosmo-platform`, `kosmo-testkit`, `kosmo-math-kalyx`, `kosmo-ui`,
+`kosmo-backend-headless` and `kosmo-scratchpad` and the facade
 `kosmo-sdk`, and `desktop/`, with the program `kosmo`, and the repository tasks
 in `xtask/`, run as `cargo xtask`.
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
@@ -38,7 +39,18 @@ order and stops at the first one that fails:
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
 4. `fmt`, `clippy` with warnings as errors, and `test --locked`, in each
    workspace that `WORKSPACES` in `xtask/src/check.rs` lists: `xtask`,
-   `display`, `framework` and `desktop`;
+   `display`, `framework` and `desktop`. `clippy` then lints each workspace
+   that `ORDINARY_PASSES` lists once more, without one of its members and
+   without test targets, so far `framework` without `kosmo-testkit`: that
+   member turns on the test hooks of `kosmo-platform` through an ordinary
+   dependency, so every command over the whole workspace builds them, and
+   this pass builds the other crates as ordinary builds do, without them,
+   so that code outside tests cannot name them. `clippy` and `test` also
+   build each package that `FEATURE_PASSES` lists once more with its
+   feature on, so far `kosmo-backend-headless` with `test-hooks`: the
+   workspace's command builds it without its test hooks, which compiles the
+   test files that `#![cfg(feature = "test-hooks")]` gates on them empty,
+   and this pass builds the hooks and runs those tests;
 5. `docs`: relative links and anchors in the Markdown files;
 6. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
@@ -78,12 +90,14 @@ or carries an `#[allow]`, and every `#[allow]` states its reason with
 the working tree was clean before and after the run, each step with its
 status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
-`<workspace>_ms`; for the `fetch` step and the `cargo metadata` commands of
-the `deps` step, the duration of each command as `<workspace>_<target>_ms`;
-for the `deps` step also the observations that its section lists; for the
-`goldens` step, the number of goldens that the manifests list, as
-`goldens`), the first line of `rustc --version`, the runner image
-(`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
+`<workspace>_ms`, of each pass without a member, as
+`<workspace>_without_<member>_ms`, and of each feature pass, as
+`<package>_<feature>_ms`; for the `fetch` step and the `cargo metadata`
+commands of the `deps` step, the duration of each command as
+`<workspace>_<target>_ms`; for the `deps` step also the observations that its
+section lists; for the `goldens` step, the number of goldens that the
+manifests list, as `goldens`), the first line of `rustc --version`, the runner
+image (`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
 `GITHUB_RUN_ATTEMPT`, `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a
 value the environment does not provide is `null`.
 
@@ -280,6 +294,49 @@ attribute of a library root, do not. It checks:
   as the roots of its targets, and `include!` and `#[path]` in it bring in
   only `.rs` files under its directory, so that, outside the limits below,
   the step reads every file that the crate compiles;
+- the test clock: tests take time only from an injected clock, so no test
+  code of a crate of the table or of a tool workspace calls
+  `std::thread::sleep` or `std::time::SystemTime::now`. Test code is every
+  Rust file under a crate's `tests/`, `benches/` and `examples/`; under its
+  `src/`, the items under `#[test]` or under a `cfg` attribute whose
+  condition names `test` outside `not(...)`, as `#[cfg(test)]` and
+  `#[cfg(all(test, unix))]` do, all of a module with an inner
+  `#![cfg(test)]`, and the files of the modules that these declare or
+  include, with the modules that those declare or include in turn; the
+  whole `src/` of `kosmo-testkit` and of the crates of layers D4 and F4;
+  and the doc tests under `src/`: the fenced code blocks of doc comments,
+  written with `///`, `//!`, `/** */`, `#[doc = "..."]` or `doc` inside
+  `cfg_attr`, that rustdoc may run as Rust: not marked `custom`, nor
+  `ignore` without an `ignore-<target>`, and without a tag, with only
+  classes and attributes in braces, as `{.rust}`, or with at least one of
+  `rust`, `compile_fail`, `no_run`, `should_panic` and the other tags of
+  Rust tests, in any order, read with their hidden lines. The uses are
+  found as the platform boundary check finds them, so imports, renames and
+  glob imports are followed, an import of either function is reported as
+  well as each use, comments and string literals do not match, and
+  `SystemTime` used as a type is not a use. Each use is reported with its
+  file and line, and so is a doc test whose tokens cannot be read;
+- call probes and test hooks: in every manifest of the product workspaces,
+  a dependency on `kosmo-testkit` other than a dev-dependency is optional
+  and turned on only by the crate's feature `call-probes`, as
+  `call-probes = ["dep:kosmo-testkit"]`; no dependency declaration,
+  dev-dependencies and the `[workspace.dependencies]` of the roots
+  included, turns on the `call-probes` of a crate, as
+  `features = ["call-probes"]` or `features = ["kosmo-ui/call-probes"]`
+  would; none but a dev-dependency, and the dependency of `kosmo-testkit` on
+  `kosmo-platform`, turns on the `test-hooks` of a crate; the `test-hooks`
+  of a crate turns on neither its own `call-probes` nor the `call-probes` of
+  a dependency; no feature of a crate other than `call-probes` and
+  `test-hooks`, its default features included, expanded through its feature
+  table, turns on its own `call-probes` or `test-hooks` or the
+  `call-probes` or `test-hooks` of a dependency; and its default features
+  do not turn on `kosmo-testkit` either. So call probes are compiled only when
+  the command line turns them on, and test hooks only then, in tests and in
+  builds that include `kosmo-testkit`, as every command over the whole
+  `framework/` workspace does; the `clippy` step therefore lints `framework/`
+  once more without `kosmo-testkit` and without test targets, as step 4 of the
+  check describes, so that the platform interface, the backends and the
+  framework core build there without the hooks, as ordinary builds do;
 - the shape of the workspace roots: a product workspace root sets
   `resolver = "3"`, sets the six Clippy lints above and `disallowed_methods`
   and `disallowed_types` to `deny` or `forbid` in `[workspace.lints.clippy]`
@@ -315,11 +372,23 @@ read. The rule of the wrapper module reads only the tokens
 of `src/det_math.rs`, so a module declaration or an `include!` that a macro
 defined in another file expands inside the wrapper module is not found,
 and the module's exception covers the code that it brings in; review reads
-the macros that deterministic crates call. It cannot see
-what build scripts, procedural macros or configuration outside the
-repository, such as `$CARGO_HOME/config.toml`, `RUSTFLAGS` or
-`CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no longer runs the
-check at all; review covers these.
+the macros that deterministic crates call. The test clock check has
+the limits of the platform boundary check in how it reads tokens, imports
+and macros, though it reads the test code of every crate, one without a
+library target included, and counts the lines of a test item, from its
+first attribute to its end, as test code, other code on those lines
+included. A test module in its own file does not see what its parent
+module imports, so a `sleep` taken with `use super::*` from a parent that
+imports `std::thread::sleep` is not found. It finds test targets by their
+directories, not by a `path` of `[[test]]`, `[[bench]]` or `[[example]]`
+elsewhere, and does not read indented code blocks or fenced ones in a
+block quote or on the line of a list marker, as ``> ``` `` and ``- ``` ``
+begin them, all of which rustdoc also runs, doc comments that a macro
+writes, as `#[doc = include_str!("...")]` does, or a test attribute that
+`cfg_attr` adds. It cannot see what build scripts, procedural macros or
+configuration outside the repository, such as `$CARGO_HOME/config.toml`,
+`RUSTFLAGS` or `CLIPPY_CONF_DIR`, change, and a changed `xtask` alias no
+longer runs the check at all; review covers these.
 What Cargo resolves from the manifests is checked by the deps step, not by this
 one.
 

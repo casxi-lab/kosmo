@@ -1,0 +1,20 @@
+[package]
+name = "kosmo-platform"
+description = "The platform interface of the framework: its nine traits, their value types and bounds, and AccessKit re-exported"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# The test hooks: `PlatformTestHooks` and its value types. Off by default;
+# only test builds, and builds that include `kosmo-testkit`, turn it on.
+test-hooks = []
+
+[dependencies]
+accesskit.workspace = true
+kosmo-types.workspace = true
+
+[lints]
+workspace = true

@@ -3750,3 +3750,816 @@ fn crates_may_reach_kalyx_through_the_adapter() {
     });
     assert_eq!(found, Vec::<String>::new());
 }
+
+// The test clock.
+
+/// The problem of `item` at `path` and `line` in test code.
+fn clock_read(path: &str, line: usize, item: &str) -> String {
+    format!("{path}:{line}: {item} in test code; tests take time from an injected clock")
+}
+
+/// Adds the crate `name` of the layer `layer` in `workspace`, with `marks`
+/// besides those of the valid layout, to the table, the members of its
+/// root and the tracked files.
+fn add_crate(files: &mut Files, name: &str, workspace: &str, layer: &str, marks: &str) {
+    let dir = dir_of(name);
+    append(
+        files,
+        TABLE,
+        &format!(
+            "\n[crates.{name}]\npath = \"{workspace}/{dir}\"\nlayer = \"{layer}\"\nexport = false\npure-core = false\npublish = false\n{marks}"
+        ),
+    );
+    edit(
+        files,
+        &format!("{workspace}/Cargo.toml"),
+        "members = [",
+        &format!("members = [\"{dir}\", "),
+    );
+    files.insert(
+        format!("{workspace}/{dir}/Cargo.toml"),
+        crate_manifest(name, &[]),
+    );
+    files.insert(
+        format!("{workspace}/{dir}/src/lib.rs"),
+        format!("//! The crate {name}.\n"),
+    );
+}
+
+#[test]
+fn rejects_sleeps_and_wall_clock_reads_in_tests() {
+    let path = "framework/math-model/tests/wait.rs";
+    let found = problems_with(|files| {
+        files.insert(
+            path.to_string(),
+            "#[test]\nfn waits() {\n    std::thread::sleep(core::time::Duration::from_millis(1));\n    let _ = std::time::SystemTime::now();\n}\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(path, 3, "std::thread::sleep"),
+            clock_read(path, 4, "std::time::SystemTime::now"),
+        ]
+    );
+}
+
+#[test]
+fn test_modules_are_read_through_their_imports() {
+    // kosmo-jobs is registered for threads, so only the test clock reports.
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "#[cfg(test)]\nmod tests {\n    use std::thread;\n    fn waits(d: core::time::Duration) {\n        thread::sleep(d);\n    }\n}\n",
+        );
+    });
+    assert_eq!(found, [clock_read(lib, 6, "std::thread::sleep")]);
+}
+
+#[test]
+fn the_files_of_test_modules_are_test_code() {
+    let found = problems_with(|files| {
+        append(files, "framework/jobs/src/lib.rs", "mod x;\n");
+        files.insert(
+            "framework/jobs/src/x.rs".to_string(),
+            "#[cfg(test)]\nmod tests;\n".to_string(),
+        );
+        files.insert(
+            "framework/jobs/src/x/tests.rs".to_string(),
+            "mod support;\nfn waits(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n"
+                .to_string(),
+        );
+        // The modules of a test module are test code too.
+        files.insert(
+            "framework/jobs/src/x/tests/support.rs".to_string(),
+            "use std::thread::*;\nfn waits(d: core::time::Duration) {\n    sleep(d);\n}\n"
+                .to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read("framework/jobs/src/x/tests.rs", 3, "std::thread::sleep"),
+            clock_read(
+                "framework/jobs/src/x/tests/support.rs",
+                3,
+                "std::thread::sleep"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn files_that_tests_bring_in_by_path_are_test_code() {
+    let found = problems_with(|files| {
+        append(
+            files,
+            "framework/jobs/src/lib.rs",
+            "#[cfg(test)]\n#[path = \"fixtures/clock.rs\"]\nmod clock;\n#[test]\nfn waits() {\n    include!(\"waits.rs\");\n}\n",
+        );
+        for name in ["fixtures/clock.rs", "waits.rs"] {
+            files.insert(
+                format!("framework/jobs/src/{name}"),
+                "std::thread::sleep(core::time::Duration::ZERO);\n".to_string(),
+            );
+        }
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(
+                "framework/jobs/src/fixtures/clock.rs",
+                1,
+                "std::thread::sleep"
+            ),
+            clock_read("framework/jobs/src/waits.rs", 1, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
+fn test_functions_and_cfg_conditions_with_test_are_test_code() {
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "pub fn pause(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n#[test]\nfn waits() {\n    pause(core::time::Duration::ZERO);\n    std::thread::sleep(core::time::Duration::ZERO);\n}\n#[cfg(not(test))]\nfn never() {\n    std::thread::sleep(core::time::Duration::ZERO);\n}\n",
+        );
+        // kosmo is registered for the real clock.
+        append(
+            files,
+            "desktop/kosmo/src/lib.rs",
+            "pub fn now() -> std::time::SystemTime {\n    std::time::SystemTime::now()\n}\n#[cfg(all(test, unix))]\nfn also() -> std::time::SystemTime {\n    std::time::SystemTime::now()\n}\n",
+        );
+    });
+    // Code outside tests is left to the platform boundary, which allows
+    // threads to kosmo-jobs.
+    assert_eq!(
+        found,
+        [
+            clock_read("desktop/kosmo/src/lib.rs", 7, "std::time::SystemTime::now"),
+            clock_read(lib, 8, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
+fn a_let_statement_with_a_test_attribute_ends_at_its_semicolon() {
+    // kosmo-jobs is registered for threads, so only the test clock reports.
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "pub fn outer() {\n    #[cfg(test)]\n    let f = |a: u8,\n             d: core::time::Duration| std::thread::sleep(d);\n    #[cfg(test)]\n    let n = vec! {\n        0\n    }\n    .iter()\n    .map(|_| std::thread::sleep(core::time::Duration::ZERO))\n    .count();\n    std::thread::sleep(core::time::Duration::ZERO);\n}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(lib, 5, "std::thread::sleep"),
+            clock_read(lib, 11, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
+fn an_inner_cfg_test_makes_a_module_test_code() {
+    let found = problems_with(|files| {
+        append(files, "framework/jobs/src/lib.rs", "mod checks;\n");
+        files.insert(
+            "framework/jobs/src/checks.rs".to_string(),
+            "//! Checks.\n#![cfg(test)]\nfn waits(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [clock_read(
+            "framework/jobs/src/checks.rs",
+            4,
+            "std::thread::sleep"
+        )]
+    );
+}
+
+#[test]
+fn the_sources_of_the_testkit_and_of_test_layers_are_test_code() {
+    let found = problems_with(|files| {
+        add_crate(
+            files,
+            "kosmo-testkit",
+            "framework",
+            "F0",
+            "platform = [\"real-clock\"]\n",
+        );
+        append(
+            files,
+            "framework/testkit/src/lib.rs",
+            "use std::time::SystemTime;\npub fn now() -> SystemTime {\n    SystemTime::now()\n}\n",
+        );
+        add_crate(
+            files,
+            "kosmo-integration",
+            "framework",
+            "F4",
+            "platform = [\"threads\"]\n",
+        );
+        append(
+            files,
+            "framework/integration/src/lib.rs",
+            "pub fn pause(d: core::time::Duration) {\n    std::thread::sleep(d);\n}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read("framework/integration/src/lib.rs", 3, "std::thread::sleep"),
+            clock_read(
+                "framework/testkit/src/lib.rs",
+                4,
+                "std::time::SystemTime::now"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn types_comments_and_strings_are_not_clock_reads() {
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/math-model/tests/files.rs".to_string(),
+            "//! std::thread::sleep(d) in a comment.\nuse std::time::SystemTime;\n/// ```\n/// std::thread::sleep(d);\n/// ```\nfn modified(at: Option<SystemTime>) -> &'static str {\n    // let _ = std::time::SystemTime::now();\n    let _ = (at, SystemTime::UNIX_EPOCH);\n    \"std::time::SystemTime::now()\"\n}\n".to_string(),
+        );
+        append(
+            files,
+            "framework/math-model/src/lib.rs",
+            "/// Not a doc test: std::thread::sleep(d).\n///\n/// ```text\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```ignore\n/// std::thread::sleep(d);\n/// ```\npub const NAME: &str = \"std::thread::sleep\";\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn doc_tests_are_test_code() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "//! ```\n//! # use std::thread;\n//! thread::sleep(d);\n//! ```\n/// ```compile_fail\n/// let _ = std::time::SystemTime::now();\n/// ```\n///\n/// ```no_run\n/// std::thread::sleep(d);\n/// ```\n#[doc = \"```should_panic,edition2024\\nstd::thread::sleep(d);\\n```\"]\npub fn f() {}\n/**\n * ```rust\n * std::thread::sleep(d);\n * ```\n */\npub fn g() {}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(lib, 4, "std::thread::sleep"),
+            clock_read(lib, 7, "std::time::SystemTime::now"),
+            clock_read(lib, 11, "std::thread::sleep"),
+            clock_read(lib, 13, "std::thread::sleep"),
+            clock_read(lib, 17, "std::thread::sleep"),
+        ]
+    );
+}
+
+#[test]
+fn doc_tests_are_read_by_their_tags_classes_and_cfg_attr() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            r##"/// ```should_panic,text
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```no_run,foo
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```rust2021
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```{.rust}
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```{class="a b"}
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```ignore,ignore-x86_64
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```ignore-x86_64,text
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```E0277
+/// std::thread::sleep(d);
+/// ```
+#[cfg_attr(unix, cfg_attr(all(), doc = "```\nstd::thread::sleep(d);\n```"))]
+pub fn f() {}
+/// ```custom,rust
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```text {.rust}
+/// std::thread::sleep(d);
+/// ```
+///
+/// ```ignore,rust
+/// std::thread::sleep(d);
+/// ```
+pub fn g() {}
+"##,
+        );
+    });
+    // Only `custom`, other tags and `ignore` alone keep a block out.
+    assert_eq!(
+        found,
+        [3, 7, 11, 15, 19, 23, 27, 31, 33].map(|line| clock_read(lib, line, "std::thread::sleep"))
+    );
+}
+
+#[test]
+fn doc_tests_with_an_edition_a_harness_or_spaces_are_rust() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "/// ```edition2021\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```test_harness,text\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```standalone_crate,text\n/// std::thread::sleep(d);\n/// ```\n///\n/// ```should_panic text\n/// std::thread::sleep(d);\n/// ```\npub fn f() {}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [3, 7, 11, 15].map(|line| clock_read(lib, line, "std::thread::sleep"))
+    );
+}
+#[test]
+fn a_doc_test_that_is_not_rust_tokens_is_reported() {
+    let lib = "framework/math-model/src/lib.rs";
+    let found = problems_with(|files| {
+        append(
+            files,
+            lib,
+            "/// ```\n/// let a = 1;\n/// let s = \"open;\n/// ```\npub fn f() {}\n",
+        );
+    });
+    // The line in the file is that of the string in the block.
+    assert_problems(
+        &found,
+        &[&format!(
+            "{lib}:4: the doc test cannot be read as Rust tokens"
+        )],
+    );
+}
+
+#[test]
+fn benches_examples_and_nested_items_are_test_code() {
+    // kosmo-jobs is registered for threads, so only the test clock reports.
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        files.insert(
+            "framework/math-model/benches/b.rs".to_string(),
+            "fn main() { std::thread::sleep(core::time::Duration::ZERO); }\n".to_string(),
+        );
+        files.insert(
+            "framework/math-model/examples/e.rs".to_string(),
+            "fn main() { let _ = std::time::SystemTime::now(); }\n".to_string(),
+        );
+        append(
+            files,
+            lib,
+            r##"pub struct S;
+impl S {
+    /// ```
+    /// std::thread::sleep(d);
+    /// ```
+    pub fn f() {}
+    /// A block that is not closed ends with the document.
+    ///
+    /// ```
+    /// std::thread::sleep(d);
+    pub fn h() {}
+    #[cfg(test)]
+    fn g()
+    where
+        u8: Copy,
+        u16: Copy,
+    {
+        std::thread::sleep(core::time::Duration::ZERO);
+    }
+}
+mod inner {
+    #![cfg(test)]
+    fn a() {}
+    fn waits(d: core::time::Duration) {
+        std::thread::sleep(d);
+    }
+}
+"##,
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read(lib, 5, "std::thread::sleep"),
+            clock_read(lib, 11, "std::thread::sleep"),
+            clock_read(lib, 19, "std::thread::sleep"),
+            clock_read(lib, 26, "std::thread::sleep"),
+            clock_read("framework/math-model/benches/b.rs", 1, "std::thread::sleep"),
+            clock_read(
+                "framework/math-model/examples/e.rs",
+                1,
+                "std::time::SystemTime::now"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn the_tests_of_tools_are_test_code() {
+    let found = problems_with(|files| {
+        files.insert(
+            "xtask/src/main.rs".to_string(),
+            "fn main() {}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn waits() {\n        std::thread::sleep(core::time::Duration::ZERO);\n    }\n}\n".to_string(),
+        );
+        files.insert(
+            "xtask/tests/run.rs".to_string(),
+            "use std::time::SystemTime as Wall;\n#[test]\nfn reads() {\n    let _ = Wall::now();\n}\n".to_string(),
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            clock_read("xtask/src/main.rs", 6, "std::thread::sleep"),
+            clock_read("xtask/tests/run.rs", 4, "std::time::SystemTime::now"),
+        ]
+    );
+}
+
+// Call probes and test hooks.
+
+/// The valid layout with the platform interface and the testkit in layer
+/// F0, the headless backend in F1 as in this repository, and a crate
+/// kosmo-x in F1 without dependencies.
+fn with_probes(files: &mut Files) {
+    add_crate(files, "kosmo-platform", "framework", "F0", "");
+    add_crate(
+        files,
+        "kosmo-testkit",
+        "framework",
+        "F0",
+        "same-layer = [\"kosmo-platform\"]\n",
+    );
+    add_crate(files, "kosmo-backend-headless", "framework", "F1", "");
+    add_crate(files, "kosmo-x", "framework", "F1", "");
+    declare(
+        files,
+        "framework",
+        "kosmo-platform = { path = \"platform\", version = \"=0.1.0-dev.1\" }\nkosmo-testkit = { path = \"testkit\", version = \"=0.1.0-dev.1\" }",
+    );
+    append(
+        files,
+        "framework/platform/Cargo.toml",
+        "\n[features]\ntest-hooks = []\n",
+    );
+    append(
+        files,
+        "framework/testkit/Cargo.toml",
+        "\n[dependencies]\nkosmo-platform = { workspace = true, features = [\"test-hooks\"] }\n",
+    );
+    append(
+        files,
+        "framework/backend-headless/Cargo.toml",
+        "\n[features]\ntest-hooks = [\"kosmo-platform/test-hooks\"]\n\n[dependencies]\nkosmo-platform.workspace = true\n\n[dev-dependencies]\nkosmo-testkit.workspace = true\n",
+    );
+}
+
+/// The problems of the layout of [`with_probes`] after `change`.
+fn probes_with(change: impl FnOnce(&mut Files)) -> Vec<String> {
+    problems_with(|files| {
+        with_probes(files);
+        change(files);
+    })
+}
+
+#[test]
+fn rejects_a_normal_dependency_on_the_testkit() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[dependencies]\nkosmo-testkit = { workspace = true }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/x/Cargo.toml: [dependencies] kosmo-testkit: is a normal dependency; only the feature call-probes may turn it on, as an optional dependency"
+        ]
+    );
+}
+
+#[test]
+fn an_optional_testkit_that_only_call_probes_turns_on_passes() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ncall-probes = [\"dep:kosmo-testkit\"]\nother = [\"kosmo-testkit?/x\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn only_call_probes_turns_on_the_testkit() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\nextra = [\"dep:kosmo-testkit\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+    });
+    let at = "framework/x/Cargo.toml: [dependencies] kosmo-testkit:";
+    assert_eq!(
+        found,
+        [
+            format!(
+                "{at} the feature call-probes must turn it on with \"dep:kosmo-testkit\", the only feature that does"
+            ),
+            format!("{at} the feature extra turns it on; only call-probes may"),
+        ]
+    );
+}
+
+#[test]
+fn default_features_do_not_turn_on_call_probes() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ndefault = [\"call-probes\"]\ncall-probes = [\"dep:kosmo-testkit\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "framework/x/Cargo.toml: the default features turn on call-probes; call probes and test hooks stay off by default"
+        ]
+    );
+}
+
+#[test]
+fn default_features_are_expanded_through_the_feature_table() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/sdk/Cargo.toml",
+            "\n[features]\ndefault = [\"probes\"]\nprobes = [\"kosmo-ui/call-probes\", \"hooks\"]\nhooks = [\"kosmo-x?/test-hooks\", \"test-hooks\"]\ntest-hooks = []\n",
+        );
+    });
+    let at = "framework/sdk/Cargo.toml: the default features turn on";
+    let off = "call probes and test hooks stay off by default";
+    // probes and hooks are features of their own as well.
+    let other = "framework/sdk/Cargo.toml: the feature";
+    let only = "only call-probes and test-hooks turn them on";
+    assert_eq!(
+        found,
+        [
+            format!("{at} kosmo-ui/call-probes through probes; {off}"),
+            format!("{at} kosmo-x?/test-hooks through probes; {off}"),
+            format!("{at} test-hooks through probes; {off}"),
+            format!("{other} hooks turns on kosmo-x?/test-hooks; {only}"),
+            format!("{other} hooks turns on test-hooks; {only}"),
+            format!("{other} probes turns on kosmo-ui/call-probes; {only}"),
+            format!("{other} probes turns on kosmo-x?/test-hooks through hooks; {only}"),
+            format!("{other} probes turns on test-hooks through hooks; {only}"),
+        ]
+    );
+}
+
+#[test]
+fn features_other_than_call_probes_and_test_hooks_do_not_turn_them_on() {
+    let found = probes_with(|files| {
+        // A dependency that turns on another feature of the platform
+        // interface, which turns on its test hooks.
+        append(
+            files,
+            "framework/platform/Cargo.toml",
+            "all = [\"test-hooks\"]\n",
+        );
+        // A program that turns on a feature of the facade, which turns on
+        // features of kosmo-x that turn on its call probes and the test
+        // hooks of the platform interface.
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ncall-probes = [\"dep:kosmo-testkit\"]\nextra = [\"call-probes\"]\nhooks = [\"kosmo-platform/test-hooks\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\nkosmo-platform = { workspace = true, features = [\"all\"] }\n",
+        );
+        declare(
+            files,
+            "framework",
+            "kosmo-x = { path = \"x\", version = \"=0.1.0-dev.1\" }",
+        );
+        edit(
+            files,
+            "framework/sdk/Cargo.toml",
+            "[dependencies]\n",
+            "[dependencies]\nkosmo-x.workspace = true\n",
+        );
+        append(
+            files,
+            "framework/sdk/Cargo.toml",
+            "\n[features]\nextra = [\"kosmo-x/extra\", \"kosmo-x/hooks\"]\n",
+        );
+        edit(
+            files,
+            "desktop/calc/Cargo.toml",
+            "kosmo-sdk.workspace = true\n",
+            "kosmo-sdk = { workspace = true, features = [\"extra\"] }\n",
+        );
+    });
+    let only = "only call-probes and test-hooks turn them on";
+    assert_eq!(
+        found,
+        [
+            format!("framework/platform/Cargo.toml: the feature all turns on test-hooks; {only}"),
+            format!("framework/x/Cargo.toml: the feature extra turns on call-probes; {only}"),
+            format!(
+                "framework/x/Cargo.toml: the feature hooks turns on kosmo-platform/test-hooks; {only}"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn test_hooks_turn_on_no_call_probes_and_only_tests_turn_them_on() {
+    let crate_x = "kosmo-x = { path = \"x\", version = \"=0.1.0-dev.1\" }";
+    // A crate other than the platform interface or a backend with test
+    // hooks of its own that an ordinary dependency turns on.
+    let ordinary = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ntest-hooks = [\"kosmo-platform/test-hooks\"]\n\n[dependencies]\nkosmo-platform.workspace = true\n",
+        );
+        declare(files, "framework", crate_x);
+        edit(
+            files,
+            "framework/sdk/Cargo.toml",
+            "[dependencies]\n",
+            "[dependencies]\nkosmo-x = { workspace = true, features = [\"test-hooks\"] }\n",
+        );
+    });
+    // Test hooks that turn on the crate's own call probes.
+    let own = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ncall-probes = [\"dep:kosmo-testkit\"]\ntest-hooks = [\"call-probes\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+        declare(files, "framework", crate_x);
+        edit(
+            files,
+            "framework/sdk/Cargo.toml",
+            "[dependencies]\n",
+            "[dependencies]\nkosmo-x = { workspace = true, features = [\"test-hooks\"] }\n",
+        );
+    });
+    // The test hooks of a backend, which a dev-dependency may turn on,
+    // that turn on the call probes of a dependency.
+    let backend = probes_with(|files| {
+        edit(
+            files,
+            "framework/backend-headless/Cargo.toml",
+            "test-hooks = [\"kosmo-platform/test-hooks\"]\n",
+            "test-hooks = [\"kosmo-platform/test-hooks\", \"kosmo-x/call-probes\"]\n",
+        );
+        edit(
+            files,
+            "framework/backend-headless/Cargo.toml",
+            "kosmo-platform.workspace = true\n",
+            "kosmo-platform.workspace = true\nkosmo-x.workspace = true\n",
+        );
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[features]\ncall-probes = [\"dep:kosmo-testkit\"]\n\n[dependencies]\nkosmo-testkit = { workspace = true, optional = true }\n",
+        );
+        declare(
+            files,
+            "framework",
+            "kosmo-x = { path = \"x\", version = \"=0.1.0-dev.1\" }\nkosmo-backend-headless = { path = \"backend-headless\", version = \"=0.1.0-dev.1\" }",
+        );
+        edit(
+            files,
+            TABLE,
+            "path = \"framework/backend-headless\"\n",
+            "path = \"framework/backend-headless\"\nsame-layer = [\"kosmo-x\"]\n",
+        );
+        edit(
+            files,
+            "framework/sdk/Cargo.toml",
+            "[dependencies]\n",
+            "[dev-dependencies]\nkosmo-backend-headless = { workspace = true, features = [\"test-hooks\"] }\n\n[dependencies]\n",
+        );
+    });
+    let declared = "framework/sdk/Cargo.toml: [dependencies] kosmo-x: turns on kosmo-x/test-hooks; only dev-dependencies and the dependency of kosmo-testkit on kosmo-platform turn on test hooks";
+    let command_line = "only the command line turns on call probes";
+    assert_eq!(ordinary, [declared.to_string()]);
+    assert_eq!(
+        own,
+        [
+            declared.to_string(),
+            format!(
+                "framework/x/Cargo.toml: the feature test-hooks turns on call-probes; {command_line}"
+            ),
+        ]
+    );
+    assert_eq!(
+        backend,
+        [format!(
+            "framework/backend-headless/Cargo.toml: the feature test-hooks turns on kosmo-x/call-probes; {command_line}"
+        )]
+    );
+}
+
+#[test]
+fn no_dependency_declaration_turns_on_call_probes() {
+    let found = probes_with(|files| {
+        edit(
+            files,
+            "desktop/calc/Cargo.toml",
+            "kosmo-sdk.workspace = true\n",
+            "kosmo-sdk = { workspace = true, features = [\"kosmo-ui/call-probes\"] }\n",
+        );
+        append(
+            files,
+            "framework/sdk/Cargo.toml",
+            "\n[dev-dependencies]\nkosmo-ui = { workspace = true, features = [\"call-probes\"] }\n",
+        );
+        edit(
+            files,
+            "framework/Cargo.toml",
+            "kosmo-render = { path = \"render\", version = \"=0.1.0-dev.1\" }",
+            "kosmo-render = { path = \"render\", version = \"=0.1.0-dev.1\", features = [\"call-probes\"] }",
+        );
+    });
+    let only = "only the command line turns on call probes";
+    assert_eq!(
+        found,
+        [
+            format!(
+                "desktop/calc/Cargo.toml: [dependencies] kosmo-sdk: turns on kosmo-ui/call-probes; {only}"
+            ),
+            format!(
+                "framework/Cargo.toml: [workspace.dependencies] kosmo-render: turns on kosmo-render/call-probes; {only}"
+            ),
+            format!(
+                "framework/sdk/Cargo.toml: [dev-dependencies] kosmo-ui: turns on kosmo-ui/call-probes; {only}"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn only_dev_dependencies_and_the_testkit_turn_on_test_hooks() {
+    let found = probes_with(|files| {
+        append(
+            files,
+            "framework/x/Cargo.toml",
+            "\n[dependencies]\nkosmo-platform = { workspace = true, features = [\"test-hooks\"] }\n\n[target.'cfg(unix)'.dependencies]\nkosmo-backend-headless = { workspace = true, features = [\"test-hooks\"] }\n\n[dev-dependencies]\nkosmo-backend-headless = { workspace = true, features = [\"test-hooks\"] }\n",
+        );
+        declare(
+            files,
+            "framework",
+            "kosmo-backend-headless = { path = \"backend-headless\", version = \"=0.1.0-dev.1\" }",
+        );
+        edit(
+            files,
+            TABLE,
+            "path = \"framework/x\"\n",
+            "path = \"framework/x\"\nsame-layer = [\"kosmo-backend-headless\"]\n",
+        );
+    });
+    let hooks = "only dev-dependencies and the dependency of kosmo-testkit on kosmo-platform turn on test hooks";
+    assert_eq!(
+        found,
+        [
+            format!(
+                "framework/x/Cargo.toml: [dependencies] kosmo-platform: turns on kosmo-platform/test-hooks; {hooks}"
+            ),
+            format!(
+                "framework/x/Cargo.toml: [target.'cfg(unix)'.dependencies] kosmo-backend-headless: turns on kosmo-backend-headless/test-hooks; {hooks}"
+            ),
+        ]
+    );
+}

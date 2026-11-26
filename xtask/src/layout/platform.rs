@@ -205,14 +205,47 @@ pub struct Hit {
 /// The forbidden items in `stream`, the tokens of a file, that the
 /// categories `allowed` do not allow.
 pub fn scan(stream: TokenStream, allowed: &[Category]) -> BTreeSet<Hit> {
+    let rules = Rules {
+        items: &ITEMS,
+        allowed,
+    };
     let mut hits = BTreeSet::new();
-    level(stream, &Scope::default(), false, allowed, &mut hits);
+    level(stream, &Scope::default(), false, &rules, &mut hits);
     hits
 }
 
-/// The longest path item that `path`, from a crate root, starts with.
-fn item_of_path(path: &[String]) -> Option<&'static Item> {
-    ITEMS
+/// The functions through which a test would take time from the host
+/// instead of an injected clock.
+const CLOCK_READS: [Item; 2] = [
+    path(&["std", "thread", "sleep"], None),
+    path(&["std", "time", "SystemTime", "now"], None),
+];
+
+/// The uses of `std::thread::sleep` and `std::time::SystemTime::now` in
+/// `stream`, found as the scan finds forbidden items; `SystemTime` used as
+/// a type is not one of them.
+pub fn clock_reads(stream: TokenStream) -> BTreeSet<Hit> {
+    let rules = Rules {
+        items: &CLOCK_READS,
+        allowed: &[],
+    };
+    let mut hits = BTreeSet::new();
+    level(stream, &Scope::default(), false, &rules, &mut hits);
+    hits
+}
+
+/// What a scan looks for: its items, and the categories whose items it
+/// lets pass.
+#[derive(Debug)]
+struct Rules<'a> {
+    items: &'a [Item],
+    allowed: &'a [Category],
+}
+
+/// The longest path item of `items` that `path`, from a crate root,
+/// starts with.
+fn item_of_path<'a>(items: &'a [Item], path: &[String]) -> Option<&'a Item> {
+    items
         .iter()
         .filter(|item| {
             item.form == Form::Path
@@ -222,16 +255,16 @@ fn item_of_path(path: &[String]) -> Option<&'static Item> {
         .max_by_key(|item| item.path.len())
 }
 
-/// The macro item whose path is `path`, written from the crate root or
-/// through one of the preludes in `std::prelude`.
-fn item_of_macro(path: &[String]) -> Option<&'static Item> {
+/// The macro item of `items` whose path is `path`, written from the crate
+/// root or through one of the preludes in `std::prelude`.
+fn item_of_macro<'a>(items: &'a [Item], path: &[String]) -> Option<&'a Item> {
     let path: Vec<&str> = match path {
         [krate, prelude, _, name] if krate == "std" && prelude == "prelude" => {
             vec![krate.as_str(), name.as_str()]
         }
         _ => path.iter().map(String::as_str).collect(),
     };
-    ITEMS
+    items
         .iter()
         .find(|item| item.form == Form::Macro && item.path == path.as_slice())
 }
@@ -764,7 +797,9 @@ fn declarations(trees: &[TokenTree], associated: bool) -> Declarations {
 
 /// The scope of a module or block inside `outer` with the declarations
 /// `found`, whose imports resolve through one another and through `outer`.
-fn enter(outer: &Scope, found: &Declarations) -> Scope {
+/// A glob import of an item of `items` is a use of the item, so it brings
+/// in no names.
+fn enter(outer: &Scope, found: &Declarations, items: &[Item]) -> Scope {
     let depth = outer.depth + 1;
     let mut base = outer.clone();
     base.depth = depth;
@@ -802,7 +837,7 @@ fn enter(outer: &Scope, found: &Declarations) -> Scope {
                 let targets = import_targets(&scope, outer, &found.imports, import, outside);
                 if import.glob {
                     for target in targets {
-                        if item_of_path(&target).is_none() {
+                        if item_of_path(items, &target).is_none() {
                             next.globs.insert(target, depth);
                         }
                     }
@@ -882,11 +917,12 @@ fn import_targets(
     around.resolve(&import.segments, false, site)
 }
 
-/// Records `item`, used at `line`, unless `allowed` allows it.
-fn record(item: &Item, line: usize, allowed: &[Category], hits: &mut BTreeSet<Hit>) {
+/// Records `item`, used at `line`, unless the categories of `rules` allow
+/// it.
+fn record(item: &Item, line: usize, rules: &Rules, hits: &mut BTreeSet<Hit>) {
     if item
         .category
-        .is_some_and(|category| allowed.contains(&category))
+        .is_some_and(|category| rules.allowed.contains(&category))
     {
         return;
     }
@@ -985,21 +1021,21 @@ fn level(
     stream: TokenStream,
     outer: &Scope,
     associated: bool,
-    allowed: &[Category],
+    rules: &Rules,
     hits: &mut BTreeSet<Hit>,
 ) {
     let trees: Vec<TokenTree> = stream.into_iter().collect();
     let found = declarations(&trees, associated);
-    let scope = enter(outer, &found);
+    let scope = enter(outer, &found, rules.items);
     for import in &found.imports {
         for target in import_targets(&scope, outer, &found.imports, import, false) {
             let item = if import.glob {
-                item_of_path(&target)
+                item_of_path(rules.items, &target)
             } else {
-                item_of_macro(&target).or_else(|| item_of_path(&target))
+                item_of_macro(rules.items, &target).or_else(|| item_of_path(rules.items, &target))
             };
             if let Some(item) = item {
-                record(item, import.line, allowed, hits);
+                record(item, import.line, rules, hits);
             }
         }
     }
@@ -1026,8 +1062,8 @@ fn level(
             Body::Block
         };
         match body {
-            Body::Block => level(group.stream(), &inner, false, allowed, hits),
-            Body::Trait => level(group.stream(), &inner, true, allowed, hits),
+            Body::Block => level(group.stream(), &inner, false, rules, hits),
+            Body::Trait => level(group.stream(), &inner, true, rules, hits),
             Body::Impl(keyword) => {
                 // Inside the `impl`, `Self` stands for the type it implements.
                 let targets = self_type(&trees, keyword, at)
@@ -1036,7 +1072,7 @@ fn level(
                 let mut own = Scope::clone(&inner);
                 own.names
                     .insert("Self".to_string(), (inner.depth + 1, targets));
-                level(group.stream(), &own, true, allowed, hits);
+                level(group.stream(), &own, true, rules, hits);
             }
         }
     }
@@ -1091,12 +1127,12 @@ fn level(
         }
         for target in targets {
             let item = if called {
-                item_of_macro(&target)
+                item_of_macro(rules.items, &target)
             } else {
-                item_of_path(&target)
+                item_of_path(rules.items, &target)
             };
             if let Some(item) = item {
-                record(item, line, allowed, hits);
+                record(item, line, rules, hits);
             }
         }
         at = end;
@@ -1132,7 +1168,7 @@ mod tests {
     #[test]
     fn the_longest_item_decides() {
         let path = |text: &str| text.split("::").map(str::to_string).collect::<Vec<_>>();
-        let shown = |text: &str| item_of_path(&path(text)).map(Item::shown);
+        let shown = |text: &str| item_of_path(&ITEMS, &path(text)).map(Item::shown);
         assert_eq!(
             shown("std::env::args_os"),
             Some("std::env::args_os".to_string())

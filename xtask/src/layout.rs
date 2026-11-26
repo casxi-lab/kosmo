@@ -9,8 +9,9 @@
 //! configuration, pure-core crates, build scripts and procedural macros,
 //! versions and publishing, provisional and export crates, the platform
 //! boundary of library crates, the lint attributes of deterministic crates,
-//! the shape of the workspace roots and the workspaces that the other steps
-//! cover. It
+//! the test clock of test code, the features that turn on call probes and
+//! test hooks, the shape of the workspace roots and the workspaces that the
+//! other steps cover. It
 //! collects every problem and reports them one per line, as
 //! `<path>[:<line>]: <message>`, sorted by path, then by line number and
 //! then by message. When the table does not parse or is not consistent,
@@ -18,8 +19,10 @@
 //! manifest, there is no submodule, no symbolic link leaves the repository,
 //! the Cargo configuration and the Clippy configuration.
 
+mod clock;
 mod lints;
 mod platform;
+mod probes;
 mod source;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -1012,6 +1015,7 @@ fn check_crates(tree: &Tree, index: &Index, covered: &[&str], problems: &mut Pro
         .map(|(workspace, root)| {
             root.map(|root| {
                 check_shape(&root.manifest, root.table, root.workspace, problems);
+                probes::check_root(&root.manifest, root.workspace, problems);
                 check_listed_members(
                     tree,
                     index,
@@ -1054,6 +1058,7 @@ fn check_crates(tree: &Tree, index: &Index, covered: &[&str], problems: &mut Pro
         }
     }
     check_source_paths(tree, index, problems);
+    clock::check(tree, index, problems);
     check_coverage(index, covered, problems);
 }
 
@@ -1685,6 +1690,7 @@ fn check_crate<'a>(
             ));
         }
     }
+    probes::check_crate(manifest, name, table, problems);
     check_build_scripts(tree, place, manifest, table, problems);
     if krate.pure_core {
         check_pure_sources(tree, place, repo::parent(&root.manifest), table, problems);
@@ -1936,7 +1942,7 @@ fn brings_in_from_outside(
     workspace: &str,
 ) -> bool {
     let allowed = |resolved: &str| match found.kind {
-        source::Kind::Code => is_rust_under(resolved, code),
+        source::Kind::Code | source::Kind::Module => is_rust_under(resolved, code),
         source::Kind::Directory => repo::is_within(resolved, code),
         source::Kind::Data => true,
     };
@@ -2456,12 +2462,17 @@ fn check_source_paths(tree: &Tree, index: &Index, problems: &mut Problems) {
 /// of a file whose tokens cannot be read.
 fn read_rust(path: &str, text: &str) -> Result<(TokenStream, Vec<source::SourcePath>), String> {
     let stream = source::tokens(text).map_err(|error| untokenized(path, error))?;
-    // Only a `mod.rs` file is never a module file named after its module.
-    let name = file_name(path);
-    let stem = (name != "mod.rs").then(|| name.strip_suffix(".rs").unwrap_or(name));
     let mut found = Vec::new();
-    source::source_paths(stream.clone(), stem, &mut found);
+    source::source_paths(stream.clone(), stem(path), &mut found);
     Ok((stream, found))
+}
+
+/// The name of the Rust file `path` without `.rs`, which a module file
+/// gives the directory of its modules, unless it is a `mod.rs` file: only
+/// a `mod.rs` file is never a module file named after its module.
+fn stem(path: &str) -> Option<&str> {
+    let name = file_name(path);
+    (name != "mod.rs").then(|| name.strip_suffix(".rs").unwrap_or(name))
 }
 
 /// The format, Clippy and test steps run in exactly the tools and the

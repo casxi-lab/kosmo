@@ -4,40 +4,11 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use kosmo_types::{Epoch, FocusGen, KeyEvent};
+use kosmo_types::KeyEvent;
 
-/// The identity of a surface, as the round function's input names it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SurfaceId(u32);
-
-impl SurfaceId {
-    /// The surface `value`.
-    pub const fn new(value: u32) -> SurfaceId {
-        SurfaceId(value)
-    }
-
-    /// The surface as a number.
-    pub const fn get(self) -> u32 {
-        self.0
-    }
-}
-
-/// The focus stamp that travels beside a key event and a focus change: the
-/// epoch of the display server and the focus generation of the surface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Stamp {
-    /// The epoch.
-    pub epoch: Epoch,
-    /// The focus generation.
-    pub generation: FocusGen,
-}
-
-impl Stamp {
-    /// The stamp of `epoch` and `generation`.
-    pub const fn new(epoch: Epoch, generation: FocusGen) -> Stamp {
-        Stamp { epoch, generation }
-    }
-}
+// The identity of a surface and the focus stamp belong to the platform
+// interface, which reports them; the round function takes them as they are.
+pub use kosmo_platform::{Stamp, SurfaceId};
 
 /// A platform event of a round, in the order the platform delivered it.
 #[non_exhaustive]

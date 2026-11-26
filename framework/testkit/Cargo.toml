@@ -1,0 +1,15 @@
+[package]
+name = "kosmo-testkit"
+description = "Test support of the framework: the conformance suite of the platform interface and call probes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+kosmo-platform = { workspace = true, features = ["test-hooks"] }
+kosmo-types.workspace = true
+
+[lints]
+workspace = true

@@ -9,6 +9,10 @@ use crate::app::{App, Control, StateOf};
 /// The most controls that a control tree holds.
 pub const MAX_WIDGETS: usize = 4_096;
 
+// Each control has one accessibility node, so the bound of the platform
+// interface on the nodes of a surface's tree is the same.
+const _: () = assert!(MAX_WIDGETS == kosmo_platform::MAX_A11Y_NODES);
+
 /// The greatest depth of a control tree: the number of controls on the
 /// longest path from the root down, both ends included. A tree of only a
 /// root has depth 1.
