@@ -212,9 +212,9 @@ A run:
 
 The framework is idle when a round that starts with nothing pending and no
 deadline due finds no platform event, its wait returning `Idle`, and leaves
-nothing pending or due. The runner
-advances the clock only through `advance_to` of the test hooks and reads no
-other clock, and the headless backend never advances its clock itself. A line
+nothing pending or due. The runner advances the clock only through
+`advance_to` of the test hooks and reads no other clock, and the headless
+backend never advances its clock itself. A line
 that does not let the framework become idle within `MAX_ROUNDS_PER_LINE`
 rounds, 65,536, fails. The shell's rounds do not run the drawing pass yet, so
 a driver draws the frames itself: it lays its controls out, builds the
@@ -324,18 +324,22 @@ and the tests of digests in the module `pixels::tests` of
    `a_key_with_the_stamp_of_an_earlier_focus_is_not_delivered`.
 4. Lines of one time run no round between them, so a key at the time of two
    focus lines takes the stamp of the one that entered the surface. The
-   framework is idle only after a round that starts quiet and waits `Idle`:
-   65 keys of one time, more than one wait returns, are all handled before
-   the checkpoint, rounds with a due deadline go on, and a frame presented
-   in a round that took a job's report has been released before the
-   checkpoint, and what a quiet round leaves pending is taken before it. The bound of 65,536 rounds holds for each line, and a line
-   that is never idle stops after exactly that many. Tests:
+   framework is idle only after a round that starts quiet, waits `Idle` and
+   leaves nothing pending or due: 65 keys of one time, more than one wait
+   returns, are all handled before the checkpoint, rounds with a due
+   deadline go on, a frame presented in a round that took a job's report
+   has been released before the checkpoint, and what a quiet round leaves
+   pending or due is taken before it. The bound of 65,536 rounds holds for
+   each line, and a line that is never idle stops after exactly that many.
+   Tests:
    `tests/runner.rs`:
    `lines_of_one_time_run_no_round_between_them`,
    `a_key_at_the_time_of_a_focus_line_takes_its_stamp`,
    `more_keys_than_one_wait_returns_are_all_handled_before_the_checkpoint`,
    `a_due_deadline_keeps_the_framework_running`,
    `a_checkpoint_comes_after_the_release_of_the_last_frame`,
+   `what_a_quiet_round_leaves_pending_is_taken_before_the_checkpoint`,
+   `what_a_quiet_round_leaves_due_is_taken_before_the_checkpoint`,
    `the_bound_of_rounds_holds_for_each_line`,
    `a_line_runs_at_most_max_rounds_per_line_rounds`.
 5. A header outside the capabilities, a focus line for another surface, an

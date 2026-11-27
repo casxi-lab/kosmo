@@ -105,8 +105,9 @@ impl Script {
     ///
     /// The framework is idle when a round that starts with nothing pending
     /// in the driver and no deadline of the driver due finds no platform
-    /// event, its wait returning `Idle`, and leaves nothing pending or due. The runner advances the clock only
-    /// through the test hooks and reads no other clock.
+    /// event, its wait returning `Idle`, and leaves nothing pending or due.
+    /// The runner advances the clock only through the test hooks and reads
+    /// no other clock.
     ///
     /// A section is the line `checkpoint <n> at <time>`, the line
     /// `view <count>` followed by the driver's view lines, for each surface
