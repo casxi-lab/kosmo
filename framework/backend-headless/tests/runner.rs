@@ -259,6 +259,9 @@ struct Fake {
     busy_after_events: usize,
     /// The rounds for which it still has something pending.
     busy: usize,
+    /// The round after which it has something pending, as a release that a
+    /// round makes would leave.
+    pending_after_round: usize,
 }
 
 impl Fake {
@@ -273,6 +276,7 @@ impl Fake {
             due_rounds: 0,
             busy_after_events: 0,
             busy: 0,
+            pending_after_round: 0,
         }
     }
 }
@@ -293,6 +297,9 @@ impl Driver<HeadlessBackend> for Fake {
         } else {
             self.busy.saturating_sub(1)
         };
+        if self.rounds == self.pending_after_round {
+            self.busy = 1;
+        }
         Ok(end)
     }
 
@@ -325,6 +332,21 @@ fn run_fake(text: &str, driver: &mut Fake) -> Result<Record, ScriptError> {
     Script::parse(text.as_bytes())
         .unwrap()
         .run(&mut backend(), driver)
+}
+
+#[test]
+fn what_a_quiet_round_leaves_pending_is_taken_before_the_checkpoint() {
+    // The header runs two rounds; the checkpoint's first round starts quiet,
+    // waits `Idle` and leaves something pending, as a release would.
+    let mut fake = Fake::new();
+    fake.pending_after_round = 3;
+    run_fake(
+        "kosmo-script 1 surface 64x8 xrgb8888\ncheckpoint\n",
+        &mut fake,
+    )
+    .unwrap();
+    assert!(!fake.pending());
+    assert_eq!(fake.rounds, 5);
 }
 
 #[test]

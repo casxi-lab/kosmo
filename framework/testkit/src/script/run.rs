@@ -105,7 +105,7 @@ impl Script {
     ///
     /// The framework is idle when a round that starts with nothing pending
     /// in the driver and no deadline of the driver due finds no platform
-    /// event: its wait returns `Idle`. The runner advances the clock only
+    /// event, its wait returning `Idle`, and leaves nothing pending or due. The runner advances the clock only
     /// through the test hooks and reads no other clock.
     ///
     /// A section is the line `checkpoint <n> at <time>`, the line
@@ -247,7 +247,7 @@ impl<P: PlatformTestHooks, D: Driver<P>> Runner<'_, P, D> {
 
     /// Runs rounds until the framework is idle: until a round that starts
     /// quiet, with nothing pending and no deadline due, finds no platform
-    /// event.
+    /// event and leaves nothing pending or due.
     fn settle(&mut self) -> Result<(), Problem> {
         loop {
             if self.rounds >= MAX_ROUNDS_PER_LINE {
@@ -264,7 +264,13 @@ impl<P: PlatformTestHooks, D: Driver<P>> Runner<'_, P, D> {
                 .driver
                 .round(self.platform)
                 .map_err(|error| Problem::Driver(error.to_string()))?;
-            if quiet && wait == WaitEnd::Idle {
+            // What the round itself left pending or due keeps it going too.
+            let clock = self.platform.now();
+            let due_after = self
+                .driver
+                .next_deadline()
+                .is_some_and(|deadline| deadline <= clock);
+            if quiet && wait == WaitEnd::Idle && !self.driver.pending() && !due_after {
                 return Ok(());
             }
         }

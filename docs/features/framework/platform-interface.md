@@ -211,7 +211,8 @@ A run:
    section.
 
 The framework is idle when a round that starts with nothing pending and no
-deadline due finds no platform event: its wait returns `Idle`. The runner
+deadline due finds no platform event, its wait returning `Idle`, and leaves
+nothing pending or due. The runner
 advances the clock only through `advance_to` of the test hooks and reads no
 other clock, and the headless backend never advances its clock itself. A line
 that does not let the framework become idle within `MAX_ROUNDS_PER_LINE`
@@ -327,7 +328,7 @@ and the tests of digests in the module `pixels::tests` of
    65 keys of one time, more than one wait returns, are all handled before
    the checkpoint, rounds with a due deadline go on, and a frame presented
    in a round that took a job's report has been released before the
-   checkpoint. The bound of 65,536 rounds holds for each line, and a line
+   checkpoint, and what a quiet round leaves pending is taken before it. The bound of 65,536 rounds holds for each line, and a line
    that is never idle stops after exactly that many. Tests:
    `tests/runner.rs`:
    `lines_of_one_time_run_no_round_between_them`,
