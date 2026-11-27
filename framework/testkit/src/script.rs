@@ -222,7 +222,10 @@ impl Script {
 
     /// Reads the script file at `path`, as [`Script::parse`] reads its
     /// bytes. Only the file's metadata is read when it has more than
-    /// [`MAX_SCRIPT_BYTES`] bytes.
+    /// [`MAX_SCRIPT_BYTES`] bytes. The bytes read are counted once more,
+    /// which matters only for a file that holds more bytes than its
+    /// metadata states, such as one that grows while it is read or a named
+    /// pipe.
     ///
     /// # Errors
     ///

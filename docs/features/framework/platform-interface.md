@@ -138,7 +138,7 @@ reading where it reads them.
 | `Earlier` | A time earlier than the time before it |
 
 The tests of scripts are in `framework/testkit`, in the module
-`script::tests`:
+`script::tests` and in `tests/script_files.rs`:
 
 1. Every kind of line is read with its fields, at the largest values too,
    both forms of a character give the same meaning, and each named key and
@@ -165,6 +165,12 @@ The tests of scripts are in `framework/testkit`, in the module
    panic. Test: `random_scripts_give_results_or_errors_and_never_panic`.
 8. A script file is read, and an error of reading has line 0. Test:
    `a_script_file_is_read_or_its_error_says_why_without_a_line`.
+9. A file of `MAX_SCRIPT_BYTES` and one more bytes is too large from its
+   metadata alone, even when it cannot be read, and a named pipe through
+   which that many bytes come is too large once they have been read. Tests:
+   `tests/script_files.rs`:
+   `a_script_file_larger_than_the_bound_is_not_read`,
+   `a_file_with_more_bytes_than_its_metadata_states_is_refused_once_read`.
 
 ## The script runner and its records
 
