@@ -18,21 +18,28 @@ pub const WORKSPACES: [&str; 4] = ["xtask", "display", "framework", "desktop"];
 /// The packages that the clippy and test steps build once more with
 /// features of their own turned on, as `(workspace, package, features)`,
 /// the features separated by commas: the headless backend with its test
-/// hooks, which only tests turn on, and with its test hooks and call
-/// probes, which turn on the probes of its dev-dependencies for its test
-/// of call relations, `tests/call_relations.rs`. The workspace's command
-/// builds the package without them, which compiles the test files that
+/// hooks, which only tests turn on. The workspace's command builds the
+/// package without them, which compiles the test files that
 /// `#![cfg(feature = ...)]` gates on them empty; each pass, run after the
 /// workspace commands, builds the package with its features and runs the
-/// test files that they turn on.
-pub const FEATURE_PASSES: [(&str, &str, &str); 2] = [
-    ("framework", "kosmo-backend-headless", "test-hooks"),
-    (
-        "framework",
-        "kosmo-backend-headless",
-        "test-hooks,call-probes",
-    ),
-];
+/// test files that they turn on, as ordinary test builds do, without call
+/// probes.
+pub const FEATURE_PASSES: [(&str, &str, &str); 1] =
+    [("framework", "kosmo-backend-headless", "test-hooks")];
+
+/// The workspaces that the clippy and test steps cover once more with call
+/// probes on, as `(workspace, features)`, the features separated by
+/// commas: the `call-probes` of every member that has the feature, and the
+/// test hooks that its tests of call relations need, so far those of the
+/// headless backend for `tests/call_relations.rs`. Only the command line
+/// turns these features on, so the workspace's command and the other passes
+/// build no probe code; this pass, run last, lints the probe code and runs
+/// every test of the workspace with the probes compiled in, the tests of
+/// call relations among them.
+pub const PROBE_PASSES: [(&str, &str); 1] = [(
+    "framework",
+    "kosmo-testkit/call-probes,kosmo-ui/call-probes,kosmo-backend-headless/test-hooks,kosmo-backend-headless/call-probes",
+)];
 
 /// The workspaces that the clippy step lints once more without one of
 /// their members, as `(workspace, member)`: `kosmo-testkit` turns on the
@@ -198,6 +205,32 @@ fn feature_passes(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
         .collect()
 }
 
+/// The same Cargo command for each workspace of `PROBE_PASSES`, over the
+/// whole workspace with its features on, offline; its time is recorded as
+/// `<workspace>_call-probes_ms`.
+fn probe_passes(args: &[&str], trailing: &[&str]) -> Vec<Cmd> {
+    PROBE_PASSES
+        .iter()
+        .map(|(workspace, features)| {
+            let mut all: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+            all.extend([
+                "--workspace".to_string(),
+                "--features".to_string(),
+                features.to_string(),
+                "--manifest-path".to_string(),
+                format!("{workspace}/Cargo.toml"),
+            ]);
+            all.extend(trailing.iter().map(|arg| arg.to_string()));
+            Cmd {
+                program: cargo(),
+                args: all,
+                env: offline(),
+                timing: format!("{workspace}_call-probes_ms"),
+            }
+        })
+        .collect()
+}
+
 /// The steps of `cargo xtask check`, in the order they run.
 pub fn steps() -> Vec<Step> {
     vec![
@@ -234,6 +267,10 @@ pub fn steps() -> Vec<Step> {
                         &["clippy", "--all-targets", "--locked"],
                         &["--", "-D", "warnings"],
                     ),
+                    probe_passes(
+                        &["clippy", "--all-targets", "--locked"],
+                        &["--", "-D", "warnings"],
+                    ),
                 ]
                 .concat(),
             ),
@@ -244,6 +281,7 @@ pub fn steps() -> Vec<Step> {
                 [
                     per_workspace(&["test", "--workspace", "--locked"], &[]),
                     feature_passes(&["test", "--locked"], &[]),
+                    probe_passes(&["test", "--locked"], &[]),
                 ]
                 .concat(),
             ),
@@ -509,9 +547,12 @@ mod tests {
                     "framework/Cargo.toml",
                     "desktop/Cargo.toml",
                 ];
+                // The pass without the testkit.
                 if step.name == "clippy" {
                     expected.push("framework/Cargo.toml");
                 }
+                // The test-hooks pass of the headless backend and the probe
+                // pass.
                 if step.name == "clippy" || step.name == "test" {
                     expected.extend(["framework/Cargo.toml"; 2]);
                 }
@@ -519,6 +560,14 @@ mod tests {
             }
         }
     }
+
+    /// The features that `PROBE_PASSES` turns on for the framework.
+    const PROBE_FEATURES: [&str; 4] = [
+        "kosmo-testkit/call-probes",
+        "kosmo-ui/call-probes",
+        "kosmo-backend-headless/test-hooks",
+        "kosmo-backend-headless/call-probes",
+    ];
 
     #[test]
     fn clippy_and_test_build_the_test_hooks_and_the_call_probes_in_passes_of_their_own() {
@@ -529,36 +578,105 @@ mod tests {
             let Action::Commands(commands) = step.action else {
                 panic!("the {} step runs Cargo", step.name);
             };
-            let (workspaces, passes) = commands.split_at(commands.len() - 2);
-            for cmd in workspaces {
+            let (others, passes) = commands.split_at(commands.len() - 2);
+            // The workspace commands and the pass without the testkit turn
+            // on no feature.
+            for cmd in others {
                 assert!(
-                    !cmd.args.iter().any(|arg| arg == "--features"),
+                    !cmd.args.iter().any(|arg| arg.starts_with("--features")),
                     "{}",
                     cmd.shown()
                 );
             }
-            let wanted = [
-                ("test-hooks", "kosmo-backend-headless_test-hooks_ms"),
-                (
-                    "test-hooks,call-probes",
-                    "kosmo-backend-headless_test-hooks,call-probes_ms",
-                ),
+            let [hooks, probes] = passes else {
+                panic!("the {} step ends with two passes", step.name);
+            };
+            // The test hooks of the headless backend, without call probes.
+            let window = [
+                "--package",
+                "kosmo-backend-headless",
+                "--features",
+                "test-hooks",
             ];
-            for (pass, (features, timing)) in passes.iter().zip(wanted) {
-                let window = [
-                    "--package",
-                    "kosmo-backend-headless",
-                    "--features",
-                    features,
-                ];
-                assert!(
-                    pass.args.windows(4).any(|args| args == window),
-                    "{}",
-                    pass.shown()
-                );
-                assert!(!pass.args.iter().any(|arg| arg == "--workspace"));
-                assert_eq!(pass.timing, timing);
+            assert!(
+                hooks.args.windows(4).any(|args| args == window),
+                "{}",
+                hooks.shown()
+            );
+            assert!(!hooks.args.iter().any(|arg| arg == "--workspace"));
+            assert!(
+                !hooks.args.iter().any(|arg| arg.contains("call-probes")),
+                "{}",
+                hooks.shown()
+            );
+            assert_eq!(hooks.timing, "kosmo-backend-headless_test-hooks_ms");
+            // The whole framework with every call probe and the test hooks
+            // of the test of call relations.
+            let features = PROBE_FEATURES.join(",");
+            let window = ["--workspace", "--features", features.as_str()];
+            assert!(
+                probes.args.windows(3).any(|args| args == window),
+                "{}",
+                probes.shown()
+            );
+            assert!(!probes.args.iter().any(|arg| arg == "--package"));
+            assert_eq!(probes.env, offline());
+            assert_eq!(probes.timing, "framework_call-probes_ms");
+            let targets = probes.args.iter().any(|arg| arg == "--all-targets");
+            assert_eq!(targets, step.name == "clippy", "{}", probes.shown());
+        }
+    }
+
+    #[test]
+    fn the_probe_pass_turns_on_the_call_probes_of_every_member_that_has_them() {
+        let tree = Tree::load(&crate::repo::root()).expect("the tracked files load");
+        for (workspace, features) in PROBE_PASSES {
+            let mut declared: BTreeSet<String> = BTreeSet::new();
+            let mut probes: BTreeSet<String> = BTreeSet::new();
+            for (path, text) in tree.texts() {
+                if !path.starts_with(&format!("{workspace}/")) || !path.ends_with("/Cargo.toml") {
+                    continue;
+                }
+                let manifest: toml::Table = text.parse().expect("the manifest parses");
+                let Some(name) = manifest
+                    .get("package")
+                    .and_then(|package| package.get("name"))
+                    .and_then(toml::Value::as_str)
+                else {
+                    continue;
+                };
+                let own = manifest.get("features").and_then(toml::Value::as_table);
+                for feature in own.into_iter().flatten().map(|(feature, _)| feature) {
+                    declared.insert(format!("{name}/{feature}"));
+                    if feature == "call-probes" {
+                        probes.insert(format!("{name}/{feature}"));
+                    }
+                }
             }
+            let on: Vec<&str> = features.split(',').collect();
+            for feature in &on {
+                assert!(declared.contains(*feature), "{workspace}: {feature}");
+                if let Some(package) = feature.strip_suffix("/test-hooks") {
+                    // Only for a package whose test of call relations
+                    // needs them.
+                    assert!(
+                        probes.contains(&format!("{package}/call-probes")),
+                        "{feature}"
+                    );
+                }
+            }
+            let turned_on: BTreeSet<String> = on
+                .iter()
+                .filter(|feature| feature.ends_with("/call-probes"))
+                .map(|feature| feature.to_string())
+                .collect();
+            assert_eq!(turned_on, probes, "{workspace}");
+            assert!(
+                on.iter()
+                    .all(|feature| feature.ends_with("/call-probes")
+                        || feature.ends_with("/test-hooks")),
+                "{features}"
+            );
         }
     }
 
@@ -837,7 +955,7 @@ mod tests {
         let online = online_after_fetch(&steps);
         assert_eq!(
             online.len(),
-            WORKSPACES.len() + ORDINARY_PASSES.len() + FEATURE_PASSES.len(),
+            WORKSPACES.len() + ORDINARY_PASSES.len() + FEATURE_PASSES.len() + PROBE_PASSES.len(),
             "{online:?}"
         );
         assert!(

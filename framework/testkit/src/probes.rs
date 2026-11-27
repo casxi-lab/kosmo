@@ -27,9 +27,10 @@
 //! layout step of `cargo xtask check` rejects a manifest whose default
 //! features or dependency declarations turn it on, and a dependency on this
 //! crate other than a dev-dependency or the optional one above. The clippy
-//! and test steps of the check build `kosmo-backend-headless` once more
-//! with `test-hooks,call-probes`, as `FEATURE_PASSES` in
-//! `xtask/src/check.rs` lists, and so run its test of call relations.
+//! and test steps of the check cover the `framework/` workspace once more
+//! with the call probes of every crate that has them and the test hooks of
+//! `kosmo-backend-headless`, as `PROBE_PASSES` in `xtask/src/check.rs`
+//! lists, and so lint the probe code and run the tests of call relations.
 //!
 //! This crate's own probe, at the entry of the script runner, is behind its
 //! feature `call-probes`, which turns on nothing, and is written as

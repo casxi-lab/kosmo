@@ -47,13 +47,18 @@ order and stops at the first one that fails:
    this pass builds the other crates as ordinary builds do, without them,
    so that code outside tests cannot name them. `clippy` and `test` also
    build each package that `FEATURE_PASSES` lists once more with its
-   features on, so far `kosmo-backend-headless` twice, with `test-hooks`
-   and with `test-hooks,call-probes`: the workspace's command builds it
-   without them, which compiles the test files that `#![cfg(feature = ...)]`
-   gates on them empty. The first pass builds the test hooks and runs those
-   tests; the second also turns on the call probes of `kosmo-testkit` and
-   `kosmo-ui` and runs the test of call relations,
-   `tests/call_relations.rs`, as well;
+   features on, so far `kosmo-backend-headless` with `test-hooks`: the
+   workspace's command builds it without them, which compiles the test
+   files that `#![cfg(feature = ...)]` gates on them empty, and this pass
+   builds the test hooks and runs those tests, without call probes. Last,
+   `clippy` and `test` cover each workspace that `PROBE_PASSES` lists once
+   more with its call probes on, so far `framework` with
+   `kosmo-testkit/call-probes`, `kosmo-ui/call-probes`,
+   `kosmo-backend-headless/test-hooks` and
+   `kosmo-backend-headless/call-probes`: this probe pass lints the probe
+   code and runs every test of the workspace with the probes compiled in,
+   among them the test of call relations of the headless backend,
+   `tests/call_relations.rs`;
 5. `docs`: relative links and anchors in the Markdown files;
 6. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
@@ -94,8 +99,9 @@ the working tree was clean before and after the run, each step with its
 status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
 `<workspace>_ms`, of each pass without a member, as
-`<workspace>_without_<member>_ms`, and of each feature pass, as
-`<package>_<feature>_ms`; for the `fetch` step and the `cargo metadata`
+`<workspace>_without_<member>_ms`, of each feature pass, as
+`<package>_<feature>_ms`, and of each probe pass, as
+`<workspace>_call-probes_ms`; for the `fetch` step and the `cargo metadata`
 commands of the `deps` step, the duration of each command as
 `<workspace>_<target>_ms`; for the `deps` step also the observations that its
 section lists; for the `goldens` step, the number of goldens that the
