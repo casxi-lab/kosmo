@@ -17,6 +17,8 @@ kosmo-platform.workspace = true
 kosmo-types.workspace = true
 
 [dev-dependencies]
+kosmo-jobs.workspace = true
+kosmo-math-model.workspace = true
 kosmo-render.workspace = true
 kosmo-testkit.workspace = true
 kosmo-ui.workspace = true

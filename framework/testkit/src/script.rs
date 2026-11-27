@@ -64,13 +64,17 @@
 use std::fmt;
 use std::path::Path;
 
-use kosmo_platform::{PixelSize, Stamp, SurfaceId};
+use kosmo_platform::{PixelSize, PlatformError, Stamp, SurfaceId};
 use kosmo_types::{
     Epoch, FocusGen, HidUsage, KeyAction, KeyEvent, KeyMeaning, ModSet, MonoTime, NamedKey,
     PixelFormat,
 };
 
 use crate::pixels::format_named;
+
+mod run;
+
+pub use run::{Driver, MAX_ROUNDS_PER_LINE, Record};
 
 /// The version of the format that this runner reads.
 pub const VERSION: &str = "1";
@@ -321,13 +325,34 @@ pub enum Problem {
         value: String,
     },
     /// The time is earlier than the time of the key line or time line
-    /// before it.
+    /// before it, or than the platform's clock.
     Earlier {
         /// The time of the line.
         time: MonoTime,
         /// The time of the line before it.
         clock: MonoTime,
     },
+    /// The main surface of the header, as `<width>x<height> <format>`,
+    /// does not fit the output size or has a format outside the
+    /// capabilities of the platform.
+    OutsideCaps(String),
+    /// A port of the platform returned this error.
+    Platform(PlatformError),
+    /// A round of the driver failed with this error.
+    Driver(String),
+    /// A focus line names this surface, which the script did not create.
+    NoSurface(u32),
+    /// A key line states no stamp, and there is none to take: no focus line
+    /// entered the main surface, and the driver reports no focus of it.
+    NoStamp,
+    /// The framework did not become idle within
+    /// [`MAX_ROUNDS_PER_LINE`] rounds.
+    NotIdle,
+    /// The driver wrote this view line, which holds a control character.
+    View(String),
+    /// The driver wrote display text for this surface that is not lines,
+    /// each followed by a line feed, without other control characters.
+    Display(u32),
 }
 
 impl fmt::Display for Problem {
@@ -361,6 +386,24 @@ impl fmt::Display for Problem {
                 time.as_nanos(),
                 clock.as_nanos()
             ),
+            Problem::OutsideCaps(surface) => write!(
+                f,
+                "the main surface {surface} is outside the capabilities of the platform"
+            ),
+            Problem::Platform(error) => write!(f, "the platform returned an error: {error}"),
+            Problem::Driver(error) => write!(f, "the round failed: {error}"),
+            Problem::NoSurface(surface) => {
+                write!(f, "the script did not create the surface {surface}")
+            }
+            Problem::NoStamp => f.write_str("the key has no focus stamp to take"),
+            Problem::NotIdle => write!(
+                f,
+                "the framework did not become idle within {MAX_ROUNDS_PER_LINE} rounds"
+            ),
+            Problem::View(line) => write!(f, "the view line {line:?} holds a control character"),
+            Problem::Display(surface) => {
+                write!(f, "the display text of the surface {surface} is not lines")
+            }
         }
     }
 }

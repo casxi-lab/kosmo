@@ -208,6 +208,8 @@ dependencies = [
 name = "kosmo-backend-headless"
 version = "0.1.0-dev.1"
 dependencies = [
+ "kosmo-jobs",
+ "kosmo-math-model",
  "kosmo-platform",
  "kosmo-render",
  "kosmo-testkit",

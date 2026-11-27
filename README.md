@@ -128,8 +128,10 @@ headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance
 suite of the platform interface, which the headless backend passes, with
-the digests of presented buffers and with call probes for tests of call
-relations, and the facade `kosmo-sdk`,
+the runner of event scripts, which drives the framework on the headless
+backend and writes view model records, display lists and pixel digests at
+each checkpoint, with the digests of presented buffers and with call
+probes for tests of call relations, and the facade `kosmo-sdk`,
 which re-exports
 `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad`
 and through which the `desktop/` workspace uses them. The
@@ -162,11 +164,11 @@ job layer, of rendering, with its pixel goldens and the wrapper of
 transcendental functions, of the platform interface with its test hooks, of
 formula conversion with the kalyx runner, of the Scratchpad, of the
 framework core, of the headless backend with its test hooks, the
-conformance suite and the shell, of the pixel digests and the call probes of the test support, of the facade
-and of the shared types, and the last runs
-the repository checks. No version has been released yet: a release is a tagged
-commit, and the version that `main` shows is not a release until it is
-tagged.
+conformance suite, the shell and the script runner, of the event scripts,
+the pixel digests and the call probes of the test support, of the facade
+and of the shared types, and the last runs the repository checks. No
+version has been released yet: a release is a tagged commit, and the
+version that `main` shows is not a release until it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates use only `core` and `alloc`. Its first releases will run
