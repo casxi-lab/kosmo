@@ -1198,8 +1198,11 @@ runs record them: the ten steps together, the test command of `framework/`
 | --- | --- | --- | --- | --- |
 | `7f1d039` on `main`, before call probes | 45872455784 | 73,677 | 34,344 | None |
 | `7b7e11e` on `main`, with call probes in a pass of the headless backend | 45931895261 | 101,205 | 37,352 | `kosmo-backend-headless` with `test-hooks,call-probes`: 4,499 in `test` and 736 in `clippy` |
+| `d3d2daf`, the head of the pull request that adds the probe pass over `framework/` | 45943120576 | 119,459 | 36,884 | `framework/` with every probe on: 25,897 in `test` and 858 in `clippy` |
 
-The runs are far below the target of 10 minutes.
+With the probe pass over `framework/`, the ten steps took 18,254 ms more than
+at `7b7e11e` and 45,782 ms more than at `7f1d039`. The runs are far below the
+target of 10 minutes.
 
 ## License
 
