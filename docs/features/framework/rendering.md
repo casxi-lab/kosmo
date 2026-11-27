@@ -1,15 +1,15 @@
 # Rendering
 
 The library `kosmo-render` in the `framework/` workspace holds display lists
-with their text form, the renderer interface `Rasterizer`, the rasterizer `VelloRasterizer`, which
-draws display lists on the CPU with vello_cpu 0.4.0 on one thread, the kept
-previous frame `RenderTarget` with its conversion into the buffer to be
-presented, and `det_math`, the wrapper through which deterministic code calls
-transcendental functions. The pixel formats, buffer descriptions, the
-conversion of pixels between them and damage regions are in `kosmo-types` in
-the `display/` workspace, which the framework's rendering and the display
-server share. The same display list and damage region give the same bytes on
-every run and every host, and pixel goldens check this.
+with their text form, the renderer interface `Rasterizer`, the rasterizer
+`VelloRasterizer`, which draws display lists on the CPU with vello_cpu 0.4.0
+on one thread, the kept previous frame `RenderTarget` with its conversion
+into the buffer to be presented, and `det_math`, the wrapper through which
+deterministic code calls transcendental functions. The pixel formats, buffer
+descriptions, the conversion of pixels between them and damage regions are in
+`kosmo-types` in the `display/` workspace, which the framework's rendering and
+the display server share. The same display list and damage region give the
+same bytes on every run and every host, and pixel goldens check this.
 
 The framework's drawing pass in `kosmo-ui` builds display lists, but rounds
 do not call it yet; the shell of `kosmo-ui` keeps a `RenderTarget` for each
