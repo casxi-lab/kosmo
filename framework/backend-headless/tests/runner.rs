@@ -15,7 +15,7 @@ use kosmo_platform::{
     EventSource, FaultPort, PlatformError, PlatformTestHooks, Stamp, SurfaceId, WaitEnd,
 };
 use kosmo_testkit::script::{Driver, MAX_ROUNDS_PER_LINE, Problem, Record, Script, ScriptError};
-use kosmo_types::MonoTime;
+use kosmo_types::{Epoch, FocusGen, MonoTime};
 
 /// Runs `text`, which reads as a script, with a new backend and `driver`.
 #[allow(clippy::unwrap_used, reason = "the tests give scripts that read")]
@@ -56,6 +56,78 @@ fn a_key_with_the_stamp_of_an_earlier_focus_is_not_delivered() {
             "key surface 1 epoch 1 generation 2 char 'c' press mods 0x0000 time 3000 handled kosmo.InsertText 'c' by app",
         ]
     );
+}
+
+#[test]
+fn a_key_at_the_time_of_a_focus_line_takes_its_stamp() {
+    // The focus lines and the key come at one time, so no round runs
+    // between them: the key takes the stamp of the latest focus line that
+    // entered the main surface, not the focus that the framework recorded.
+    let mut driver = driver(usize::MAX);
+    run(
+        "kosmo-script 1 surface 64x8 xrgb8888\n\
+         checkpoint\n\
+         focus out 1 stamp=1/1\n\
+         focus in 1 stamp=1/2\n\
+         at 0 press 7:4 char:a mods=0000\n\
+         checkpoint\n",
+        &mut driver,
+    )
+    .unwrap();
+    let keys: Vec<&String> = driver
+        .record()
+        .iter()
+        .filter(|line| line.starts_with("key "))
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "key surface 1 epoch 1 generation 2 char 'a' press mods 0x0000 time 0 handled kosmo.InsertText 'a' by app"
+        ]
+    );
+}
+
+#[test]
+fn more_keys_than_one_wait_returns_are_all_handled_before_the_checkpoint() {
+    // One wait returns at most 64 events, so the 65th key comes in a
+    // round whose wait returns events, not `Idle`.
+    let mut text = String::from("kosmo-script 1 surface 64x8 xrgb8888\n");
+    for _ in 0..65 {
+        text.push_str("at 5 press 7:50 named:left mods=0000\n");
+    }
+    text.push_str("checkpoint\n");
+    let mut driver = driver(usize::MAX);
+    run(&text, &mut driver).unwrap();
+    let keys = driver
+        .record()
+        .iter()
+        .filter(|line| line.starts_with("key "))
+        .count();
+    assert_eq!(keys, 65);
+}
+
+#[test]
+fn lines_of_one_time_run_no_round_between_them() {
+    let mut driver = driver(usize::MAX);
+    run(
+        "kosmo-script 1 surface 64x8 xrgb8888\n\
+         at 5 press 7:4 char:a mods=0000\n\
+         at 5 press 7:5 char:b mods=0000\n\
+         checkpoint\n",
+        &mut driver,
+    )
+    .unwrap();
+    let lines: Vec<&String> = driver
+        .record()
+        .iter()
+        .filter(|line| line.starts_with("key ") || line.starts_with("round "))
+        .collect();
+    let first = lines
+        .iter()
+        .position(|line| line.starts_with("key "))
+        .unwrap();
+    assert!(lines[first + 1].starts_with("key "), "{lines:?}");
+    assert!(lines[first + 1].contains("char 'b'"), "{lines:?}");
 }
 
 #[test]
@@ -130,14 +202,23 @@ fn platform_failures_come_from_the_test_hooks_and_stop_the_run() {
     );
 }
 
-/// A driver without a framework, which waits once per round and writes
-/// what its fields say.
+/// A driver without a framework, which waits once per round, counts its
+/// rounds and writes what its fields say.
 struct Fake {
     pending: bool,
     fails: bool,
     stamp: Option<Stamp>,
     view: Vec<String>,
     display: String,
+    /// The rounds so far.
+    rounds: usize,
+    /// The first rounds whose next deadline is due: the deadline 0.
+    due_rounds: usize,
+    /// The rounds after each round whose wait returned events for which
+    /// the driver has something pending.
+    busy_after_events: usize,
+    /// The rounds for which it still has something pending.
+    busy: usize,
 }
 
 impl Fake {
@@ -148,6 +229,10 @@ impl Fake {
             stamp: None,
             view: Vec::new(),
             display: String::new(),
+            rounds: 0,
+            due_rounds: 0,
+            busy_after_events: 0,
+            busy: 0,
         }
     }
 }
@@ -159,17 +244,24 @@ impl Driver<HeadlessBackend> for Fake {
         if self.fails {
             return Err("the round broke");
         }
-        platform
+        self.rounds += 1;
+        let end = platform
             .wait(None, &mut Vec::new())
-            .map_err(|_| "the wait failed")
+            .map_err(|_| "the wait failed")?;
+        self.busy = if end == WaitEnd::Events {
+            self.busy_after_events
+        } else {
+            self.busy.saturating_sub(1)
+        };
+        Ok(end)
     }
 
     fn pending(&self) -> bool {
-        self.pending
+        self.pending || self.busy > 0
     }
 
     fn next_deadline(&self) -> Option<MonoTime> {
-        None
+        (self.rounds < self.due_rounds).then_some(MonoTime::ZERO)
     }
 
     fn focus_stamp(&self, _: SurfaceId) -> Option<Stamp> {
@@ -205,6 +297,44 @@ fn a_framework_that_never_becomes_idle_stops_the_run_after_the_bound() {
         Problem::NotIdle.to_string(),
         format!("the framework did not become idle within {MAX_ROUNDS_PER_LINE} rounds")
     );
+}
+
+#[test]
+fn a_line_runs_at_most_max_rounds_per_line_rounds() {
+    let mut fake = Fake::new();
+    fake.pending = true;
+    let error = run_fake("kosmo-script 1 surface 64x8 xrgb8888\n", &mut fake).unwrap_err();
+    assert_eq!((error.line, error.problem), (1, Problem::NotIdle));
+    assert_eq!(fake.rounds, MAX_ROUNDS_PER_LINE);
+}
+
+#[test]
+fn a_due_deadline_keeps_the_framework_running() {
+    // The first five rounds start with a due deadline, so the framework is
+    // idle only after a sixth round, which starts quiet and waits `Idle`.
+    let mut fake = Fake::new();
+    fake.due_rounds = 5;
+    run_fake("kosmo-script 1 surface 64x8 xrgb8888\n", &mut fake).unwrap();
+    assert_eq!(fake.rounds, 6);
+}
+
+#[test]
+fn the_bound_of_rounds_holds_for_each_line() {
+    // Each round whose wait returns events keeps the driver busy for 40,000
+    // rounds: the header, with the events of the new surface, and each key
+    // line. Each line stays within the bound, all of them together do not.
+    let mut fake = Fake::new();
+    fake.busy_after_events = 40_000;
+    fake.stamp = Some(Stamp::new(Epoch::new(1), FocusGen::new(1)));
+    run_fake(
+        "kosmo-script 1 surface 64x8 xrgb8888\n\
+         at 1 press 7:4 char:a mods=0000\n\
+         at 2 press 7:4 char:a mods=0000\n\
+         checkpoint\n",
+        &mut fake,
+    )
+    .unwrap();
+    assert!(fake.rounds > MAX_ROUNDS_PER_LINE, "{}", fake.rounds);
 }
 
 #[test]

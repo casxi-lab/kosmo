@@ -305,7 +305,20 @@ and the tests of digests in the module `pixels::tests` of
    dropped, and a key without a stamp takes the new one. Test:
    `tests/runner.rs`:
    `a_key_with_the_stamp_of_an_earlier_focus_is_not_delivered`.
-4. A header outside the capabilities, a focus line for another surface, an
+4. Lines of one time run no round between them, so a key at the time of two
+   focus lines takes the stamp of the one that entered the surface. The
+   framework is idle only after a round that starts quiet and waits `Idle`:
+   65 keys of one time, more than one wait returns, are all handled before
+   the checkpoint, and rounds with a due deadline go on. The bound of 65,536
+   rounds holds for each line, and a line that is never idle stops after
+   exactly that many. Tests: `tests/runner.rs`:
+   `lines_of_one_time_run_no_round_between_them`,
+   `a_key_at_the_time_of_a_focus_line_takes_its_stamp`,
+   `more_keys_than_one_wait_returns_are_all_handled_before_the_checkpoint`,
+   `a_due_deadline_keeps_the_framework_running`,
+   `the_bound_of_rounds_holds_for_each_line`,
+   `a_line_runs_at_most_max_rounds_per_line_rounds`.
+5. A header outside the capabilities, a focus line for another surface, an
    injected failure, a later clock, a framework that is never idle, a
    failing round, a key without a stamp, and view lines or display text out
    of form stop the run at their lines, and a surface that never presented
@@ -316,11 +329,11 @@ and the tests of digests in the module `pixels::tests` of
    `a_framework_that_never_becomes_idle_stops_the_run_after_the_bound`,
    `a_failing_round_and_a_key_without_a_stamp_stop_the_run`,
    `view_lines_and_display_text_keep_their_form`.
-5. The digest of a golden's frame is the digest that its `MANIFEST` lists,
+6. The digest of a golden's frame is the digest that its `MANIFEST` lists,
    and the description is part of the digest. Tests:
    `the_digest_of_a_golden_frame_is_its_manifest_digest`,
    `the_description_is_part_of_the_digest`,
    `every_format_has_a_code_and_a_name`.
-6. A run of the frozen script reaches the runner's entry and the
+7. A run of the frozen script reaches the runner's entry and the
    single-round entry. Test: `tests/call_relations.rs`:
    `a_script_run_reaches_the_runner_and_the_single_round_entry`.
