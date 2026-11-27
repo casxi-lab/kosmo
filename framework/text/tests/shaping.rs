@@ -399,3 +399,21 @@ fn a_size_between_whole_pixels_reaches_parley_exactly() -> Checked {
     assert_eq!(paragraph.width().units(), 433);
     Ok(())
 }
+
+#[test]
+fn a_run_has_the_font_size_and_color_of_its_call() -> Checked {
+    let mut set = font_set()?;
+    let paragraph = lay_out(&mut set, "f(x)", kosmo_text::MONO, 24, None)?;
+    let blue = kosmo_render::Color::opaque(0, 0, 255);
+    let Command::Glyphs {
+        font, size, color, ..
+    } = paragraph.run(Point::default(), blue).map_err(failed)?
+    else {
+        return Err("not a glyph run".into());
+    };
+    assert_eq!(
+        (font, size, color),
+        (kosmo_text::MONO, Fx::from_units(24 * 64), blue)
+    );
+    Ok(())
+}

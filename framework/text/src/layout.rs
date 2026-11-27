@@ -281,7 +281,14 @@ mod tests {
 
     #[test]
     fn sizes_and_widths_reach_parley_exactly() {
-        for units in [64, 1000, 1024, 16_384, 1 << 24] {
+        for units in [
+            64,
+            1000,
+            1024,
+            16_384,
+            MAX_WIDTH.units() - 1,
+            MAX_WIDTH.units(),
+        ] {
             let value = exact(Fx::from_units(units));
             assert_eq!(value * 64.0, units as f32);
             assert_eq!(super::units(value), Ok(Fx::from_units(units)));

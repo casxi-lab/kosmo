@@ -783,3 +783,36 @@ fn a_mask_that_the_rasterizer_cannot_fill_leaves_the_cache_as_it_was() {
     assert_eq!(held(&set), before);
     assert!(!set.glyphs().contains(key(4, Step::Whole)));
 }
+
+#[test]
+fn a_mask_between_whole_pixels_is_drawn_at_its_exact_size() {
+    // 1,000 units are 15.625 pixels per em, which reach skrifa exactly, so
+    // the mask of the capital A there is neither that of 15 pixels per em,
+    // 960 units, nor that of 16, 1,024 units.
+    let font = FontRef::new(SANS_BYTES).unwrap();
+    let mut rasterizer = VelloRasterizer::new();
+    let mut mask = |units: i32| {
+        let key = GlyphKey {
+            font: SANS,
+            size: Fx::from_units(units),
+            glyph: GlyphId::new(3),
+            step: Step::Whole,
+        };
+        let (outline, mut filled) = outline(&font, key).unwrap();
+        rasterizer.fill_coverage(&outline, &mut filled).unwrap();
+        filled
+    };
+    let between = mask(1000);
+    assert_ne!(between, mask(960));
+    assert_ne!(between, mask(1024));
+}
+
+#[test]
+fn clearing_keeps_the_number_of_the_frame() {
+    let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
+    set.prepare(&frame(&[3]), &mut VelloRasterizer::new())
+        .unwrap();
+    set.clear_glyphs();
+    let cache = set.glyphs();
+    assert_eq!((cache.entries(), cache.bytes(), cache.frame()), (0, 0, 1));
+}
