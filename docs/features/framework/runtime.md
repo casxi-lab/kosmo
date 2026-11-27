@@ -468,16 +468,17 @@ of a surface, and the first after a `Configure` of another size or a buffer
 of another size, starts as transparent black and is drawn, converted and
 presented whole, whatever the damage region holds, so that the buffer is the
 conversion of the frame, with X of `Xrgb8888` always `0xFF`. An empty
-damage region presents nothing. For a surface whose buffer is presented and not released,
-`present` returns `ShellError::Platform(PlatformError::Busy)` before
-anything changes; after an error of `buffer` or of the rasterizer, too, the
-frame and the buffer are as they were. Its other errors are `Render`, for an
-error of the rasterizer, such as a missing glyph or a damage region that
-does not fit the frame, `Convert`, for a buffer whose bytes do not match its
-description, and `FrameTooLarge`, for a previous frame beyond the buffer
-limits. The headless backend keeps what is presented as its read-back.
-Until rounds draw, a driver builds a layout result, gets its display list
-with `paint(shell.runtime().tree(), &layout, &damage)` and presents it.
+damage region presents nothing. For a surface whose buffer is presented and
+not released, `present` returns `ShellError::Platform(PlatformError::Busy)`
+before anything changes; after an error of `buffer` or of the rasterizer,
+too, the frame and the buffer are as they were. Its other errors are
+`Render`, for an error of the rasterizer, such as a missing glyph or a
+damage region that does not fit the frame, `Convert`, for a buffer whose
+bytes do not match its description, and `FrameTooLarge`, for a previous
+frame beyond the buffer limits. The headless backend keeps what is presented
+as its read-back. Until rounds draw, a driver builds a layout result, gets
+its display list with `paint(shell.runtime().tree(), &layout, &damage)` and
+presents it.
 
 With the feature `call-probes`, which is off by default and only the
 command line turns on, as `--features kosmo-ui/call-probes`, each call of
@@ -607,8 +608,8 @@ no wall-clock time; review checks these, as the
   platform disconnects or fails; drivers of such a backend use
   `Shell::run_round`.
 - The previous frame is kept for repainting by buffer age, which no backend
-  does yet: each presentation converts only its own damage region, but the
-  first of a new previous frame, which converts the whole frame.
+  does yet: each presentation converts only its own damage region, except
+  the first of a new previous frame, which converts the whole frame.
 - One region per surface, and the runtime has one control tree for all
   surfaces; focus does not move within a region, and there is no
   region-level focus generation.
