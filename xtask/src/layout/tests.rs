@@ -1647,6 +1647,51 @@ fn features_of_members_name_no_external_dependency() {
 }
 
 #[test]
+fn features_of_members_name_no_external_dependency_of_any_table() {
+    let names = |feature: &str, value: &str| {
+        format!(
+            "framework/render/Cargo.toml: the feature {feature} names the external dependency skrifa in {value}; features of a member name only crates of the layout table, so that the features of external packages come only from declarations, which the allow entries compare"
+        )
+    };
+    let skrifa =
+        "skrifa = { version = \"=0.49.0\", default-features = false, features = [\"libm\"] }";
+    // skrifa after another external dependency, named by the second value
+    // of a feature.
+    let found = problems_with(|files| {
+        declare(files, "framework", skrifa);
+        declare(
+            files,
+            "framework",
+            "libm = { version = \"=0.2.16\", default-features = false }",
+        );
+        append(
+            files,
+            "framework/render/Cargo.toml",
+            "\n[features]\nhint = []\ndefault = [\"hint\", \"skrifa/autohint_shaping\"]\n\n[dependencies]\nlibm.workspace = true\nskrifa.workspace = true\n",
+        );
+    });
+    assert_eq!(found, [names("default", "skrifa/autohint_shaping")]);
+    // skrifa in each of the other dependency tables.
+    for table in [
+        "[dev-dependencies]",
+        "[build-dependencies]",
+        "[target.'cfg(unix)'.dependencies]",
+    ] {
+        let found = problems_with(|files| {
+            declare(files, "framework", skrifa);
+            append(
+                files,
+                "framework/render/Cargo.toml",
+                &format!(
+                    "\n[features]\nhint = [\"skrifa/autohint_shaping\"]\n\n{table}\nskrifa.workspace = true\n"
+                ),
+            );
+        });
+        assert_eq!(found, [names("hint", "skrifa/autohint_shaping")], "{table}");
+    }
+}
+
+#[test]
 fn features_of_members_may_name_crates_of_the_table_and_their_own_features() {
     // A bare value that names a feature of the crate is that feature, also
     // when a dependency has the same name.
@@ -1659,7 +1704,7 @@ fn features_of_members_may_name_crates_of_the_table_and_their_own_features() {
         append(
             files,
             "framework/render/Cargo.toml",
-            "\n[features]\nskrifa = []\nhint = [\"skrifa\"]\n\n[dependencies]\nskrifa = { workspace = true, optional = true }\n",
+            "\n[features]\nskrifa = []\nhint = [\"skrifa\"]\n\n[dependencies]\nskrifa.workspace = true\n",
         );
         append(
             files,
