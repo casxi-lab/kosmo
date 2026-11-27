@@ -534,7 +534,7 @@ fn the_goldens_step_reports_the_problems_of_the_font_assets() {
     let mut tree = valid();
     tree.insert(&at(SANS), Entry::File(Vec::new()));
     let mut facts = Facts::new();
-    let error = golden::report(&tree, &[], &[FONTS], &mut facts).unwrap_err();
+    let error = golden::report(&tree, &[], Some(&FONTS), &mut facts).unwrap_err();
     assert!(
         error.starts_with(&format!("{}: SHA-256 ", at(SANS))),
         "{error}"
@@ -545,5 +545,8 @@ fn the_goldens_step_reports_the_problems_of_the_font_assets() {
         counts.map(|(key, value)| (key.to_string(), value.to_string()))
     );
     let mut facts = Facts::new();
-    assert_eq!(golden::report(&valid(), &[], &[FONTS], &mut facts), Ok(()));
+    assert_eq!(
+        golden::report(&valid(), &[], Some(&FONTS), &mut facts),
+        Ok(())
+    );
 }

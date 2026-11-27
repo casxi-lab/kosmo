@@ -427,7 +427,7 @@ fn the_step_fails_with_its_problems_and_counts_the_goldens() {
         Entry::File(b"edited".to_vec()),
     );
     let mut facts = Facts::new();
-    let error = report(&tree, &SETS, &[], &mut facts).unwrap_err();
+    let error = report(&tree, &SETS, None, &mut facts).unwrap_err();
     assert!(
         error.starts_with(&format!("{DIR}/fill-rect.px: SHA-256 ")),
         "{error}"
@@ -437,7 +437,7 @@ fn the_step_fails_with_its_problems_and_counts_the_goldens() {
         facts,
         counts.map(|(key, value)| (key.to_string(), value.to_string()))
     );
-    assert_eq!(report(&valid(), &SETS, &[], &mut Facts::new()), Ok(()));
+    assert_eq!(report(&valid(), &SETS, None, &mut Facts::new()), Ok(()));
 }
 
 #[test]

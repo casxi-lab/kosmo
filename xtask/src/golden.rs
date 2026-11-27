@@ -411,16 +411,18 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
 /// The goldens step on the tracked files: the pixel goldens and the font
 /// assets of `kosmo-text`.
 pub fn run(root: &Path, facts: &mut Facts) -> Result<(), String> {
-    report(&Tree::load(root)?, &SETS, &[assets::FONTS], facts)
+    report(&Tree::load(root)?, &SETS, Some(&assets::FONTS), facts)
 }
 
 /// The goldens step on `tree`: prints and records how many goldens the
-/// manifests of `sets` list and how many fonts the asset manifests of
-/// `fonts` list, and fails with every problem of both.
+/// manifests of `sets` list and how many fonts the asset manifest of
+/// `fonts` lists, none without `fonts`, and fails with every problem of
+/// both. It takes one asset directory at most: a font outside the asset
+/// directory is a problem, so a second directory could not pass.
 pub fn report(
     tree: &Tree,
     sets: &[Goldens],
-    fonts: &[Assets],
+    fonts: Option<&Assets>,
     facts: &mut Facts,
 ) -> Result<(), String> {
     let mut problems = Problems::default();
@@ -428,12 +430,9 @@ pub fn report(
     let dirs: Vec<String> = sets.iter().map(Goldens::golden_dir).collect();
     println!("goldens: {count} in {}", dirs.join(", "));
     facts.push(("goldens".to_string(), count.to_string()));
-    let count: usize = fonts
-        .iter()
-        .map(|assets| assets::check(tree, assets, &mut problems))
-        .sum();
-    let dirs: Vec<&str> = fonts.iter().map(|assets| assets.dir).collect();
-    println!("font assets: {count} fonts in {}", dirs.join(", "));
+    let count = fonts.map_or(0, |assets| assets::check(tree, assets, &mut problems));
+    let dir = fonts.map_or("", |assets| assets.dir);
+    println!("font assets: {count} fonts in {dir}");
     facts.push(("fonts".to_string(), count.to_string()));
     let lines = problems.lines();
     if lines.is_empty() {
