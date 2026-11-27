@@ -604,7 +604,10 @@ those of the google/fonts files at commit `29b4ec6`, their `upstream` as
 google/fonts records it and their `version` as their name tables give it,
 so such a change also changes that test, and review compares it with the
 files of `source`. The step does not read the fonts themselves, neither
-their tables nor the characters that they cover.
+their tables nor the characters that they cover. It recognizes a font
+outside the asset directory only by the extensions above, so a font under
+another extension, such as `.otc` or `.bin`, or one embedded in another
+file is not reported; review covers these.
 
 `kosmo-text` is not published yet. Its asset directory lies inside the
 crate's directory, so a published package would carry the fonts, their
