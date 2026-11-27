@@ -262,6 +262,8 @@ struct Fake {
     /// The round after which it has something pending, as a release that a
     /// round makes would leave.
     pending_after_round: usize,
+    /// The round after which its next deadline is due, 0 for none.
+    due_after_round: usize,
 }
 
 impl Fake {
@@ -277,6 +279,7 @@ impl Fake {
             busy_after_events: 0,
             busy: 0,
             pending_after_round: 0,
+            due_after_round: 0,
         }
     }
 }
@@ -308,7 +311,9 @@ impl Driver<HeadlessBackend> for Fake {
     }
 
     fn next_deadline(&self) -> Option<MonoTime> {
-        (self.rounds < self.due_rounds).then_some(MonoTime::ZERO)
+        (self.rounds < self.due_rounds
+            || (self.due_after_round > 0 && self.rounds == self.due_after_round))
+            .then_some(MonoTime::ZERO)
     }
 
     fn focus_stamp(&self, _: SurfaceId) -> Option<Stamp> {
@@ -346,6 +351,22 @@ fn what_a_quiet_round_leaves_pending_is_taken_before_the_checkpoint() {
     )
     .unwrap();
     assert!(!fake.pending());
+    assert_eq!(fake.rounds, 5);
+}
+
+#[test]
+fn what_a_quiet_round_leaves_due_is_taken_before_the_checkpoint() {
+    // The header runs two rounds; the checkpoint's first round starts quiet,
+    // waits `Idle` and leaves a deadline due, as a timer that a round sets
+    // at the clock would.
+    let mut fake = Fake::new();
+    fake.due_after_round = 3;
+    run_fake(
+        "kosmo-script 1 surface 64x8 xrgb8888\ncheckpoint\n",
+        &mut fake,
+    )
+    .unwrap();
+    assert_eq!(fake.next_deadline(), None);
     assert_eq!(fake.rounds, 5);
 }
 
