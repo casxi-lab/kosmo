@@ -406,6 +406,49 @@ fn keys_take_the_steps_of_origins_with_the_offsets_of_their_groups() {
 }
 
 #[test]
+fn keys_take_the_offsets_of_nested_groups_until_each_pops() {
+    let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
+    let mut builder = ListBuilder::new();
+    let rect = Rect::new(Point::default(), Size::new(px(40), px(40)).unwrap());
+    let glyph = frame(&[3]).commands()[0].clone();
+    // A quarter pixel in the outer group and half a pixel in the inner one
+    // add up to three quarters; popping the inner group leaves the outer
+    // quarter, and popping that one the whole pixel.
+    for offset in [16, 32] {
+        let offset = Point::new(Fx::from_units(offset), Fx::ZERO);
+        builder.push(Command::PushClip { rect, offset }).unwrap();
+    }
+    builder.push(glyph.clone()).unwrap();
+    builder.push(Command::PopClip).unwrap();
+    builder.push(glyph.clone()).unwrap();
+    builder.push(Command::PopClip).unwrap();
+    builder.push(glyph).unwrap();
+    let list = builder.finish().unwrap();
+    let mut rasterizer = VelloRasterizer::new();
+    let prepared = set.prepare(&list, &mut rasterizer).unwrap();
+    assert_eq!(prepared.keys, 3);
+    for step in [Step::ThreeQuarters, Step::Quarter, Step::Whole] {
+        assert!(set.glyphs().contains(key(3, step)), "{step:?}");
+    }
+    assert!(!set.glyphs().contains(key(3, Step::Half)));
+    // The rasterizer places the glyphs alike and finds every mask.
+    let desc = BufferDesc::new(40, 40, 160, PixelFormat::Rgba8Premul).unwrap();
+    let mut target = RenderTarget::new(desc).unwrap();
+    let damage = target.whole();
+    assert!(
+        rasterizer
+            .render(
+                &list,
+                &damage,
+                set.glyphs(),
+                &ImageStore::EMPTY,
+                &mut target
+            )
+            .is_ok()
+    );
+}
+
+#[test]
 fn masks_are_the_unhinted_outlines_at_each_step() {
     let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
     let mut rasterizer = Counting::new();
