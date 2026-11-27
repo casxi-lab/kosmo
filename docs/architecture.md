@@ -1678,8 +1678,9 @@ Fonts are loaded through the platform interface:
   `kosmo-text`, `FontSet::new`, which registers only them with fontique, with
   system fonts off. `kosmo-text` accepts only bytes, does not depend on
   `kosmo-platform`, holds no platform handle and stays a core library. Bytes
-  that are not the two fonts stop the shell with a distinct error before the
-  first round.
+  that `FontSet::new` refuses, not one TrueType font or both of one family,
+  stop the shell with a distinct error before the first round; the shell does
+  not check which fonts they are.
 - The shell keeps the font set. Before it rasterizes a frame, it prepares the
   coverage masks of the frame's glyph runs in the glyph cache of the set and
   hands the cache to the rasterizer as the frame's glyph coverage.

@@ -430,7 +430,7 @@ the two fonts through `ResourceProvider`, Fira Sans and then Fira Mono, as
 the resources named by their files `SANS_FILE` and `MONO_FILE` in the asset
 manifest of `kosmo-text`, and builds its font set from their bytes with
 `FontSet::new`. When a font does not exist, `run_round` returns
-`ShellError::MissingResource`, and when the bytes are not the two fonts,
+`ShellError::MissingResource`, and when `FontSet::new` refuses the bytes,
 `ShellError::Fonts`; it then runs no round, and the next call fetches the
 fonts again. Then each round:
 
@@ -817,7 +817,7 @@ wall clock.
     deadline, and while jobs are unfinished the polling deadline; `Key`,
     `FocusIn` and `FocusOut` become the round's events in their order,
     `Configure` sets the surface's size, and a missing font, or bytes that
-    are not the two fonts, stop the first round before its wait. Tests:
+    the font set refuses, stop the first round before its wait. Tests:
     `shell::tests::`
     `a_round_waits_reads_the_clock_takes_reports_and_runs_both_steps_in_order`,
     `while_jobs_run_the_next_wait_has_the_polling_deadline`,

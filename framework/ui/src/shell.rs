@@ -87,8 +87,10 @@ pub enum ShellError {
     /// exist: the platform returned `NotFound` for it.
     MissingResource(ResourceId),
     /// The bytes that the platform returned for the fonts before the first
-    /// round are not Fira Sans and Fira Mono: the font set of `kosmo-text`
-    /// refused them.
+    /// round were refused by the font set of `kosmo-text`: one of them is
+    /// not one TrueType font, or both are of one family. The shell does not
+    /// check which fonts they are; whoever builds the platform's resource
+    /// table keeps them those of the asset directory.
     Fonts(FontSetError),
     /// The glyph cache could not prepare the coverage masks of the glyph
     /// runs of a frame, so nothing was drawn: a font or a size outside the
@@ -211,8 +213,8 @@ impl<A: App> Shell<A> {
     /// their files `SANS_FILE` and `MONO_FILE` in the asset manifest of
     /// `kosmo-text`, and builds its font set from their bytes with
     /// `FontSet::new`. A font that does not exist gives
-    /// [`ShellError::MissingResource`], and bytes that are not the two
-    /// fonts give [`ShellError::Fonts`]; then no round runs, and the next
+    /// [`ShellError::MissingResource`], and bytes that the font set refuses
+    /// give [`ShellError::Fonts`]; then no round runs, and the next
     /// call fetches the fonts again. Then the round:
     ///
     /// 1. waits once for platform events with `deadline`; a backend that
@@ -477,8 +479,8 @@ pub struct ExitStatus {
 /// Before the first round it fetches the two fonts through
 /// `ResourceProvider`, as [`Shell::run_round`] states; when one does not
 /// exist, it shuts the platform down at once and returns
-/// [`ExitReason::MissingResource`], and when their bytes are not the two
-/// fonts, [`ExitReason::Failed`] with [`ShellError::Fonts`]. Then it runs
+/// [`ExitReason::MissingResource`], and when the font set refuses their
+/// bytes, [`ExitReason::Failed`] with [`ShellError::Fonts`]. Then it runs
 /// rounds with [`Shell::run_round`], each waiting with the
 /// [`Shell::next_deadline`] that the round before left. When a port returns
 /// [`PlatformError::Disconnected`] it returns
