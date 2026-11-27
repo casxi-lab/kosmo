@@ -1583,10 +1583,17 @@ pub trait Rasterizer {
 
 ### Text stack
 
-- `kosmo-text` uses parley 0.13.0 for shaping, through harfrust, for line
-  breaking and paragraph layout, through parley_engine, and for hit testing and
-  caret geometry. fontique registers only the bytes of the two fonts obtained
-  through `ResourceProvider`.
+- `kosmo-text` uses parley 0.13.0 for shaping, through harfrust, and for line
+  breaking and paragraph layout, through parley_engine, by the Unicode line
+  breaking algorithm with the data of icu_segmenter compiled in. fontique
+  registers only the bytes of the two fonts obtained through
+  `ResourceProvider`. parley also provides hit testing and caret geometry,
+  which `kosmo-text` will offer with the controls that use them.
+- `FontSet::layout` lays out a paragraph in one of the two fonts at a size from
+  1 to 256 pixels per em, at a width of at most $2^{18}$ pixels or without one,
+  and gives its lines, each with the bytes of the text that it holds, its
+  baseline and its glyphs; `Paragraph::run` makes a glyph command of a display
+  list of them. A word longer than the width stays whole on a line of its own.
 - parley's default features are off, so its system font back end `system` is not
   built; `libm` is on; `std` and `complex-scripts` stay off. With `std`,
   fontique would bring in memmap2, which uses `libc` on Unix, and code that
@@ -1595,11 +1602,13 @@ pub trait Rasterizer {
   module](#transcendental-functions).
 - `kosmo-text` reads outlines through skrifa 0.49.0, the version that
   parley_engine uses, as a direct dependency.
-- parley lays text out in `f32`. At the exit of `kosmo-text` positions are
-  rounded once into the numeric representation, which is the only one used
-  afterwards, and parley's `quantize` option is off.
+- parley lays text out in `f32`. Sizes and widths reach it as exact `f32`
+  values, and at the exit of `kosmo-text` every position and length is
+  multiplied by 64 and rounded once into the numeric representation, which is
+  the only one used afterwards; parley's `quantize` option is off.
 - The first release has no font fallback and no bidirectional text; the
-  paragraph direction is left to right.
+  paragraph direction is left to right, and a character that the font of a
+  paragraph lacks becomes the font's `.notdef` glyph.
 
 ### Fonts
 

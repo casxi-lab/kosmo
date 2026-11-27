@@ -460,6 +460,7 @@ name = "kosmo-text"
 version = "0.1.0-dev.1"
 dependencies = [
  "kosmo-render",
+ "kosmo-types",
  "parley",
  "skrifa",
 ]
