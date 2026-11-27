@@ -1,7 +1,10 @@
 //! The script runner of `kosmo-testkit` on the headless backend, with the
-//! line editor of `editor`: a key of an earlier focus generation is
-//! dropped, a header must fit the capabilities, and a run stops with the
-//! line number of each problem that only a run finds.
+//! line editor of `editor` and a fake driver: a key of an earlier focus
+//! generation is dropped, lines of one time run no round between them, the
+//! framework is idle only after a quiet round, the bound of rounds holds
+//! for each line, a header must fit the capabilities, a run without call
+//! probes records none, and a run stops with the line number of each
+//! problem that only a run finds.
 
 // The runner needs the test hooks: the check builds this package once
 // more with them, and a build without them compiles this file empty.
@@ -381,4 +384,17 @@ fn view_lines_and_display_text_keep_their_form() {
             "checkpoint 2 at 0\nview 1\nstate ready\ndisplay 1 0\npixels 1 none\n"
         ]
     );
+}
+
+// Without the feature `call-probes`, no probe of the runner or the
+// single-round entry is compiled, so a run records none.
+#[cfg(not(feature = "call-probes"))]
+#[test]
+fn without_call_probes_a_run_records_no_probe() {
+    run(
+        "kosmo-script 1 surface 64x8 xrgb8888\ncheckpoint\n",
+        &mut driver(0),
+    )
+    .unwrap();
+    assert!(kosmo_testkit::probes::recorded().is_empty());
 }

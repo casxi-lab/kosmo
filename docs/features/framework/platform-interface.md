@@ -335,5 +335,7 @@ and the tests of digests in the module `pixels::tests` of
    `the_description_is_part_of_the_digest`,
    `every_format_has_a_code_and_a_name`.
 7. A run of the frozen script reaches the runner's entry and the
-   single-round entry. Test: `tests/call_relations.rs`:
-   `a_script_run_reaches_the_runner_and_the_single_round_entry`.
+   single-round entry, and without the feature `call-probes` a run records
+   no probe. Tests: `tests/call_relations.rs`:
+   `a_script_run_reaches_the_runner_and_the_single_round_entry`;
+   `tests/runner.rs`: `without_call_probes_a_run_records_no_probe`.
