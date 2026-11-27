@@ -16,16 +16,17 @@ of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
 history and reuse, the display lists, the renderer interface, the rasterizer on
 vello_cpu and the wrapper of transcendental functions in `kosmo-render`, the
-two bundled fonts with their asset manifest and the font set in
-`kosmo-text`, the SDK facade `kosmo-sdk`, which re-exports these crates but
-`kosmo-render` and `kosmo-text`, part of
+two bundled fonts with their asset manifest, the font set, shaping and line
+breaking and the glyph cache in `kosmo-text`, the SDK facade `kosmo-sdk`,
+which re-exports these crates but `kosmo-render` and `kosmo-text`, part of
 the shared types in `kosmo-types`: fixed-point geometry, logical time, the focus
 generation and epoch, the keyboard event records, pixel formats, buffer
 descriptions with the conversion of pixels between them, and damage regions, and
 part of the framework core in `kosmo-ui`: the control tree, the event, update
 and view passes of a round, the drawing pass, which rounds do not run yet,
-result slots, timers, dispatch with the focus check, the minimal key map and hit
-testing;
+result slots, timers, dispatch with the focus check, the minimal key map, hit
+testing and the shell, which fetches the two fonts before its first round and
+draws text from the glyph cache;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -1630,6 +1631,15 @@ pub trait Rasterizer {
 - The first release has no font fallback and no bidirectional text; the
   paragraph direction is left to right, and a character that the font of a
   paragraph lacks becomes the font's `.notdef` glyph.
+- The tests of `kosmo-text` pin the glyphs of strings of both fonts, with
+  mathematical symbols, combining characters, the four steps and three
+  sizes, as the text of their display lists, and the lines of cases of line
+  breaking as text. Each string also has a pixel golden, drawn through the
+  glyph cache. Every run of the tests compares its drawings with the
+  goldens, and one test lays the strings out again in a process of its own,
+  so separate processes are compared, which covers the hash containers
+  inside the text stack as the [hash containers](#determinism-rules) rule
+  states.
 
 ### Fonts
 

@@ -111,10 +111,12 @@ jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 [display lists](docs/features/framework/rendering.md) with their text
 form, the renderer interface, the rasterizer on vello_cpu that draws display
 lists on the CPU and the wrapper of the transcendental functions that
-rendering and layout are to call, `kosmo-text`, which so far holds the two
-fonts that kosmo bundles, Fira Sans and Fira Mono, with their license files
-and their asset manifest, and the font set that registers their bytes for
-the text stack parley without system fonts, `kosmo-platform`, the [platform
+rendering and layout are to call, `kosmo-text`, which holds the two fonts
+that kosmo bundles, Fira Sans and Fira Mono, with their license files and
+their asset manifest, the font set that registers their bytes for the text
+stack parley without system fonts, the shaping and line breaking of
+paragraphs into glyph runs of display lists and the glyph cache of their
+coverage masks, `kosmo-platform`, the [platform
 interface](docs/features/framework/platform-interface.md) through which the
 framework reaches surfaces, input, its clock, resources and the
 accessibility tree, with AccessKit re-exported, `kosmo-math-kalyx`,
@@ -125,9 +127,10 @@ the submissions of a line with their results and reuses their inputs and
 results in the line, the framework core `kosmo-ui`, which holds an
 application's [control tree](docs/features/framework/runtime.md) and runs
 the rounds of its event loop with result slots, timers, focus checks and
-the dispatch of commands, with a shell that drives rounds through the
-platform interface and presents frames, so far without layout and with a
-drawing pass that rounds do not run yet, the
+the dispatch of commands, with a shell that fetches the two fonts through
+the platform interface, drives rounds through it and presents frames,
+drawing text from the glyph cache of its font set, so far without layout
+and with a drawing pass that rounds do not run yet, the
 headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance
@@ -167,9 +170,10 @@ the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosm
 reads the lines that you type. The second prints `kosmo` and its version. The
 next thirteen run the tests of the terminal, of the editing structure, of
 the job layer, of rendering, with its pixel goldens and the wrapper of
-transcendental functions, of the font set of the text crate, of the
-platform interface with its test hooks, of formula conversion with the
-kalyx runner, of the Scratchpad, of the framework core, of the headless
+transcendental functions, of the text crate, with its font set, shaping,
+line breaking, glyph cache and pixel goldens, of the platform interface
+with its test hooks, of formula conversion with the kalyx runner, of the
+Scratchpad, of the framework core, of the headless
 backend with its test hooks, the conformance suite, the shell and the
 script runner, of the event scripts, the pixel digests and the call probes
 of the test support, of the facade and of the shared types, and the last
