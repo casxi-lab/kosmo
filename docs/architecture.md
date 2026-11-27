@@ -1323,9 +1323,9 @@ methods are only for whoever builds them.
 - The interface allows several surfaces. The enum of surface roles is
   `#[non_exhaustive]`, and events, `Presenter` and `AccessibilitySink` name a
   surface by its `SurfaceId`.
-- The number of events returned by one wait, of rectangles in one presentation,
-  of surfaces, of queued injected events and of accessibility nodes per surface
-  is bounded, with the values that
+- The number of events returned by one wait, of rectangles in one
+  presentation, of surfaces, of queued injected events and of accessibility
+  nodes per surface is bounded, with the values that
   [bounds](features/framework/platform-interface.md#bounds) lists. Events
   beyond the bound wait for the next wait; any other operation beyond a bound
   returns `Exhausted` and changes nothing.
@@ -1341,12 +1341,13 @@ methods are only for whoever builds them.
   `view` and the drawing entry cannot reach any of its traits.
 - `PlatformTestHooks` and the backends' implementations of it compile only under
   a feature that is off by default and that `kosmo-ui`, the control crates and
-  the program never enable, so applications, the framework core and controls
-  cannot inject events, advance the clock or read buffers back. A driver that
-  builds the headless backend may use its inherent methods. `read_back` returns
-  the last presented buffer with its description, and `kosmo-testkit` computes
-  its digest. `inject_fault` injects platform failures such as a missing
-  resource, and `a11y_tree` returns the tree that the backend kept.
+  the program never enable in ordinary builds, so applications, the framework
+  core and controls cannot inject events, advance the clock or read buffers
+  back. A driver that builds the headless backend may use its inherent methods.
+  `read_back` returns the last presented buffer with its description, and
+  `kosmo-testkit` computes its digest. `inject_fault` injects platform failures
+  such as a missing resource, and `a11y_tree` returns the tree that the
+  backend kept.
 - `kosmo-platform` and both backends read no files and are core libraries; they
   have `#![forbid(unsafe_code)]` and are not pure core. `kosmo-testkit` reads
   script files and is a boundary crate for files.
@@ -3684,9 +3685,8 @@ a runner on each side:
    device model in which `Completed` comes at the same virtual time as its
    commit, as the framework's headless backend gives a presented buffer back
    with `Released` at the next wait that returns it, without its clock
-   moving. The
-   model timed by the refresh rate is for tests of the frame budget and dropped
-   frames, and for nested runs.
+   moving. The model timed by the refresh rate is for tests of the frame
+   budget and dropped frames, and for nested runs.
 5. Neither the server's runner nor the step mode of the headless server program
    sleeps or reads the wall clock; they use only the virtual clock.
 

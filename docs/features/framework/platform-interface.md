@@ -82,10 +82,13 @@ A backend is one value. The shell's `run` and its single-round entry
 and the script runner over `P: PlatformTestHooks`. `kosmo-testkit` turns on
 the feature `test-hooks` of `kosmo-platform`, and a backend implements
 `PlatformTestHooks` under a feature `test-hooks` of its own, which only test
-builds turn on; the framework core, controls and programs never turn them
-on, so their code cannot inject events, advance the clock or read buffers
-back. A driver that builds the headless backend may use its inherent
-methods instead.
+builds turn on; no manifest of the framework core, controls or programs
+turns them on, so outside test builds their code cannot inject events,
+advance the clock or read buffers back; test builds that include
+`kosmo-testkit`, such as the probe pass, in which the `call-probes` of
+`kosmo-ui` turns on `kosmo-testkit`, build the test hooks of
+`kosmo-platform` too. A driver that builds the headless backend may use its
+inherent methods instead.
 
 Every backend keeps these rules, which the crate documentation of
 `kosmo-platform` states:
@@ -143,8 +146,8 @@ The other value types:
 - `SurfaceRequest { role, size, format }` asks for a surface of a
   `SurfaceRole`, so far only `Main` in a `#[non_exhaustive]` enum, a
   `PixelSize` of 1 to 8,192 pixels a side, `MAX_BUFFER_SIDE` of
-  `kosmo-types`, and a pixel format of the capabilities. `SurfaceId` is a
-  `u32` that a backend never gives two surfaces.
+  `kosmo-types`, and a pixel format of the capabilities. `SurfaceId` wraps
+  a `u32`, which a backend never gives two surfaces.
 - `PlatformCaps::new(formats, output)` holds the accepted pixel formats, in
   the backend's order of preference with each format once, and the output
   size; `accepts` tells whether a format is one of them.
@@ -314,7 +317,7 @@ events. It has no threads, reads no files and reads no real clock:
   `Idle`. Events come only from the driver, through the test hooks'
   `inject` or the inherent `HeadlessBackend::inject`, which accept any
   stamp, and from the backend itself. So a driver of a build without
-  `test-hooks` drives the backend as the hooks do.
+  `test-hooks` injects events and advances the clock as the hooks do.
 - It numbers its surfaces from 1 in the order it creates them and never
   gives a number twice. Once a surface of the role `Main` exists, it queues
   `Configure` with the surface's size and `FocusIn` with the epoch
@@ -763,7 +766,7 @@ and `a_missing_entry_is_listed`.
 - Each surface of the headless backend has one buffer, so a driver waits for
   its release before it draws the next frame, and the backend keeps only
   the last presentation of each surface. No backend repaints by buffer age
-  yet.
+  until a backend has more than one buffer per surface.
 - The headless backend focuses each main surface when it creates it and
   never moves focus; later focus changes come only from injected events.
 - The interface has no pointer, clipboard, text input, lifecycle or memory
@@ -785,10 +788,11 @@ and `a_missing_entry_is_listed`.
 - Only the runner's entry and the single-round entry have call probes, and
   only `framework/` has crates with probes and tests of call relations;
   the applications of `desktop/` and the crates of `display/` have none
-  yet. A test of call relations checks that its entries were reached, not
-  how often or in which order, and the record holds the calls of its whole
-  test binary.
-- The probe pass runs every test of `framework/` a second time, with the
+  yet. Other public entries get probes with the tests of call relations
+  that cover them. A test of call relations checks that its entries were
+  reached, not how often or in which order, and the record holds the calls
+  of its whole test binary.
+- The probe pass runs every test of `framework/` once more, with the
   probes compiled in, so its time adds to the check.
 
 ## Running the tests
@@ -807,15 +811,16 @@ The first runs the tests of every crate of `framework/` without features
 from the command line, among them the tests of `kosmo-platform` with its
 test hooks, which `kosmo-testkit` turns on, the tests of scripts, digests
 and probes of `kosmo-testkit`, and `tests/headless.rs` of the headless
-backend without its test hooks. The second builds the headless backend with its test hooks and
-runs, without call probes, the suite in `tests/conformance.rs`, the runner's
-tests in `tests/runner.rs` and `tests/frozen.rs`, and the tests of
-`tests/hooks.rs`, `tests/shell.rs` and `tests/headless.rs`. The third, the
-probe pass, runs every test of `framework/` once more with every call probe
-on, the test of call relations in `tests/call_relations.rs` among them. The
-`clippy` step lints the same three builds with `--all-targets`, and
-`framework/` once more without `kosmo-testkit` and without test targets, as
-ordinary builds compile it.
+backend without its test hooks. The second builds the headless backend
+with its test hooks and runs, without call probes, the suite in
+`tests/conformance.rs`, the runner's tests in `tests/runner.rs` and
+`tests/frozen.rs`, and the tests of `tests/hooks.rs`, `tests/shell.rs` and
+`tests/headless.rs`. The third, the probe pass, runs every test of
+`framework/` once more with every call probe on, the test of call
+relations in `tests/call_relations.rs` among them. The `clippy` step lints
+the same three builds with `--all-targets`, and `framework/` once more
+without `kosmo-testkit` and without test targets, as ordinary builds
+compile it.
 
 `--test` runs one test file alone; these commands run the suite and the test
 of call relations:
