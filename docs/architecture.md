@@ -1385,7 +1385,9 @@ methods are only for whoever builds them.
   Tests never sleep or read the wall clock.
 
 Besides key lines, which follow the [event record](#time-decoding-and-scripts),
-a script has these lines; the text format is fixed with the runner:
+a script has these lines; [event
+scripts](features/framework/platform-interface.md#event-scripts) gives the
+text format, which is fixed with the runner:
 
 - a header with the format version and the size and pixel format of the main
   surface;

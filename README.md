@@ -128,9 +128,9 @@ headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance
 suite of the platform interface, which the headless backend passes, with
-the runner of event scripts, which drives the framework on the headless
-backend and writes view model records, display lists and pixel digests at
-each checkpoint, with the digests of presented buffers and with call
+the runner of [event scripts](docs/features/framework/platform-interface.md),
+which drives the framework on the headless backend and writes view model
+records, display lists and pixel digests at each checkpoint, with the digests of presented buffers and with call
 probes for tests of call relations, and the facade `kosmo-sdk`,
 which re-exports
 `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad`

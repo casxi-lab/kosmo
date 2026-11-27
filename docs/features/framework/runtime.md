@@ -557,8 +557,11 @@ view rebuilt controls 2
 deadline 10500000
 ```
 
-Tests build the input of each round in code. The text format of event
-scripts, their runner and its records are planned in `kosmo-testkit`.
+The tests of `kosmo-ui` build the input of each round in code. Event
+scripts drive the shell's single-round entry on the headless backend through
+the script runner of `kosmo-testkit`, as [event
+scripts](platform-interface.md#event-scripts) and [the script runner and its
+records](platform-interface.md#the-script-runner-and-its-records) describe.
 
 ## Determinism and the platform boundary
 
