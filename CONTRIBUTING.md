@@ -1078,13 +1078,38 @@ Security advisories are checked by hand before each version is tagged,
 pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
 crates.io packages in every `Cargo.lock` of the repository against the RustSec
 advisory database and records, with the release decision, the commit of the
-advisory database that was used. A weekly advisory job, not required for
-merging, is planned: with the framework's raster library and text stack, the
-allowlists of the product workspaces together list more than about 20
-distinct packages, each name and version counted once however many
-allowlists list it, the packages of the tool workspace `xtask` not counted.
-The job will change neither the `cargo xtask check` job nor the branch rules
-of `main`.
+advisory database that was used.
+
+With the framework's raster library and text stack, the allowlists of the
+product workspaces together list more than about 20 distinct packages, each
+name and version counted once however many allowlists list it, the packages
+of the tool workspace `xtask` not counted, so a weekly job checks them too:
+the job `security advisories` of `.github/workflows/advisories.yml`. It runs
+for `main` only, on a GitHub-hosted `ubuntu-24.04-arm` runner, every Monday
+at 09:41 UTC and when a maintainer starts it by hand, with read access to the
+contents of the repository and without secrets. It installs the toolchain of
+`rust-toolchain.toml` and then cargo-audit 0.23.0 with
+`cargo install --locked --no-default-features`, which leaves out the
+default feature `binary-scanning` that only audits compiled programs, and
+prints the version of cargo-audit. It then runs
+`cargo audit --file <workspace>/Cargo.lock` for `display/`, `framework/`,
+`desktop/` and `xtask/` in turn. Each run fetches the RustSec advisory
+database into `advisory-db` in the Cargo home, and the job prints the commit
+of the database after each run. A vulnerability advisory for a package of
+any of the four lock files fails the job, once all four have been audited.
+Versions that crates.io has yanked and informational advisories, such as a
+package that is no longer maintained, are reported as warnings and do not
+fail it. The job is not required for merging, and it changes neither the
+`cargo xtask check` job nor the branch rules of `main`; the check by hand
+before each tag stays.
+
+The job has a limit: `cargo install --locked` compiles cargo-audit from the
+`Cargo.lock` of the cargo-audit package, which lists 363 packages for every
+platform and feature, and the job builds those that its target and features
+select. None of them is in an allowlist, the fetch and deps steps check
+neither their sources nor their licenses nor their build scripts, and their
+build scripts and procedural macros run on the runner of this job. They
+run only there: nothing that the job builds enters a build of kosmo.
 
 ## Commit messages
 

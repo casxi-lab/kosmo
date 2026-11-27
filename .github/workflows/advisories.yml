@@ -1,0 +1,48 @@
+# The weekly advisory job: cargo-audit checks the crates.io packages in the
+# Cargo.lock of every workspace against the RustSec advisory database. It is
+# not required for merging and runs only for main, on its schedule or when
+# started by hand. Actions are pinned to full commit SHAs; the comment names
+# the release.
+name: advisories
+
+on:
+  schedule:
+    - cron: '41 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  advisories:
+    name: security advisories
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      # The lock file of cargo-audit itself, without the default feature
+      # binary-scanning, which only audits compiled programs.
+      - name: Install cargo-audit
+        run: |
+          cargo install --locked cargo-audit --version =0.23.0 --no-default-features
+          cargo audit --version
+
+      # Each run fetches the advisory database into the Cargo home and reports
+      # yanked versions as warnings. A vulnerability fails the job once all
+      # four lock files are audited.
+      - name: Audit the lock file of each workspace
+        run: |
+          status=0
+          database="${CARGO_HOME:-$HOME/.cargo}/advisory-db"
+          for workspace in display framework desktop xtask; do
+            echo "Auditing $workspace/Cargo.lock"
+            cargo audit --file "$workspace/Cargo.lock" || status=1
+            echo "Advisory database commit: $(git -C "$database" rev-parse HEAD)"
+          done
+          exit "$status"

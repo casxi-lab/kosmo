@@ -144,7 +144,9 @@ the facade `kosmo-sdk`, which re-exports
 `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad`
 and through which the `desktop/` workspace uses them. The
 `desktop/` workspace has the `kosmo` program. CI runs the repository checks on every pull request to
-`main` and every push to `main`. These commands run from the repository root:
+`main` and every push to `main`, and a weekly job audits the lock files
+against the RustSec advisory database. These commands run from the
+repository root:
 
 ```sh
 printf ':diff x x^2\n:diff x x^3\n:history\n' | cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo
