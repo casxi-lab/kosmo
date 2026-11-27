@@ -29,6 +29,14 @@
 //! crate other than a dev-dependency or the optional one above. A test pass
 //! of the check with the feature on is planned in `xtask/src/check.rs`.
 //!
+//! This crate's own probe, at the entry of the script runner, is behind its
+//! feature `call-probes`, which turns on nothing, and is written as
+//! `crate::probe!`. A crate without probes whose tests check call relations
+//! may have a feature `call-probes` that turns on the `call-probes` of its
+//! dev-dependencies, as `kosmo-backend-headless` does for
+//! `tests/call_relations.rs`. Only features named `call-probes` may turn on
+//! call probes, so all of them come from the command line.
+//!
 //! The record holds each entry once, in the order of their names, for the
 //! whole process, so the calls of every test in a test binary mix in it. A
 //! test of call relations therefore owns its test binary: it is the only
