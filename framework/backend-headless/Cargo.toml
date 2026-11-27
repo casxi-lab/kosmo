@@ -11,6 +11,11 @@ publish = false
 # The test hooks of the platform interface, implemented for this backend.
 # Off by default; only test builds turn it on.
 test-hooks = ["kosmo-platform/test-hooks"]
+# The test of call relations, which runs a script and checks the call
+# probes of the script runner and the single-round entry. Off by default;
+# only the command line turns it on, together with the test hooks, as
+# `--features test-hooks,call-probes`.
+call-probes = ["kosmo-testkit/call-probes", "kosmo-ui/call-probes"]
 
 [dependencies]
 kosmo-platform.workspace = true
