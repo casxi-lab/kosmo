@@ -1,5 +1,5 @@
-//! Text of kosmo's framework: the two fonts that kosmo bundles and the
-//! shaping and line breaking of paragraphs.
+//! Text of kosmo's framework: the two fonts that kosmo bundles, the shaping
+//! and line breaking of paragraphs, and the glyph cache.
 //!
 //! The crate holds the two fonts in its asset directory `assets/fonts/`,
 //! each in a directory of its own with its original license file:
@@ -45,7 +45,7 @@
 //! [`Line`] with the bytes of the text that it holds, its baseline and its
 //! glyphs, every position rounded once from parley's `f32` into the 26.6
 //! fixed point of `kosmo-types`, and [`Paragraph::run`] makes a glyph
-//! command of a display list of them.
+//! command of a display list of them:
 //!
 //! ```
 //! use kosmo_text::{FontSet, SANS, TextStyle};
@@ -61,9 +61,41 @@
 //! assert_eq!(lines, ["The result is 1/3 and ", "the error is 0"]);
 //! ```
 //!
-//! The glyph cache, which fills the coverage masks of glyphs from outlines
-//! read through skrifa and gives them to the renderer of `kosmo-render`, is
-//! planned in this crate.
+//! [`FontSet::prepare`] fills the coverage masks of the glyphs of a display
+//! list through the rasterizer of `kosmo-render`, from the unhinted outlines
+//! that skrifa reads, into the [`GlyphCache`] of the font set, which holds
+//! at most [`MAX_GLYPH_ENTRIES`] masks of [`MAX_GLYPH_BYTES`] coverage
+//! values, and [`FontSet::glyphs`] hands the cache to the rasterizer as the
+//! glyph coverage of the list:
+//!
+//! ```
+//! use kosmo_render::{
+//!     Color, ImageStore, ListBuilder, Rasterizer, RenderTarget, VelloRasterizer,
+//! };
+//! use kosmo_text::{FontSet, SANS, TextStyle};
+//! use kosmo_types::{BufferDesc, Fx, PixelFormat, Point};
+//!
+//! let sans = include_bytes!("../assets/fonts/firasans/FiraSans-Regular.ttf");
+//! let mono = include_bytes!("../assets/fonts/firamono/FiraMono-Regular.ttf");
+//! let mut set = FontSet::new(sans, mono).unwrap();
+//! let style = TextStyle::new(SANS, Fx::from_units(16 * 64)).unwrap();
+//! let paragraph = set.layout("1 + 2 = 3", style, None).unwrap();
+//! assert_eq!(paragraph.lines().len(), 1);
+//! let run = paragraph.run(Point::default(), Color::opaque(0, 0, 0)).unwrap();
+//! let mut builder = ListBuilder::new();
+//! builder.push(run).unwrap();
+//! let list = builder.finish().unwrap();
+//!
+//! let mut rasterizer = VelloRasterizer::new();
+//! set.prepare(&list, &mut rasterizer).unwrap();
+//! let desc = BufferDesc::new(80, 20, 320, PixelFormat::Rgba8Premul).unwrap();
+//! let mut target = RenderTarget::new(desc).unwrap();
+//! let whole = target.whole();
+//! rasterizer
+//!     .render(&list, &whole, set.glyphs(), &ImageStore::EMPTY, &mut target)
+//!     .unwrap();
+//! assert!(target.bytes().chunks(4).any(|pixel| pixel == [0, 0, 0, 255]));
+//! ```
 //!
 //! The crate is `no_std` with `alloc` and without unsafe code. It depends
 //! on parley 0.13.0 and skrifa 0.49.0 without their default features and
@@ -76,8 +108,10 @@
 
 extern crate alloc;
 
+mod cache;
 mod fonts;
 mod layout;
 
+pub use cache::{GlyphCache, GlyphError, MAX_GLYPH_BYTES, MAX_GLYPH_ENTRIES, Prepared};
 pub use fonts::{FontSet, FontSetError, MONO, MONO_FILE, SANS, SANS_FILE};
 pub use layout::{Line, MAX_SIZE, MAX_WIDTH, MIN_SIZE, Paragraph, TextError, TextStyle};

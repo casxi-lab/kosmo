@@ -1,6 +1,6 @@
 [package]
 name = "kosmo-text"
-description = "Text: the two bundled fonts with their asset manifest and their font set, shaping and line breaking with parley, and the planned glyph cache"
+description = "Text: the two bundled fonts with their asset manifest and their font set, shaping and line breaking with parley, and the glyph cache"
 version.workspace = true
 edition.workspace = true
 # The fonts in `assets/fonts/` keep their own license, so the crate is not

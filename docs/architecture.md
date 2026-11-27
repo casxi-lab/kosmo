@@ -1572,9 +1572,28 @@ pub trait Rasterizer {
   The origin `x` of a glyph, an integer in the numeric representation, is
   rounded to the nearest quarter pixel as `q = (x + 8) >> 4` with an arithmetic
   shift; the whole pixel is `q >> 2` and the step `q & 3`.
-- The key of the coverage cache is the digest of the font asset, the glyph
-  identifier, the size in the numeric representation and the horizontal step,
-  and the cache's capacity counts each step separately.
+- The coverage cache is the glyph cache of `kosmo-text`, keyed by the
+  `GlyphKey` of `kosmo-render`: the font, the glyph identifier, the size in the
+  numeric representation and the horizontal step. The font stands for the
+  digest of the font asset. It is a `FontId` of the font set that holds the
+  cache, which is built with the set and dropped with it, and a font set built
+  from other bytes starts with an empty cache of its own, so within one cache a
+  `FontId` names the bytes of one font. `kosmo-text` takes no digests at run
+  time: the asset manifest and the tests of whoever builds a font set keep its
+  bytes those of the bundled files.
+- The cache holds at most 4,096 entries, each step of a glyph an entry of its
+  own, and 4 MiB of coverage values, the widths times the heights of its masks
+  added together, which it counts itself. `FontSet::prepare` fills the masks
+  of a display list before it is drawn, as one frame: it marks the keys of the
+  list as used in the frame, and when a new mask would exceed a limit, it
+  evicts the entries that the frame does not use, in ascending order of the
+  frame that last used them and then of their key, until the mask fits. A
+  frame whose own masks exceed a limit is refused with a distinct error
+  before any mask is filled. Sizes are from 1 to 256 pixels per em, so that
+  one mask stays small beside the limits.
+- A mask is the unhinted outline that skrifa reads at the glyph's size, moved
+  right by the step and filled through `fill_coverage`, so dropping masks and
+  filling them again gives the same pixels.
 - The size reaches skrifa in the numeric representation, so the pixels per em,
   the size divided by 64, is an exact binary fraction. TrueType outlines are
   already in units of $1/64$ pixel after scaling and enter without loss; CFF
