@@ -10,8 +10,8 @@
 //!
 //! - the manifest lists exactly the fonts of [`Assets::fonts`], each once,
 //!   sorted, with digests of 64 lowercase hexadecimal digits, the license
-//!   [`LICENSE`], a license file in the directory of the font and a source,
-//!   an upstream commit, a version and a role;
+//!   [`LICENSE`], a license file named [`LICENSE_FILE`] in the directory of
+//!   the font and a source, an upstream commit, a version and a role;
 //! - the asset directory holds, besides the manifest, exactly the files that
 //!   the manifest lists, as regular files, each with the SHA-256 digest that
 //!   the manifest lists for it and each font with its size;
@@ -57,6 +57,9 @@ pub const MANIFEST: &str = "MANIFEST.toml";
 /// The license of every bundled font.
 pub const LICENSE: &str = "OFL-1.1";
 
+/// The file name of the original license file of every bundled font.
+pub const LICENSE_FILE: &str = "OFL.txt";
+
 /// The asset manifest.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,7 +89,7 @@ struct Font {
     /// Its license, [`LICENSE`].
     license: String,
     /// The path of its license file in the asset directory, in the
-    /// directory of the font.
+    /// directory of the font and named [`LICENSE_FILE`].
     license_file: String,
     /// The SHA-256 digest of the license file.
     license_sha256: String,
@@ -207,6 +210,12 @@ fn check_font(
     {
         let message = format!(
             "the license file `{license_file}` of `{file}` is not another file in the directory of the font"
+        );
+        problems.add(path, line, message);
+    }
+    if layout::file_name(license_file) != LICENSE_FILE {
+        let message = format!(
+            "the license file `{license_file}` of `{file}` is not named {LICENSE_FILE}, as the original license file is"
         );
         problems.add(path, line, message);
     }

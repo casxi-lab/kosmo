@@ -558,8 +558,8 @@ directory:
   records;
 - `version`, the version of the font, and `role`, what kosmo uses it for;
 - `license`, which is `OFL-1.1`, `license-file`, the path of its license
-  file, in the directory of the font, and `license-sha256`, the SHA-256
-  digest of the license file.
+  file `OFL.txt`, in the directory of the font, and `license-sha256`, the
+  SHA-256 digest of the license file.
 
 The fonts and their license files are copied byte for byte from the commit of
 `source` and never subset, instanced or changed in any other way, and
@@ -586,8 +586,8 @@ of a font with the line of its `[[font]]` table:
   file listed twice and fonts out of order;
 - a path that is not relative to the asset directory, a digest that is not
   64 lowercase hexadecimal digits, a license other than `OFL-1.1`, a license
-  file that is not another file in the directory of its font, and an empty
-  `source`, `upstream`, `version` or `role`;
+  file that is not another file in the directory of its font or is not named
+  `OFL.txt`, and an empty `source`, `upstream`, `version` or `role`;
 - a file of the manifest that is not tracked or not a regular file, and a
   tracked file of the asset directory, other than the manifest, that the
   manifest does not list, so neither a third font nor a CJK font enters the

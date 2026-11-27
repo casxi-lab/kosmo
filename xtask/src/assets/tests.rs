@@ -269,6 +269,37 @@ fn a_license_file_outside_the_directory_of_its_font_is_reported() {
 }
 
 #[test]
+fn a_license_file_with_another_name_is_reported() {
+    // Another file of the directory of Fira Sans, listed with its digest as
+    // the license file in place of the original OFL.txt.
+    let renamed = "firasans/LICENSE.txt";
+    let old = format!(
+        "license-file = \"{SANS_LICENSE}\"\nlicense-sha256 = \"{}\"",
+        digest(&bytes_of(SANS_LICENSE))
+    );
+    let new = format!(
+        "license-file = \"{renamed}\"\nlicense-sha256 = \"{}\"",
+        digest(&bytes_of(renamed))
+    );
+    let manifest = manifest();
+    assert!(manifest.contains(&old), "{old}");
+    let tree = tree_of(
+        &manifest.replacen(&old, &new, 1),
+        &[MONO, MONO_LICENSE, SANS, renamed],
+    );
+    assert_eq!(LICENSE_FILE, "OFL.txt");
+    assert_eq!(
+        problems(&tree),
+        (
+            vec![format!(
+                "{MANIFEST_PATH}:15: the license file `{renamed}` of `{SANS}` is not named OFL.txt, as the original license file is"
+            )],
+            2
+        )
+    );
+}
+
+#[test]
 fn a_missing_or_unreadable_manifest_is_reported() {
     let mut tree = Tree::default();
     for file in FILES {
