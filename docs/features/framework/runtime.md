@@ -22,8 +22,9 @@ drivers build the layout results in code and present the frames that they
 draw. `kosmo-ui` depends on `kosmo-types` for geometry, logical time, focus
 generations, epochs, key events and damage regions, on the versions of
 `kosmo-math-model`, on `kosmo-platform` for the platform interface, and on
-`kosmo-render` for display lists and rasterization; it depends on neither
-the job layer nor kalyx. The design rules that it follows are in the
+`kosmo-render` for display lists and rasterization, and with the feature
+`call-probes` only, on `kosmo-testkit` for its call probe; it depends on
+neither the job layer nor kalyx. The design rules that it follows are in the
 [application model and passes](../../architecture.md#application-model-and-passes),
 [control tree](../../architecture.md#control-tree),
 [effects and the result slot](../../architecture.md#effects-and-the-result-slot),
@@ -473,6 +474,14 @@ previous frame beyond the buffer limits. The headless backend keeps what is
 presented as its read-back.
 Until rounds draw, a driver builds a layout result, gets its display list
 with `paint(shell.runtime().tree(), &layout, &damage)` and presents it.
+
+With the feature `call-probes`, which is off by default and only the
+command line turns on, as `--features kosmo-ui/call-probes`, each call of
+`run_round` records the call probe `kosmo-ui::run_round` of
+`kosmo-testkit`, which tests of call relations check. The feature turns on
+an optional dependency on `kosmo-testkit` and nothing else, so ordinary
+builds and tests of `kosmo-ui` compile no probe code and do not depend on
+`kosmo-testkit`.
 
 `run(platform, app, port, resources)` runs a shell until it stops and then
 calls `shutdown` once. It runs each round with the `next_deadline` that the

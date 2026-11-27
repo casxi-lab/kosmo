@@ -108,7 +108,10 @@
 //! accessibility updates and presents its frames; [`Shell::present`] draws
 //! a display list into a surface's previous frame and presents its damage.
 //! [`run`] runs rounds until the platform disconnects and returns an
-//! [`ExitStatus`].
+//! [`ExitStatus`]. With the feature `call-probes`, off by default and
+//! turned on only from the command line, the single-round entry records
+//! the call probe `kosmo-ui::run_round` of `kosmo-testkit` for tests of
+//! call relations; ordinary builds and tests compile no probe code.
 //!
 //! The control tree holds at most [`MAX_WIDGETS`] controls and is at most
 //! [`MAX_DEPTH`] deep; a view beyond either leaves the tree as it was and

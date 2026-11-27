@@ -7,10 +7,17 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# The call probe of the single-round entry, for tests of call relations.
+# Off by default; only the command line turns it on, as
+# `--features kosmo-ui/call-probes`.
+call-probes = ["dep:kosmo-testkit"]
+
 [dependencies]
 kosmo-math-model.workspace = true
 kosmo-platform.workspace = true
 kosmo-render.workspace = true
+kosmo-testkit = { workspace = true, optional = true }
 kosmo-types.workspace = true
 
 [lints]

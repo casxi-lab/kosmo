@@ -211,6 +211,10 @@ impl<A: App> Shell<A> {
     /// a driver presents the frames that it draws itself with
     /// [`Shell::present`].
     ///
+    /// With the feature `call-probes`, which only the command line turns
+    /// on, each call records the call probe `kosmo-ui::run_round` of
+    /// `kosmo-testkit`; without it no probe code is compiled.
+    ///
     /// # Errors
     ///
     /// A port's error, [`PlatformError::Disconnected`] among them, and the
@@ -220,6 +224,8 @@ impl<A: App> Shell<A> {
         platform: &mut P,
         deadline: Option<MonoTime>,
     ) -> Result<RoundEnd, ShellError> {
+        #[cfg(feature = "call-probes")]
+        kosmo_testkit::probe!("kosmo-ui::run_round");
         self.start(platform)?;
         let mut events = Vec::new();
         let wait = platform.wait(deadline, &mut events)?;
