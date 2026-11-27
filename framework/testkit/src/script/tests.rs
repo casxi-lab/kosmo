@@ -166,15 +166,22 @@ fn every_named_key_and_format_has_its_name() {
 #[test]
 fn the_names_cover_the_named_keys_of_kosmo_types() {
     // The nine named keys of `kosmo-types`, `LEFT` to `MOD_GUI`, are the
-    // numbers 1 to 9, and the table names each of them once. A key added
-    // there needs a name here.
-    for number in 1..=9 {
-        let names = NAMED_KEYS
-            .iter()
-            .filter(|&&(_, key)| key == NamedKey::new(number))
-            .count();
-        assert_eq!(names, 1, "the named key {number}");
-    }
+    // numbers 1 to 9, and the table names each of them once, by the name of
+    // its constant. A key added there needs a name here.
+    assert_eq!(
+        NAMED_KEYS.map(|(name, key)| (name, key.number())),
+        [
+            ("left", 1),
+            ("right", 2),
+            ("delete", 3),
+            ("execute", 4),
+            ("cancel", 5),
+            ("mod-shift", 6),
+            ("mod-ctrl", 7),
+            ("mod-alt", 8),
+            ("mod-gui", 9),
+        ]
+    );
 }
 
 #[test]
