@@ -1661,10 +1661,12 @@ pub trait Rasterizer {
   goldens step of `cargo xtask check` compares the directory with it, as
   [the font assets](../CONTRIBUTING.md#the-font-assets) describes. Variable
   fonts are not used, because taking an instance rewrites the file.
-- Without fallback, each font covers every character of its role; the character
-  set is fixed with `kosmo-text`. Fira Sans has no `□` (U+25A1), so the
-  formula editing control draws a hole as a rectangle and no interface string
-  contains `□`. Fira Mono has no `∆` (U+2206) and no `⋅` (U+22C5), and
+- Without fallback, each font covers every character of its role: the
+  characters of the interface strings that
+  `framework/text/tests/data/interface-strings.txt` lists for it, which a test
+  of `kosmo-text` checks against both fonts. Fira Sans has no `□` (U+25A1),
+  so the formula editing control draws a hole as a rectangle and no interface
+  string contains `□`. Fira Mono has no `∆` (U+2206) and no `⋅` (U+22C5), and
   monospaced interface strings do not use them.
 
 Fonts are loaded through the platform interface:

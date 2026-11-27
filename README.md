@@ -174,7 +174,8 @@ reads the lines that you type. The second prints `kosmo` and its version. The
 next thirteen run the tests of the terminal, of the editing structure, of
 the job layer, of rendering, with its pixel goldens and the wrapper of
 transcendental functions, of the text crate, with its font set, shaping,
-line breaking, glyph cache and pixel goldens, of the platform interface
+line breaking, glyph cache, pixel goldens and the coverage of the interface
+strings, of the platform interface
 with its test hooks, of formula conversion with the kalyx runner, of the
 Scratchpad, of the framework core, of the headless
 backend with its test hooks, the conformance suite, the shell and the
