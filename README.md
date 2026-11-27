@@ -111,9 +111,10 @@ jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 [display lists](docs/features/framework/rendering.md) with their text
 form, the renderer interface, the rasterizer on vello_cpu that draws display
 lists on the CPU and the wrapper of the transcendental functions that
-rendering and layout are to call, `kosmo-platform`, the platform interface
-through which the framework is to reach surfaces, input, its clock, resources
-and the accessibility tree, with AccessKit re-exported, `kosmo-math-kalyx`,
+rendering and layout are to call, `kosmo-platform`, the [platform
+interface](docs/features/framework/platform-interface.md) through which the
+framework reaches surfaces, input, its clock, resources and the
+accessibility tree, with AccessKit re-exported, `kosmo-math-kalyx`,
 which [converts](docs/features/math/formula-conversion.md) the input into the
 text that kalyx reads and runs the jobs with kalyx, `kosmo-scratchpad`, the
 [Scratchpad](docs/features/framework/scratchpad.md), which keeps a history of
@@ -128,7 +129,8 @@ headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance
 suite of the platform interface, which the headless backend passes, with
-the runner of [event scripts](docs/features/framework/platform-interface.md),
+the runner of
+[event scripts](docs/features/framework/platform-interface.md#event-scripts),
 which drives the framework on the headless backend and writes view model
 records, display lists and pixel digests at each checkpoint, with the digests
 of presented buffers and with call probes for tests of call relations, and
