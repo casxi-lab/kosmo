@@ -469,11 +469,11 @@ of another size, starts as transparent black. An empty damage region
 presents nothing. For a surface whose buffer is presented and not released,
 `present` returns `ShellError::Platform(PlatformError::Busy)` before
 anything changes; after an error of `buffer` or of the rasterizer, too, the
-frame and the buffer are as they were. Its other errors are `Render`, for a
-display list or damage region that does not fit the frame, `Convert`, for a
-buffer whose bytes do not match its description, and `FrameTooLarge`, for a
-previous frame beyond the buffer limits. The headless backend keeps what is
-presented as its read-back.
+frame and the buffer are as they were. Its other errors are `Render`, for an
+error of the rasterizer, such as a missing glyph or a damage region that
+does not fit the frame, `Convert`, for a buffer whose bytes do not match its
+description, and `FrameTooLarge`, for a previous frame beyond the buffer
+limits. The headless backend keeps what is presented as its read-back.
 Until rounds draw, a driver builds a layout result, gets its display list
 with `paint(shell.runtime().tree(), &layout, &damage)` and presents it.
 

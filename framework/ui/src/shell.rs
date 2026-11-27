@@ -76,8 +76,10 @@ pub enum ShellError {
     /// A resource that the shell was built with does not exist: the
     /// platform returned `NotFound` for it before the first round.
     MissingResource(ResourceId),
-    /// The rasterizer drew nothing: the display list or the damage region
-    /// does not fit the surface's previous frame.
+    /// The rasterizer drew nothing and returned this error: a damage region
+    /// that does not fit the surface's previous frame, a glyph without
+    /// coverage, a command that it does not draw, offsets out of range or
+    /// an input beyond its limits.
     Render(RenderError),
     /// The buffer that the platform handed out did not take the frame: its
     /// bytes are not as many as its description says.
