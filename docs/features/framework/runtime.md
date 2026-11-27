@@ -470,8 +470,9 @@ presented whole, whatever the damage region holds, so that the buffer is the
 conversion of the frame, with X of `Xrgb8888` always `0xFF`. An empty
 damage region presents nothing. For a surface whose buffer is presented and
 not released, `present` returns `ShellError::Platform(PlatformError::Busy)`
-before anything changes; after an error of `buffer` or of the rasterizer,
-too, the frame and the buffer are as they were. Its other errors are
+before anything changes; after an error of `buffer`, of the rasterizer or
+of the conversion of a new frame, too, the frame and the buffer are as they
+were. Its other errors are
 `Render`, for an error of the rasterizer, such as a missing glyph or a
 damage region that does not fit the frame, `Convert`, for a buffer whose
 bytes do not match its description, and `FrameTooLarge`, for a previous
@@ -597,9 +598,7 @@ no wall-clock time; review checks these, as the
 - A frame of a round's output for a surface whose buffer is presented and
   not released makes `run_round` return
   `ShellError::Platform(PlatformError::Busy)` after both steps, and `run`
-  then stops with `ExitReason::Failed`; rounds hold no frames yet, and
-  frames of such a surface are planned to wait for `Released` once rounds
-  draw.
+  then stops with `ExitReason::Failed`; rounds hold no frames yet.
 - The resources that the shell fetches go nowhere until the font set of
   `kosmo-text` exists, and presentation has no glyph coverage, so a frame
   with glyph runs fails with a missing glyph.

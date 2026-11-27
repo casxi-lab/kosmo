@@ -340,8 +340,9 @@ impl<A: App> Shell<A> {
     /// before anything changes; the errors of `buffer` and `present`; and
     /// [`ShellError::Render`], [`ShellError::Convert`] and
     /// [`ShellError::FrameTooLarge`]. After an error of `buffer`, of the
-    /// frame or of the rasterizer, the frame and the buffer are as they
-    /// were; after a later error, the frame holds the drawing.
+    /// frame, of the rasterizer or of the conversion of a new frame, the
+    /// frame and the buffer are as they were; after a later error, the
+    /// frame holds the drawing.
     pub fn present<P: Presenter>(
         &mut self,
         platform: &mut P,
@@ -382,11 +383,10 @@ impl<A: App> Shell<A> {
         let work = self
             .rasterizer
             .render(list, damage, &NoGlyphs, &ImageStore::EMPTY, frame)?;
-        let converted = frame.convert_into(damage, desc, buffer.bytes);
+        frame.convert_into(damage, desc, buffer.bytes)?;
         if let Some(fresh) = fresh {
             known.frame = Some(fresh);
         }
-        converted?;
         platform.present(surface, damage.rects())?;
         known.presented = true;
         Ok(work)

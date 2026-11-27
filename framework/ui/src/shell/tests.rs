@@ -407,6 +407,9 @@ fn presenting_converts_only_the_damage_of_the_frame_into_the_buffer() {
     let blue = fill(0, 0, 4, 2, Color::opaque(0, 0, 255));
     shell.present(&mut fake, SURFACE, &blue, &whole).unwrap();
     release(&mut shell, &mut fake);
+    // The buffer no longer holds the first frame, so a conversion of more
+    // than the damage would show.
+    fake.bytes.fill(0x11);
     taken(&log);
     let damage = damage(&fake, &[(1, 0, 2, 1), (3, 1, 1, 1)]);
     let work = shell
@@ -423,9 +426,9 @@ fn presenting_converts_only_the_damage_of_the_frame_into_the_buffer() {
     );
     assert_eq!(work.pixels, 3);
     assert_eq!(taken(&log), ["buffer 1", "present 1 1,0 2x1 3,1 1x1"]);
-    // B, G, R, X at (1, 0), (2, 0) and (3, 1); every other pixel blue, as
-    // the first frame left it.
-    let mut expected = [255, 0, 0, 0xFF].repeat(8);
+    // B, G, R, X at (1, 0), (2, 0) and (3, 1); every other byte as the
+    // buffer held it.
+    let mut expected = vec![0x11; 32];
     for pixel in [1, 2, 7] {
         expected[pixel * 4..pixel * 4 + 4].copy_from_slice(&[50, 100, 200, 0xFF]);
     }
@@ -523,10 +526,20 @@ fn a_buffer_that_does_not_take_the_frame_is_not_presented() {
     );
     assert_eq!(taken(&log), ["buffer 1"]);
     assert!(fake.bytes.iter().all(|&byte| byte == 0x11));
-    // Nothing was presented, so the surface is not busy.
+    // The new frame is not kept, so the next one is new again.
+    assert!(
+        shell
+            .surfaces
+            .get(&SURFACE)
+            .is_none_or(|known| known.frame.is_none())
+    );
+    // Nothing was presented, so the surface is not busy; the new frame is
+    // presented whole whatever the damage.
     fake.bytes = vec![0x11; 32];
-    shell.present(&mut fake, SURFACE, &red, &whole).unwrap();
+    let corner = damage(&fake, &[(0, 0, 1, 1)]);
+    shell.present(&mut fake, SURFACE, &red, &corner).unwrap();
     assert_eq!(taken(&log), ["buffer 1", "present 1 0,0 4x2"]);
+    assert_eq!(fake.bytes, [255, 0, 0, 255].repeat(8));
 }
 
 #[test]
@@ -567,8 +580,17 @@ fn a_buffer_of_another_size_without_a_configure_gets_a_new_frame() {
     for (width, height) in [(4, 2), (5, 2), (5, 3)] {
         fake.desc = BufferDesc::new(width, height, width * 4, PixelFormat::Rgba8Premul).unwrap();
         fake.bytes = vec![0x11; fake.desc.byte_len() as usize];
-        let whole = damage(&fake, &[(0, 0, width, height)]);
-        shell.present(&mut fake, SURFACE, &red, &whole).unwrap();
+        // A new frame is presented whole whatever the damage.
+        let corner = damage(&fake, &[(0, 0, 1, 1)]);
+        taken(&log);
+        shell.present(&mut fake, SURFACE, &red, &corner).unwrap();
+        assert_eq!(
+            taken(&log),
+            [
+                "buffer 1".to_string(),
+                format!("present 1 0,0 {width}x{height}")
+            ]
+        );
         let frame = shell.surfaces[&SURFACE].frame.as_ref().unwrap();
         assert_eq!(
             (frame.desc().width(), frame.desc().height()),
