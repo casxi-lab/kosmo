@@ -1443,6 +1443,113 @@ fn the_allow_entry_detects_multithreading_turned_on_for_the_raster_library() {
     assert_eq!(model.problems(), Vec::<String>::new());
 }
 
+/// The valid model in which `kosmo-text` depends on the text stack as the
+/// framework does: `parley` without its default features and with `libm`,
+/// and through it `fontique` with `libm`, with the allow entry and the
+/// allowlist entries that the deps step prints for them.
+fn with_parley() -> Model {
+    let mut model = fixture::valid();
+    model.append(
+        "layout.toml",
+        "\n[crates.kosmo-text]\npath = \"framework/text\"\nlayer = \"F0\"\nexport = false\npure-core = false\npublish = false\n",
+    );
+    model.add(
+        "framework",
+        Pkg::member("framework/text", "kosmo-text")
+            .dep(Dep::new("parley@0.13.0", "=0.13.0").features(false, &["libm"])),
+    );
+    model.add(
+        "framework",
+        Pkg::crates_io("parley", "0.13.0")
+            .resolved(&["libm"])
+            .dep(Dep::new("fontique@0.13.0", "^0.13.0").features(false, &[])),
+    );
+    model.add(
+        "framework",
+        Pkg::crates_io("fontique", "0.13.0").resolved(&["libm"]),
+    );
+    model.append(
+        "layout.toml",
+        &allow(
+            "kosmo-text",
+            "parley",
+            "=0.13.0",
+            "default-features = false\nfeatures = [\"libm\"]\nresolved-features = [\"libm\"]\n",
+        ),
+    );
+    model.append(
+        "framework/allowlist.toml",
+        &format!(
+            "{}{}",
+            entry("fontique", "0.13.0", "MIT", &["libm"], &["kosmo-text"]),
+            entry("parley", "0.13.0", "MIT", &["libm"], &["kosmo-text"])
+        ),
+    );
+    assert_eq!(model.problems(), Vec::<String>::new());
+    model
+}
+
+// The case below is the check that system font discovery stays off: the
+// allow entry of the text stack keeps parley's default features off, which
+// turn on its system font back end. Like the two cases above, it is change
+// detection: entries rewritten as the deps step prints them pass again.
+
+#[test]
+fn the_allow_entry_detects_system_font_discovery_turned_on_for_the_text_stack() {
+    let mut model = with_parley();
+    // kosmo-text declares parley with its default features, which turn on
+    // `system`, and with it `std` and the system back end of fontique, which
+    // brings in memmap2. The allow entry stays as it was.
+    model.pkg("framework", "kosmo-text@0.1.0-dev.1").deps[0].default_features = true;
+    model.pkg("framework", "parley@0.13.0").features = ["default", "libm", "std", "system"]
+        .map(str::to_string)
+        .to_vec();
+    let fontique = model.pkg("framework", "fontique@0.13.0");
+    fontique.features = ["libm", "std", "system"].map(str::to_string).to_vec();
+    fontique.deps.push(Dep::new("memmap2@0.9.11", "^0.9.11"));
+    model.add("framework", Pkg::crates_io("memmap2", "0.9.11"));
+    let (report, _) = model.inspect();
+    assert_eq!(
+        report.problems,
+        [
+            "framework/Cargo.lock: memmap2 0.9.11 is not in framework/allowlist.toml",
+            "framework/allowlist.toml: fontique 0.13.0: the resolved features are [libm, std, system], not [libm]",
+            "framework/allowlist.toml: parley 0.13.0: the resolved features are [default, libm, std, system], not [libm]",
+            "layout.toml: crates.kosmo-text: parley: the default features are on, the allow entry turns them off",
+            "layout.toml: crates.kosmo-text: parley: the resolved features [default, libm, std, system] differ from the allow entry [libm]",
+        ]
+    );
+    // The step prints the allow entry that kosmo-text would need.
+    let note = report
+        .notes
+        .iter()
+        .find(|note| note.contains("allow entries of kosmo-text "))
+        .expect("the step prints the allow entries of kosmo-text");
+    let (_, entries) = note.split_once("\n\n").unwrap();
+    let needed = "[[crates.kosmo-text.external]]\nname = \"parley\"\nversion = \"=0.13.0\"\ndefault-features = true\nfeatures = [\"libm\"]\nresolved-features = [\"default\", \"libm\", \"std\", \"system\"]\n";
+    assert_eq!(entries, needed);
+    model.edit(
+        "layout.toml",
+        "default-features = false\nfeatures = [\"libm\"]\nresolved-features = [\"libm\"]\n",
+        "default-features = true\nfeatures = [\"libm\"]\nresolved-features = [\"default\", \"libm\", \"std\", \"system\"]\n",
+    );
+    model.edit(
+        "framework/allowlist.toml",
+        "name = \"fontique\"\nversion = \"0.13.0\"\nsource = \"crates.io\"\nlicense = \"MIT\"\nbuild-script = false\nfeatures = [\"libm\"]",
+        "name = \"fontique\"\nversion = \"0.13.0\"\nsource = \"crates.io\"\nlicense = \"MIT\"\nbuild-script = false\nfeatures = [\"libm\", \"std\", \"system\"]",
+    );
+    model.edit(
+        "framework/allowlist.toml",
+        "name = \"parley\"\nversion = \"0.13.0\"\nsource = \"crates.io\"\nlicense = \"MIT\"\nbuild-script = false\nfeatures = [\"libm\"]",
+        "name = \"parley\"\nversion = \"0.13.0\"\nsource = \"crates.io\"\nlicense = \"MIT\"\nbuild-script = false\nfeatures = [\"default\", \"libm\", \"std\", \"system\"]",
+    );
+    model.append(
+        "framework/allowlist.toml",
+        &entry("memmap2", "0.9.11", "MIT", &[], &["kosmo-text"]),
+    );
+    assert_eq!(model.problems(), Vec::<String>::new());
+}
+
 #[test]
 fn every_resolved_package_is_in_the_allowlist() {
     let mut model = fixture::valid();

@@ -1126,8 +1126,9 @@ architecture that it links:
    the same `libm`, and the deps step compares their resolved features with
    the allow entries and the allowlists, which detects a change such as
    `std` turned on but passes once the entries are rewritten as the step
-   prints them, so review rejects `std` and threading features in such a
-   change ([transcendental functions](docs/architecture.md#transcendental-functions)).
+   prints them, so review rejects `std`, threading features and parley's
+   `system` in such a change
+   ([transcendental functions](docs/architecture.md#transcendental-functions)).
 3. The SIMD level of the pixel and text paths depends only on the
    compilation target and is given to the raster library explicitly, and
    builds add neither `-C target-cpu` nor `-C target-feature`
@@ -1146,8 +1147,11 @@ architecture that it links:
    submitted, without dithering
    ([color](docs/architecture.md#determinism-rules)).
 7. Fonts come only from the asset directory of `kosmo-text` through
-   `ResourceProvider`, with system font discovery off
-   ([font sources](docs/architecture.md#determinism-rules)).
+   `ResourceProvider`, with system font discovery off: the font set of
+   `kosmo-text` registers only the bytes of the two fonts, in a collection
+   without system fonts, and parley's default features, which would turn on
+   its system font back end `system`, stay off; the deps step compares them
+   as rule 2 states ([font sources](docs/architecture.md#determinism-rules)).
 8. Output depends only on input: nothing reads the locale or environment
    variables, options are constants, and records hold no wall-clock time
    ([environment](docs/architecture.md#determinism-rules)).
