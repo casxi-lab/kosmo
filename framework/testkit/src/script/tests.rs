@@ -124,6 +124,26 @@ fn every_kind_of_line_is_read_with_its_fields() {
             (9, Line::Checkpoint),
         ]
     );
+    // Both forms of a character give the same meaning.
+    let spelled = format!(
+        "{HEADER}\
+         at 1 press 7:4 char:A mods=0000\n\
+         at 1 press 7:4 char:U+0041 mods=0000\n\
+         at 1 press 7:4 char:U+00041 mods=0000\n"
+    );
+    let script = Script::parse(spelled.as_bytes()).unwrap();
+    let lines: Vec<Line> = script.lines().iter().map(|&(_, line)| line).collect();
+    assert_eq!(lines, [lines[0]; 3]);
+    assert!(matches!(
+        lines[0],
+        Line::Key {
+            event: KeyEvent {
+                meaning: KeyMeaning::Char('A'),
+                ..
+            },
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -266,6 +286,18 @@ fn fields_with_invalid_values_are_errors() {
             "at 5 press 7:4 char:U+110000 mods=0000",
             "meaning",
             "char:U+110000",
+        ),
+        // A code point takes 4 to 6 uppercase hexadecimal digits.
+        ("at 5 press 7:4 char:U+20 mods=0000", "meaning", "char:U+20"),
+        (
+            "at 5 press 7:4 char:U+00e9 mods=0000",
+            "meaning",
+            "char:U+00e9",
+        ),
+        (
+            "at 5 press 7:4 char:U+0000041 mods=0000",
+            "meaning",
+            "char:U+0000041",
         ),
         (
             "at 5 press 7:4 named:enter mods=0000",

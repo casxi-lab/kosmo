@@ -58,7 +58,9 @@ The fields:
   a code point in 4 to 6 uppercase hexadecimal digits, for characters such as
   a space that a field cannot hold, or `named:<name>` with a named key of
   `kosmo-types`: `left`, `right`, `delete`, `execute`, `cancel`,
-  `mod-shift`, `mod-ctrl`, `mod-alt` or `mod-gui`;
+  `mod-shift`, `mod-ctrl`, `mod-alt` or `mod-gui`. The two forms of a
+  character mean the same: `char:U+<code>` may spell any character, so
+  `char:A`, `char:U+0041` and `char:U+00041` give the same meaning;
 - the modifiers are the 16 bits of `ModSet` in 4 lowercase hexadecimal
   digits: the low byte is the HID modifier byte and the high byte the layer
   state;
@@ -139,7 +141,8 @@ The tests of scripts are in `framework/testkit`, in the module
 `script::tests`:
 
 1. Every kind of line is read with its fields, at the largest values too,
-   and each named key and format has its name. Tests:
+   both forms of a character give the same meaning, and each named key and
+   format has its name. Tests:
    `every_kind_of_line_is_read_with_its_fields`,
    `every_named_key_and_format_has_its_name`.
 2. Unknown lines, missing fields and extra fields are errors with their line
