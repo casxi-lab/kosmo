@@ -122,11 +122,12 @@ impl Script {
     /// # Errors
     ///
     /// The first problem, with the number of the line that the runner ran:
-    /// a header outside the capabilities, a platform error, a driver
-    /// error, a focus line for another surface, a key line without a stamp
-    /// to take, a line that does not let the framework become idle within
-    /// [`MAX_ROUNDS_PER_LINE`] rounds, or view lines or display text that
-    /// break their form.
+    /// a header outside the capabilities, a platform error, a time earlier
+    /// than the platform's clock, a driver error, a focus line for another
+    /// surface, a key line without a stamp to take, a line that does not
+    /// let the framework become idle within [`MAX_ROUNDS_PER_LINE`] rounds,
+    /// view lines or display text that break their form, or a read-back in
+    /// a format without a code of pixel digests.
     pub fn run<P: PlatformTestHooks, D: Driver<P>>(
         &self,
         platform: &mut P,
@@ -228,7 +229,7 @@ impl<P: PlatformTestHooks, D: Driver<P>> Runner<'_, P, D> {
     fn advance(&mut self, time: MonoTime) -> Result<(), Problem> {
         let clock = self.platform.now();
         if time < clock {
-            return Err(Problem::Earlier { time, clock });
+            return Err(Problem::BeforeClock { time, clock });
         }
         if time == clock {
             return Ok(());
@@ -301,7 +302,7 @@ impl<P: PlatformTestHooks, D: Driver<P>> Runner<'_, P, D> {
             let pixels = match self.platform.read_back(surface).map_err(platform)? {
                 None => "none".to_string(),
                 Some(read) => PixelDigest::of(read.desc, read.bytes)
-                    .ok_or(Problem::Platform(PlatformError::Unsupported))?
+                    .ok_or(Problem::Format(surface.get()))?
                     .to_string(),
             };
             text.push_str(&format!("pixels {} {pixels}\n", surface.get()));

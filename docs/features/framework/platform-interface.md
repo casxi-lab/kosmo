@@ -274,13 +274,14 @@ line that ran, 1 for the header:
 | --- | --- |
 | `OutsideCaps` | The header's main surface does not fit the output size or has a format outside the capabilities |
 | `Platform` | A port or hook of the platform returned an error, such as one that `inject_fault` injected |
-| `Earlier` | The backend's clock is later than the time of a key line or time line |
+| `BeforeClock` | The backend's clock is later than the time of a key line or time line |
 | `Driver` | A round of the driver failed |
 | `NoSurface` | A focus line names a surface that the script did not create |
 | `NoStamp` | A key line without a stamp, with no focus line and no recorded focus to take one from |
 | `NotIdle` | The framework did not become idle within 65,536 rounds of the line |
 | `View` | A view line holds a control character |
 | `Display` | Display text that is not lines, each followed by a line feed |
+| `Format` | A read-back in a pixel format without a code of pixel digests; every format of this version has one |
 
 With the feature `call-probes` of `kosmo-testkit`, which only the command
 line turns on, each run records the call probe `kosmo-testkit::run`, and the

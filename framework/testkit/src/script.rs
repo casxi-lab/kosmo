@@ -328,11 +328,19 @@ pub enum Problem {
         value: String,
     },
     /// The time is earlier than the time of the key line or time line
-    /// before it, or than the platform's clock.
+    /// before it.
     Earlier {
         /// The time of the line.
         time: MonoTime,
         /// The time of the line before it.
+        clock: MonoTime,
+    },
+    /// The time of a key line or time line is earlier than the clock of
+    /// the platform when the run reaches the line.
+    BeforeClock {
+        /// The time of the line.
+        time: MonoTime,
+        /// The time of the platform's clock.
         clock: MonoTime,
     },
     /// The main surface of the header, as `<width>x<height> <format>`,
@@ -356,6 +364,10 @@ pub enum Problem {
     /// The driver wrote display text for this surface that is not lines,
     /// each followed by a line feed, without other control characters.
     Display(u32),
+    /// The read-back of this surface has a pixel format without a code in
+    /// the encoding of [pixel digests](crate::pixels); every format of this
+    /// version has one.
+    Format(u32),
 }
 
 impl fmt::Display for Problem {
@@ -389,6 +401,12 @@ impl fmt::Display for Problem {
                 time.as_nanos(),
                 clock.as_nanos()
             ),
+            Problem::BeforeClock { time, clock } => write!(
+                f,
+                "the time {} is earlier than the platform's clock {}",
+                time.as_nanos(),
+                clock.as_nanos()
+            ),
             Problem::OutsideCaps(surface) => write!(
                 f,
                 "the main surface {surface} is outside the capabilities of the platform"
@@ -407,6 +425,10 @@ impl fmt::Display for Problem {
             Problem::Display(surface) => {
                 write!(f, "the display text of the surface {surface} is not lines")
             }
+            Problem::Format(surface) => write!(
+                f,
+                "the format of the surface {surface} has no code in pixel digests"
+            ),
         }
     }
 }

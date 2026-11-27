@@ -194,14 +194,24 @@ fn platform_failures_come_from_the_test_hooks_and_stop_the_run() {
     backend.advance_to(MonoTime::from_nanos(100)).unwrap();
     let error = script.run(&mut backend, &mut driver(0)).unwrap_err();
     assert_eq!(
+        error.to_string(),
+        "line 2: the time 50 is earlier than the platform's clock 100"
+    );
+    assert_eq!(
         (error.line, error.problem),
         (
             2,
-            Problem::Earlier {
+            Problem::BeforeClock {
                 time: MonoTime::from_nanos(50),
                 clock: MonoTime::from_nanos(100)
             }
         )
+    );
+    // Every format of this version has a code of pixel digests, so no
+    // read-back is without one; the text of the problem:
+    assert_eq!(
+        Problem::Format(1).to_string(),
+        "the format of the surface 1 has no code in pixel digests"
     );
 }
 
