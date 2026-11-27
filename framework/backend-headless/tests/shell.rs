@@ -1,8 +1,10 @@
 //! The shell of the framework core on the headless backend: `run` returns
-//! distinct exit statuses when the platform disconnects, when a resource is
+//! distinct exit statuses when the platform disconnects, when a font is
 //! missing at start-up and when another error stops it, shutting the
-//! backend down in each case, and a frame that the shell presents is what
-//! the backend reads back.
+//! backend down in each case; a frame that the shell presents is what the
+//! backend reads back; and text that the shell draws with the fonts that it
+//! fetched from the backend's resources is the pixel golden of
+//! `kosmo-text`.
 
 // These tests need the test hooks: the check builds this package once
 // more with them, and a build without them compiles this file empty.
@@ -18,14 +20,33 @@ use kosmo_platform::{
 use kosmo_render::{
     Color, Command, ImageStore, ListBuilder, NoGlyphs, Rasterizer, RenderTarget, VelloRasterizer,
 };
+use kosmo_testkit::pixels::PixelDigest;
+use kosmo_text::{FontSet, MONO_FILE, SANS, SANS_FILE, TextStyle};
 use kosmo_types::{BufferDesc, Damage, DamageRect, Fx, PixelFormat, Point, Rect, Size};
 use kosmo_ui::{
     App, Control, DrawContext, ExitReason, JobPort, Key, Kind, LayoutBox, LayoutResult, Message,
     Out, Shell, ShellError, View, paint, run,
 };
 
-/// The resource of the application.
-const FONT: ResourceId = ResourceId::new("font.ttf");
+/// The two fonts as resources, named by their files in the asset manifest
+/// of `kosmo-text`, and their bytes from its asset directory.
+const SANS_RESOURCE: ResourceId = ResourceId::new(SANS_FILE);
+const MONO_RESOURCE: ResourceId = ResourceId::new(MONO_FILE);
+const SANS_BYTES: &[u8] = include_bytes!("../../text/assets/fonts/firasans/FiraSans-Regular.ttf");
+const MONO_BYTES: &[u8] = include_bytes!("../../text/assets/fonts/firamono/FiraMono-Regular.ttf");
+
+/// The pixel golden of the ASCII string of `kosmo-text` and the manifest
+/// of its goldens.
+const TEXT_ASCII: &[u8] = include_bytes!("../../text/tests/golden/text-ascii.px");
+const MANIFEST: &str = include_str!("../../text/tests/golden/MANIFEST");
+
+/// The resource table of the two fonts.
+fn fonts() -> BTreeMap<ResourceId, Vec<u8>> {
+    BTreeMap::from([
+        (SANS_RESOURCE, SANS_BYTES.to_vec()),
+        (MONO_RESOURCE, MONO_BYTES.to_vec()),
+    ])
+}
 
 const BLUE: Color = Color::opaque(0, 0, 255);
 const RED: Color = Color::opaque(255, 0, 0);
@@ -85,12 +106,12 @@ impl JobPort for NoJobs {
     }
 }
 
-/// A headless backend for an 8 by 4 output in `Xrgb8888`, with the
-/// resource `font.ttf`.
+/// A headless backend for an 8 by 4 output in `Xrgb8888`, with the two
+/// fonts as resources.
 #[allow(clippy::unwrap_used, reason = "a fixed size that is valid")]
 fn backend() -> HeadlessBackend {
     let caps = PlatformCaps::new(vec![PixelFormat::Xrgb8888], PixelSize::new(8, 4).unwrap());
-    HeadlessBackend::new(caps, BTreeMap::from([(FONT, vec![0, 1, 0, 0])]))
+    HeadlessBackend::new(caps, fonts())
 }
 
 /// The rectangle of `width` by `height` pixels at (`x`, `y`).
@@ -109,11 +130,14 @@ fn run_shuts_down_and_returns_when_the_platform_disconnects() {
     backend
         .inject_fault(FaultPort::Wait, PlatformError::Disconnected)
         .unwrap();
-    let status = run(&mut backend, Boxes, NoJobs, &[FONT]);
+    let status = run(&mut backend, Boxes, NoJobs);
     assert_eq!(status.reason, ExitReason::Disconnected);
     assert_eq!(status.shutdown, Ok(()));
     // The backend is shut down: its ports report the disconnection.
-    assert_eq!(backend.resource(FONT), Err(PlatformError::Disconnected));
+    assert_eq!(
+        backend.resource(SANS_RESOURCE),
+        Err(PlatformError::Disconnected)
+    );
 }
 
 #[test]
@@ -122,16 +146,21 @@ fn run_returns_another_status_when_a_resource_is_missing_at_start_up() {
     backend
         .inject_fault(FaultPort::Resource, PlatformError::NotFound)
         .unwrap();
-    let status = run(&mut backend, Boxes, NoJobs, &[FONT]);
-    assert_eq!(status.reason, ExitReason::MissingResource(FONT));
+    let status = run(&mut backend, Boxes, NoJobs);
+    assert_eq!(status.reason, ExitReason::MissingResource(SANS_RESOURCE));
     assert_ne!(status.reason, ExitReason::Disconnected);
     assert_eq!(status.shutdown, Ok(()));
-    assert_eq!(backend.resource(FONT), Err(PlatformError::Disconnected));
+    assert_eq!(
+        backend.resource(SANS_RESOURCE),
+        Err(PlatformError::Disconnected)
+    );
 
-    // A resource that the table does not hold is missing too.
-    let absent = ResourceId::new("absent.ttf");
-    let status = run(&mut self::backend(), Boxes, NoJobs, &[FONT, absent]);
-    assert_eq!(status.reason, ExitReason::MissingResource(absent));
+    // A font that the table does not hold is missing too.
+    let mut table = fonts();
+    table.remove(&MONO_RESOURCE);
+    let caps = PlatformCaps::new(vec![PixelFormat::Xrgb8888], PixelSize::new(8, 4).unwrap());
+    let status = run(&mut HeadlessBackend::new(caps, table), Boxes, NoJobs);
+    assert_eq!(status.reason, ExitReason::MissingResource(MONO_RESOURCE));
     assert_eq!(status.shutdown, Ok(()));
 }
 
@@ -147,21 +176,27 @@ fn run_stops_at_any_other_error_with_a_failure_and_shuts_down() {
     resource
         .inject_fault(FaultPort::Wait, PlatformError::Disconnected)
         .unwrap();
-    let status = run(&mut resource, Boxes, NoJobs, &[FONT]);
+    let status = run(&mut resource, Boxes, NoJobs);
     let failed = ExitReason::Failed(ShellError::Platform(PlatformError::Backend));
     assert_eq!(status.reason, failed);
-    assert_ne!(status.reason, ExitReason::MissingResource(FONT));
+    assert_ne!(status.reason, ExitReason::MissingResource(SANS_RESOURCE));
     assert_eq!(status.shutdown, Ok(()));
-    assert_eq!(resource.resource(FONT), Err(PlatformError::Disconnected));
+    assert_eq!(
+        resource.resource(SANS_RESOURCE),
+        Err(PlatformError::Disconnected)
+    );
 
     // A wait that fails.
     let mut wait = backend();
     wait.inject_fault(FaultPort::Wait, PlatformError::Backend)
         .unwrap();
-    let status = run(&mut wait, Boxes, NoJobs, &[FONT]);
+    let status = run(&mut wait, Boxes, NoJobs);
     assert_eq!(status.reason, failed);
     assert_eq!(status.shutdown, Ok(()));
-    assert_eq!(wait.resource(FONT), Err(PlatformError::Disconnected));
+    assert_eq!(
+        wait.resource(SANS_RESOURCE),
+        Err(PlatformError::Disconnected)
+    );
 }
 
 #[test]
@@ -175,7 +210,7 @@ fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
             format: PixelFormat::Xrgb8888,
         })
         .unwrap();
-    let mut shell = Shell::new(Boxes, NoJobs, &[FONT]);
+    let mut shell = Shell::new(Boxes, NoJobs);
     // The first round takes the backend's Configure and FocusIn and builds
     // the view.
     let first = shell
@@ -268,7 +303,7 @@ fn a_new_previous_frame_is_presented_whole_whatever_its_damage() {
             format: PixelFormat::Xrgb8888,
         })
         .unwrap();
-    let mut shell = Shell::new(Boxes, NoJobs, &[FONT]);
+    let mut shell = Shell::new(Boxes, NoJobs);
     shell
         .run_round(&mut backend, shell.next_deadline())
         .unwrap();
@@ -306,4 +341,60 @@ fn a_new_previous_frame_is_presented_whole_whatever_its_damage() {
     assert_eq!(&read.bytes[..4], &[0, 0, 0, 255]);
     assert_eq!(&read.bytes[40..44], &[0, 0, 255, 255]);
     assert!(read.bytes.chunks(4).all(|pixel| pixel[3] == 0xFF));
+}
+
+#[test]
+fn text_that_the_shell_presents_is_the_golden_of_kosmo_text() {
+    // A surface of the golden's canvas, whose width and height its
+    // description gives.
+    let field = |at: usize| u32::from_le_bytes(TEXT_ASCII[at..at + 4].try_into().unwrap());
+    let (width, height) = (field(0), field(4));
+    let size = PixelSize::new(width, height).unwrap();
+    let caps = PlatformCaps::new(vec![PixelFormat::Rgba8Premul], size);
+    let mut backend = HeadlessBackend::new(caps, fonts());
+    let surface = backend
+        .create_surface(SurfaceRequest {
+            role: SurfaceRole::Main,
+            size,
+            format: PixelFormat::Rgba8Premul,
+        })
+        .unwrap();
+    // The first round fetches the fonts from the resource table.
+    let mut shell = Shell::new(Boxes, NoJobs);
+    shell
+        .run_round(&mut backend, shell.next_deadline())
+        .unwrap();
+
+    // The string of the golden at 16 pixels per em, with its origin at
+    // (2, 2) pixels, inside the golden's margin, in opaque black.
+    let mut set = FontSet::new(SANS_BYTES, MONO_BYTES).unwrap();
+    let style = TextStyle::new(SANS, Fx::from_pixels(16).unwrap()).unwrap();
+    let text = "The quick brown fox jumps over the lazy dog.";
+    let paragraph = set.layout(text, style, None).unwrap();
+    let origin = Point::new(Fx::from_pixels(2).unwrap(), Fx::from_pixels(2).unwrap());
+    let mut builder = ListBuilder::new();
+    builder
+        .push(paragraph.run(origin, Color::opaque(0, 0, 0)).unwrap())
+        .unwrap();
+    let list = builder.finish().unwrap();
+    let frame = BufferDesc::new(width, height, width * 4, PixelFormat::Rgba8Premul).unwrap();
+    let mut whole = Damage::new(frame);
+    whole.add(0, 0, width, height);
+    shell.present(&mut backend, surface, &list, &whole).unwrap();
+
+    // The buffer read back, encoded as the goldens are, is the golden byte
+    // for byte, and its digest is the one that the golden's manifest lists.
+    let read = backend.read_back(surface).unwrap().unwrap();
+    let mut encoded = Vec::new();
+    for field in [width, height, width * 4, 1] {
+        encoded.extend_from_slice(&field.to_le_bytes());
+    }
+    encoded.extend_from_slice(read.bytes);
+    assert_eq!(read.desc, frame);
+    assert!(encoded == TEXT_ASCII, "the text differs from its golden");
+    let digest = PixelDigest::of(read.desc, read.bytes).unwrap().hex();
+    assert!(
+        MANIFEST.contains(&format!("{digest}  text-ascii\n")),
+        "{digest}"
+    );
 }

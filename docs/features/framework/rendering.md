@@ -14,9 +14,10 @@ same bytes on every run and every host, and pixel goldens check this.
 The framework's drawing pass in `kosmo-ui` builds display lists, but rounds
 do not call it yet; the shell of `kosmo-ui` keeps a `RenderTarget` for each
 surface and presents the frames that its driver draws through the platform
-interface, as [the shell](runtime.md#the-shell) describes. Text shaping and
-the glyph cache of `kosmo-text` and images are planned; until they exist,
-glyph coverage comes from the tests and the image store is empty.
+interface, as [the shell](runtime.md#the-shell) describes. `kosmo-text`
+shapes text into glyph runs and fills their coverage masks in its glyph cache
+through `fill_coverage`, and the shell hands the cache to the rasterizer;
+images are planned, and the image store is empty.
 `kosmo-render` depends on `kosmo-types`, vello_cpu and libm, and it is a core
 library on the deterministic path. The design rules that it follows are in the
 [renderer interface](../../architecture.md#renderer-interface),
@@ -327,8 +328,8 @@ that turns on `std` or `multithreading` fails until those entries record it.
   the damage region; the time of a frame has not been measured.
 - Display lists have no image commands, gradients or blend modes other than
   source over, and the image store holds no images.
-- Glyph coverage comes from the caller: the glyph cache of `kosmo-text`, which
-  will fill masks through `fill_coverage`, is planned.
+- Glyph coverage comes from the caller: in the shell it is the glyph cache of
+  `kosmo-text`, and `NoGlyphs` serves lists without glyphs.
 - Rounds do not draw yet: the drawing pass of `kosmo-ui` builds display
   lists that rounds do not call it for, and the shell presents only the
   frames that its driver draws.

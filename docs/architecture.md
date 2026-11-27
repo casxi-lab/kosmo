@@ -16,16 +16,17 @@ of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
 history and reuse, the display lists, the renderer interface, the rasterizer on
 vello_cpu and the wrapper of transcendental functions in `kosmo-render`, the
-two bundled fonts with their asset manifest and the font set in
-`kosmo-text`, the SDK facade `kosmo-sdk`, which re-exports these crates but
-`kosmo-render` and `kosmo-text`, part of
+two bundled fonts with their asset manifest, the font set, shaping and line
+breaking and the glyph cache in `kosmo-text`, the SDK facade `kosmo-sdk`,
+which re-exports these crates but `kosmo-render` and `kosmo-text`, part of
 the shared types in `kosmo-types`: fixed-point geometry, logical time, the focus
 generation and epoch, the keyboard event records, pixel formats, buffer
 descriptions with the conversion of pixels between them, and damage regions, and
 part of the framework core in `kosmo-ui`: the control tree, the event, update
 and view passes of a round, the drawing pass, which rounds do not run yet,
-result slots, timers, dispatch with the focus check, the minimal key map and hit
-testing;
+result slots, timers, dispatch with the focus check, the minimal key map, hit
+testing and the shell, which fetches the two fonts before its first round and
+draws text from the glyph cache;
 [Components](#components) shows which components are delivered, and
 everything else described here is planned.
 Crate names (`kosmo-jobs`, `kosmo-math-model` and the others) and the names of
@@ -1097,11 +1098,13 @@ against the new version instead of being shown as current and at once as stale.
   second step runs the passes from the view to accessibility and outputs the
   update regions, the display lists, the accessibility updates of each surface,
   the next deadline and the event handling record.
-- Before the first round, `run` obtains the [fonts](#fonts). In each round it
-  waits for platform events with the round's deadline, reads the clock once,
-  takes job reports through the execution port, calls the first step, hands the
-  effects to the execution port, calls the second step, pushes the accessibility
-  updates of each surface and, if there are update regions, rasterizes and
+- Before the first round, `run` obtains the [fonts](#fonts) and builds the
+  font set of `kosmo-text` from them. In each round it waits for platform
+  events with the round's deadline, reads the clock once, takes job reports
+  through the execution port, calls the first step, hands the effects to the
+  execution port, calls the second step, pushes the accessibility updates of
+  each surface and, if there are update regions, prepares the glyphs of their
+  display lists in the glyph cache of the font set, rasterizes them and
   presents them. A single-round entry, provisionally `run_round`, lets a driver
   advance the framework one round at a time.
 - The wait does not block while receipts or messages are pending. Otherwise its
@@ -1572,9 +1575,31 @@ pub trait Rasterizer {
   The origin `x` of a glyph, an integer in the numeric representation, is
   rounded to the nearest quarter pixel as `q = (x + 8) >> 4` with an arithmetic
   shift; the whole pixel is `q >> 2` and the step `q & 3`.
-- The key of the coverage cache is the digest of the font asset, the glyph
-  identifier, the size in the numeric representation and the horizontal step,
-  and the cache's capacity counts each step separately.
+- The coverage cache is the glyph cache of `kosmo-text`, keyed by the
+  `GlyphKey` of `kosmo-render`: the font, the glyph identifier, the size in the
+  numeric representation and the horizontal step. The font stands for the
+  digest of the font asset. It is a `FontId` of the font set that holds the
+  cache, which is built with the set and dropped with it, and a font set built
+  from other bytes starts with an empty cache of its own, so within one cache a
+  `FontId` names the bytes of one font. `kosmo-text` takes no digests at run
+  time: the asset manifest and the tests of whoever builds a font set keep its
+  bytes those of the bundled files.
+- The cache holds at most 4,096 entries, each step of a glyph an entry of its
+  own, and 4 MiB of coverage values, the widths times the heights of its masks
+  added together, which it counts itself. `FontSet::prepare` fills the masks
+  of a display list before it is drawn, as one frame: it marks the keys of the
+  list as used in the frame, and when a new mask would exceed a limit, it
+  evicts the entries that the frame does not use, in ascending order of the
+  frame that last used them and then of their key, until the mask fits. A
+  frame whose own masks exceed a limit is refused with a distinct error
+  before any of them is allocated: a frame with more keys than entries before
+  any outline is read, and otherwise one whose masks exceed the bytes,
+  counting those of its keys that the cache already holds and measuring the
+  others from the bounds of their outlines. Sizes are from 1 to 256 pixels per
+  em, so that one mask stays small beside the limits.
+- A mask is the unhinted outline that skrifa reads at the glyph's size, moved
+  right by the step and filled through `fill_coverage`, so dropping masks and
+  filling them again gives the same pixels.
 - The size reaches skrifa in the numeric representation, so the pixels per em,
   the size divided by 64, is an exact binary fraction. TrueType outlines are
   already in units of $1/64$ pixel after scaling and enter without loss; CFF
@@ -1583,10 +1608,17 @@ pub trait Rasterizer {
 
 ### Text stack
 
-- `kosmo-text` uses parley 0.13.0 for shaping, through harfrust, for line
-  breaking and paragraph layout, through parley_engine, and for hit testing and
-  caret geometry. fontique registers only the bytes of the two fonts obtained
-  through `ResourceProvider`.
+- `kosmo-text` uses parley 0.13.0 for shaping, through harfrust, and for line
+  breaking and paragraph layout, through parley_engine, by the Unicode line
+  breaking algorithm with the data of icu_segmenter compiled in. fontique
+  registers only the bytes of the two fonts obtained through
+  `ResourceProvider`. parley also provides hit testing and caret geometry,
+  which `kosmo-text` will offer with the controls that use them.
+- `FontSet::layout` lays out a paragraph in one of the two fonts at a size from
+  1 to 256 pixels per em, at a width of at most $2^{18}$ pixels or without one,
+  and gives its lines, each with the bytes of the text that it holds, its
+  baseline and its glyphs; `Paragraph::run` makes a glyph command of a display
+  list of them. A word longer than the width stays whole on a line of its own.
 - parley's default features are off, so its system font back end `system` is not
   built; `libm` is on; `std` and `complex-scripts` stay off. With `std`,
   fontique would bring in memmap2, which uses `libc` on Unix, and code that
@@ -1595,11 +1627,22 @@ pub trait Rasterizer {
   module](#transcendental-functions).
 - `kosmo-text` reads outlines through skrifa 0.49.0, the version that
   parley_engine uses, as a direct dependency.
-- parley lays text out in `f32`. At the exit of `kosmo-text` positions are
-  rounded once into the numeric representation, which is the only one used
-  afterwards, and parley's `quantize` option is off.
+- parley lays text out in `f32`. Sizes and widths reach it as exact `f32`
+  values, and at the exit of `kosmo-text` every position and length is
+  multiplied by 64 and rounded once into the numeric representation, which is
+  the only one used afterwards; parley's `quantize` option is off.
 - The first release has no font fallback and no bidirectional text; the
-  paragraph direction is left to right.
+  paragraph direction is left to right, and a character that the font of a
+  paragraph lacks becomes the font's `.notdef` glyph.
+- The tests of `kosmo-text` pin the glyphs of strings of both fonts, with
+  mathematical symbols, combining characters, the four steps and three
+  sizes, as the text of their display lists, and the lines of cases of line
+  breaking as text. Each string also has a pixel golden, drawn through the
+  glyph cache. Every run of the tests compares its drawings with the
+  goldens, and one test lays the strings out again in a process of its own,
+  so separate processes are compared, which covers the hash containers
+  inside the text stack as the [hash containers](#determinism-rules) rule
+  states.
 
 ### Fonts
 
@@ -1630,16 +1673,23 @@ Fonts are loaded through the platform interface:
   a kosmo value type; in the first release it names one of the two fonts by its
   file name in the asset manifest, which `kosmo-text` exports as `SANS_FILE`
   and `MONO_FILE`.
-- Before the first round, `run` and the single-round entry obtain both fonts and
-  hand them to the font set constructor of `kosmo-text`, `FontSet::new`, which
-  registers only them with fontique, with system fonts off. `kosmo-text`
-  accepts only bytes, does not depend on `kosmo-platform`, holds no platform
-  handle and stays a core library.
+- Before the first round, `run` and the single-round entry obtain both fonts,
+  Fira Sans and then Fira Mono, and hand them to the font set constructor of
+  `kosmo-text`, `FontSet::new`, which registers only them with fontique, with
+  system fonts off. `kosmo-text` accepts only bytes, does not depend on
+  `kosmo-platform`, holds no platform handle and stays a core library. Bytes
+  that `FontSet::new` refuses, not one TrueType font or both of one family,
+  stop the shell with a distinct error before the first round; the shell does
+  not check which fonts they are.
+- The shell keeps the font set. Before it rasterizes a frame, it prepares the
+  coverage masks of the frame's glyph runs in the glyph cache of the set and
+  hands the cache to the rasterizer as the frame's glyph coverage.
 - Each backend gets its resource table, from identifiers to bytes, from whoever
   builds it, and reads no files. The builder, a driver or the application's
   assembly, takes the bytes from the asset directory, with `include_bytes!`
   inside its workspace or by reading the files in a boundary crate; the expected
-  digests are those of the asset manifest.
+  digests are those of the asset manifest. The tests that run the shell on the
+  headless backend embed the two files with `include_bytes!`.
 - A resource missing from the table, or injected as missing through
   `inject_fault`, gives `NotFound` and changes nothing. If `run` meets one at
   start-up, it calls `shutdown` and returns a distinct exit status. The

@@ -9,9 +9,10 @@ use kosmo_platform::{
     PixelSize, Platform, PlatformError, PlatformEvent, Presenter, ResourceId, SurfaceId, WaitEnd,
 };
 use kosmo_render::{
-    DisplayList, ImageStore, NoGlyphs, Rasterizer, RenderError, RenderTarget, VelloRasterizer,
-    WorkCount,
+    DisplayList, GlyphCoverage, ImageStore, NoGlyphs, Rasterizer, RenderError, RenderTarget,
+    VelloRasterizer, WorkCount,
 };
+use kosmo_text::{FontSet, FontSetError, GlyphError, MONO_FILE, SANS_FILE};
 use kosmo_types::{BufferDesc, ConvertError, Damage, MonoTime, PixelFormat};
 
 use crate::app::App;
@@ -19,8 +20,17 @@ use crate::focus::Event;
 use crate::port::{JobPort, Receipt, execute};
 use crate::round::{Input, Output, Runtime};
 
+/// Fira Sans, the first resource that the shell fetches before its first
+/// round, named by its file in the asset manifest of `kosmo-text`.
+const SANS_RESOURCE: ResourceId = ResourceId::new(SANS_FILE);
+
+/// Fira Mono, the second resource that the shell fetches before its first
+/// round, named by its file in the asset manifest of `kosmo-text`.
+const MONO_RESOURCE: ResourceId = ResourceId::new(MONO_FILE);
+
 /// The shell of an application: its [`Runtime`], the application and its
-/// execution port, the receipts that wait for the next round, and the
+/// execution port, the receipts that wait for the next round, the font set
+/// of `kosmo-text`, which it builds before its first round, and the
 /// previous frame of each surface, which it keeps for presentation.
 ///
 /// [`Shell::run_round`], the single-round entry, runs one round through a
@@ -32,8 +42,8 @@ pub struct Shell<A: App> {
     runtime: Runtime<A>,
     app: A,
     port: A::Port,
-    resources: Vec<ResourceId>,
-    started: bool,
+    /// The font set, from the first round on.
+    fonts: Option<FontSet>,
     receipts: Vec<Receipt<A::Port>>,
     next_deadline: Option<MonoTime>,
     surfaces: BTreeMap<SurfaceId, Surface>,
@@ -64,18 +74,29 @@ pub struct RoundEnd {
 
 /// Why the shell stopped.
 ///
-/// An error of [`Shell::run_round`] comes from fetching the resources
-/// before the first round, from the wait, from a port of the later steps or
-/// from presentation. A round whose resources or wait failed runs no later
-/// step; one that failed later has run both steps of the round.
+/// An error of [`Shell::run_round`] comes from fetching the fonts before the
+/// first round, from the wait, from a port of the later steps or from
+/// presentation. A round whose fonts or wait failed runs no later step; one
+/// that failed later has run both steps of the round.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellError {
     /// A port of the platform returned this error.
     Platform(PlatformError),
-    /// A resource that the shell was built with does not exist: the
-    /// platform returned `NotFound` for it before the first round.
+    /// A font that the shell fetches before the first round does not
+    /// exist: the platform returned `NotFound` for it.
     MissingResource(ResourceId),
+    /// The bytes that the platform returned for the fonts before the first
+    /// round were refused by the font set of `kosmo-text`: one of them is
+    /// not one TrueType font, or both are of one family. The shell does not
+    /// check which fonts they are; whoever builds the platform's resource
+    /// table keeps them those of the asset directory.
+    Fonts(FontSetError),
+    /// The glyph cache could not prepare the coverage masks of the glyph
+    /// runs of a frame, so nothing was drawn: a font or a size outside the
+    /// font set, a glyph without an outline, or masks of the frame beyond
+    /// the cache.
+    Glyphs(GlyphError),
     /// The rasterizer drew nothing and returned this error: a damage region
     /// that does not fit the surface's previous frame, a glyph without
     /// coverage, a command that it does not draw, offsets out of range or
@@ -114,6 +135,10 @@ impl fmt::Display for ShellError {
             ShellError::MissingResource(id) => {
                 write!(f, "the resource {} does not exist", id.name())
             }
+            ShellError::Fonts(error) => write!(f, "the fonts were not taken: {error}"),
+            ShellError::Glyphs(error) => {
+                write!(f, "the glyphs of the frame were not prepared: {error}")
+            }
             ShellError::Render(error) => write!(f, "the frame was not drawn: {error:?}"),
             ShellError::Convert(error) => {
                 write!(f, "the frame was not written into the buffer: {error:?}")
@@ -127,15 +152,14 @@ impl Error for ShellError {}
 
 impl<A: App> Shell<A> {
     /// The shell of `app` with its execution port `port`, with an empty
-    /// control tree and no receipts, which fetches `resources` before its
+    /// control tree and no receipts, which fetches the fonts before its
     /// first round.
-    pub fn new(app: A, port: A::Port, resources: &[ResourceId]) -> Shell<A> {
+    pub fn new(app: A, port: A::Port) -> Shell<A> {
         Shell {
             runtime: Runtime::new(),
             app,
             port,
-            resources: resources.to_vec(),
-            started: false,
+            fonts: None,
             receipts: Vec::new(),
             next_deadline: Some(MonoTime::ZERO),
             surfaces: BTreeMap::new(),
@@ -184,11 +208,14 @@ impl<A: App> Shell<A> {
 
     /// The single-round entry: runs one round through `platform`.
     ///
-    /// Before its first round the shell fetches each resource that it was
-    /// built with through `ResourceProvider`; a resource that does not
-    /// exist gives [`ShellError::MissingResource`], and no round runs. The
-    /// bytes go nowhere yet: the font set that will take them is planned
-    /// in `kosmo-text`. Then the round:
+    /// Before its first round the shell fetches the two fonts through
+    /// `ResourceProvider`, first Fira Sans and then Fira Mono, named by
+    /// their files `SANS_FILE` and `MONO_FILE` in the asset manifest of
+    /// `kosmo-text`, and builds its font set from their bytes with
+    /// `FontSet::new`. A font that does not exist gives
+    /// [`ShellError::MissingResource`], and bytes that the font set refuses
+    /// give [`ShellError::Fonts`]; then no round runs, and the next
+    /// call fetches the fonts again. Then the round:
     ///
     /// 1. waits once for platform events with `deadline`; a backend that
     ///    never blocks, such as the headless backend, returns at once;
@@ -283,19 +310,20 @@ impl<A: App> Shell<A> {
         Ok(RoundEnd { wait, output })
     }
 
-    /// Fetches the resources once, before the first round.
+    /// Fetches the fonts and builds the font set once, before the first
+    /// round.
     fn start<P: Platform>(&mut self, platform: &P) -> Result<(), ShellError> {
-        if self.started {
+        if self.fonts.is_some() {
             return Ok(());
         }
-        for &id in &self.resources {
-            match platform.resource(id) {
-                Ok(_) => {}
-                Err(PlatformError::NotFound) => return Err(ShellError::MissingResource(id)),
-                Err(error) => return Err(error.into()),
-            }
-        }
-        self.started = true;
+        let fetch = |id| {
+            platform.resource(id).map_err(|error| match error {
+                PlatformError::NotFound => ShellError::MissingResource(id),
+                error => ShellError::Platform(error),
+            })
+        };
+        let (sans, mono) = (fetch(SANS_RESOURCE)?, fetch(MONO_RESOURCE)?);
+        self.fonts = Some(FontSet::new(sans, mono).map_err(ShellError::Fonts)?);
         Ok(())
     }
 
@@ -330,15 +358,19 @@ impl<A: App> Shell<A> {
     /// `0xFF`. Until a wait returns `Released` for the surface, it is not
     /// presented again.
     ///
-    /// An empty `damage` presents nothing and returns no work. Glyph runs
-    /// fail with a missing glyph: the glyph cache of `kosmo-text` is
-    /// planned.
+    /// Before it asks for the buffer, the shell prepares the coverage masks
+    /// of the glyph runs of `list` in the glyph cache of its font set, as
+    /// one frame of the cache, and the rasterizer draws the glyphs from the
+    /// cache. Before a round has fetched the fonts, the shell has no font
+    /// set, and glyph runs fail with a missing glyph. An empty `damage`
+    /// presents nothing, prepares nothing and returns no work.
     ///
     /// # Errors
     ///
-    /// [`PlatformError::Busy`] for a buffer presented and not released,
-    /// before anything changes; the errors of `buffer` and `present`; and
-    /// [`ShellError::Render`], [`ShellError::Convert`] and
+    /// [`PlatformError::Busy`] for a buffer presented and not released, and
+    /// [`ShellError::Glyphs`] for glyph runs that the glyph cache cannot
+    /// prepare, both before anything changes; the errors of `buffer` and
+    /// `present`; and [`ShellError::Render`], [`ShellError::Convert`] and
     /// [`ShellError::FrameTooLarge`]. After an error of `buffer`, of the
     /// frame, of the rasterizer or of the conversion of a new frame, the
     /// frame and the buffer are as they were; after a later error, the
@@ -360,6 +392,11 @@ impl<A: App> Shell<A> {
         {
             return Err(PlatformError::Busy.into());
         }
+        if let Some(fonts) = &mut self.fonts {
+            fonts
+                .prepare(list, &mut self.rasterizer)
+                .map_err(ShellError::Glyphs)?;
+        }
         let buffer = platform.buffer(surface)?;
         let desc = buffer.desc;
         let known = self.surfaces.entry(surface).or_default();
@@ -380,9 +417,13 @@ impl<A: App> Shell<A> {
             }
         };
         let damage = whole.as_ref().unwrap_or(damage);
+        let glyphs: &dyn GlyphCoverage = match &self.fonts {
+            Some(fonts) => fonts.glyphs(),
+            None => &NoGlyphs,
+        };
         let work = self
             .rasterizer
-            .render(list, damage, &NoGlyphs, &ImageStore::EMPTY, frame)?;
+            .render(list, damage, glyphs, &ImageStore::EMPTY, frame)?;
         frame.convert_into(damage, desc, buffer.bytes)?;
         if let Some(fresh) = fresh {
             known.frame = Some(fresh);
@@ -414,7 +455,7 @@ pub enum ExitReason {
     /// gone. Applications of the first release do not request exit, so
     /// this is how they end.
     Disconnected,
-    /// The resource did not exist before the first round.
+    /// A font did not exist before the first round.
     MissingResource(ResourceId),
     /// The shell stopped with this error, of another kind.
     Failed(ShellError),
@@ -435,12 +476,13 @@ pub struct ExitStatus {
 /// Runs `app` with its execution port `port` on `platform` until the shell
 /// stops, then calls `shutdown` once and returns the exit status.
 ///
-/// Before the first round it fetches `resources` through
+/// Before the first round it fetches the two fonts through
 /// `ResourceProvider`, as [`Shell::run_round`] states; when one does not
 /// exist, it shuts the platform down at once and returns
-/// [`ExitReason::MissingResource`]. Then it runs rounds with
-/// [`Shell::run_round`], each waiting with the [`Shell::next_deadline`]
-/// that the round before left. When a port returns
+/// [`ExitReason::MissingResource`], and when the font set refuses their
+/// bytes, [`ExitReason::Failed`] with [`ShellError::Fonts`]. Then it runs
+/// rounds with [`Shell::run_round`], each waiting with the
+/// [`Shell::next_deadline`] that the round before left. When a port returns
 /// [`PlatformError::Disconnected`] it returns
 /// [`ExitReason::Disconnected`]; any other error ends it with
 /// [`ExitReason::Failed`]. `run` runs on the thread that calls it and
@@ -450,13 +492,8 @@ pub struct ExitStatus {
 /// a backend runs rounds with [`Shell::run_round`] instead. `run` destroys
 /// no surface, so the surfaces of the application that it drives are not
 /// destroyed before `shutdown`.
-pub fn run<P: Platform, A: App>(
-    platform: &mut P,
-    app: A,
-    port: A::Port,
-    resources: &[ResourceId],
-) -> ExitStatus {
-    let mut shell = Shell::new(app, port, resources);
+pub fn run<P: Platform, A: App>(platform: &mut P, app: A, port: A::Port) -> ExitStatus {
+    let mut shell = Shell::new(app, port);
     let reason = loop {
         let deadline = shell.next_deadline();
         match shell.run_round(platform, deadline) {

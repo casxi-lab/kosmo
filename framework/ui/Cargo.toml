@@ -18,6 +18,7 @@ kosmo-math-model.workspace = true
 kosmo-platform.workspace = true
 kosmo-render.workspace = true
 kosmo-testkit = { workspace = true, optional = true }
+kosmo-text.workspace = true
 kosmo-types.workspace = true
 
 [lints]

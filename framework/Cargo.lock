@@ -386,6 +386,7 @@ dependencies = [
  "kosmo-platform",
  "kosmo-render",
  "kosmo-testkit",
+ "kosmo-text",
  "kosmo-types",
  "kosmo-ui",
 ]
@@ -460,6 +461,7 @@ name = "kosmo-text"
 version = "0.1.0-dev.1"
 dependencies = [
  "kosmo-render",
+ "kosmo-types",
  "parley",
  "skrifa",
 ]
@@ -476,6 +478,7 @@ dependencies = [
  "kosmo-platform",
  "kosmo-render",
  "kosmo-testkit",
+ "kosmo-text",
  "kosmo-types",
 ]
 

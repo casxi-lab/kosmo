@@ -1,12 +1,15 @@
 //! The font set: the two bundled fonts, registered from their bytes for the
 //! text stack, without system fonts.
 
+use alloc::string::String;
 use core::fmt;
 
-use kosmo_render::FontId;
-use parley::FontContext;
+use kosmo_render::{DisplayList, FontId, Rasterizer};
 use parley::fontique::{Blob, Collection, CollectionOptions, FamilyId, SourceCache};
+use parley::{FontContext, LayoutContext};
 use skrifa::{FontRef, Tag};
+
+use crate::cache::{GlyphCache, GlyphError, MAX_GLYPH_BYTES, MAX_GLYPH_ENTRIES, Prepared};
 
 /// Fira Sans, the proportional interface font.
 pub const SANS: FontId = FontId::new(0);
@@ -54,13 +57,20 @@ impl fmt::Display for FontSetError {
 impl core::error::Error for FontSetError {}
 
 /// The two fonts of the framework, [`SANS`] and [`MONO`], registered from
-/// their bytes.
+/// their bytes, with what lays text out in them and the [`GlyphCache`] of
+/// their glyphs.
 ///
 /// The set holds a copy of the bytes and reads no files. Its collection of
 /// fonts has system fonts off, no generic families and no fallback, so text
-/// that it lays out uses only these two fonts.
+/// that it lays out uses only these two fonts. [`FontSet::layout`] lays a
+/// paragraph out, [`FontSet::prepare`] fills the coverage masks that a
+/// display list needs, and [`FontSet::glyphs`] hands them to the rasterizer.
 pub struct FontSet {
-    context: FontContext,
+    pub(crate) context: FontContext,
+    pub(crate) layout_context: LayoutContext<()>,
+    /// The family names of [`SANS`] and [`MONO`], in this order.
+    pub(crate) names: [String; 2],
+    pub(crate) glyphs: GlyphCache,
     sans: FamilyId,
     mono: FamilyId,
 }
@@ -76,7 +86,7 @@ impl FontSet {
         });
         let sans = register(&mut collection, SANS, sans)?;
         let mono = register(&mut collection, MONO, mono)?;
-        if sans == mono {
+        if sans.family == mono.family {
             return Err(FontSetError::SameFamily);
         }
         Ok(FontSet {
@@ -84,9 +94,36 @@ impl FontSet {
                 collection,
                 source_cache: SourceCache::default(),
             },
-            sans,
-            mono,
+            layout_context: LayoutContext::new(),
+            names: [sans.name, mono.name],
+            glyphs: GlyphCache::new([sans.bytes, mono.bytes], MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES),
+            sans: sans.family,
+            mono: mono.family,
         })
+    }
+
+    /// Fills the coverage masks that `list` needs, through `rasterizer`, as
+    /// the next frame of the glyph cache, which [`GlyphCache`] describes.
+    /// Afterwards [`FontSet::glyphs`] gives every mask of the list until the
+    /// next preparation.
+    pub fn prepare(
+        &mut self,
+        list: &DisplayList,
+        rasterizer: &mut dyn Rasterizer,
+    ) -> Result<Prepared, GlyphError> {
+        self.glyphs.prepare(list, rasterizer)
+    }
+
+    /// The glyph cache, to hand to the rasterizer as the glyph coverage of
+    /// a prepared display list.
+    pub fn glyphs(&self) -> &GlyphCache {
+        &self.glyphs
+    }
+
+    /// Drops every entry of the glyph cache. Preparing a frame fills them
+    /// again with the same bytes.
+    pub fn clear_glyphs(&mut self) {
+        self.glyphs.clear();
     }
 
     /// The family name of `font`, as its font file names it, or `None` for
@@ -101,12 +138,21 @@ impl FontSet {
     }
 }
 
-/// Registers the bytes of `font` in `collection` and returns its family.
+/// A font registered in a collection.
+struct Registered {
+    family: FamilyId,
+    /// The name of the family.
+    name: String,
+    /// The bytes, shared with the collection.
+    bytes: Blob<u8>,
+}
+
+/// Registers the bytes of `font` in `collection`.
 fn register(
     collection: &mut Collection,
     font: FontId,
     bytes: &[u8],
-) -> Result<FamilyId, FontSetError> {
+) -> Result<Registered, FontSetError> {
     let not_true_type = FontSetError::NotTrueType(font);
     let parsed = FontRef::new(bytes).map_err(|_| not_true_type)?;
     let outlines = [b"glyf", b"loca"]
@@ -115,13 +161,20 @@ fn register(
     if !outlines {
         return Err(not_true_type);
     }
-    match collection
-        .register_fonts(Blob::from(bytes.to_vec()), None)
-        .as_slice()
-    {
-        [(family, fonts)] if fonts.len() == 1 => Ok(*family),
-        _ => Err(not_true_type),
-    }
+    let bytes = Blob::from(bytes.to_vec());
+    let family = match collection.register_fonts(bytes.clone(), None).as_slice() {
+        [(family, fonts)] if fonts.len() == 1 => *family,
+        _ => return Err(not_true_type),
+    };
+    let name = collection
+        .family_name(family)
+        .map(String::from)
+        .ok_or(not_true_type)?;
+    Ok(Registered {
+        family,
+        name,
+        bytes,
+    })
 }
 
 #[cfg(test)]

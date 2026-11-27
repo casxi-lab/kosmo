@@ -102,11 +102,15 @@
 //! ```
 //!
 //! The [`Shell`] drives rounds through the platform interface of
-//! `kosmo-platform`. [`Shell::run_round`], the single-round entry, waits
-//! once for platform events, reads the clock, takes job reports, runs both
-//! steps with the execution port between them, and pushes the round's
-//! accessibility updates and presents its frames; [`Shell::present`] draws
-//! a display list into a surface's previous frame and presents its damage.
+//! `kosmo-platform`. Before its first round it fetches the two fonts of
+//! `kosmo-text` through `ResourceProvider` and builds its font set from
+//! them. [`Shell::run_round`], the single-round entry, waits once for
+//! platform events, reads the clock, takes job reports, runs both steps
+//! with the execution port between them, and pushes the round's
+//! accessibility updates and presents its frames; [`Shell::present`]
+//! prepares the coverage masks of a display list's glyph runs in the glyph
+//! cache of the font set, draws the list into a surface's previous frame
+//! and presents its damage.
 //! [`run`] runs rounds until the platform disconnects and returns an
 //! [`ExitStatus`]. With the feature `call-probes`, off by default and
 //! turned on only from the command line, the single-round entry records
