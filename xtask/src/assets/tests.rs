@@ -172,6 +172,22 @@ fn a_file_that_the_manifest_does_not_list_is_reported() {
 }
 
 #[test]
+fn a_second_manifest_in_the_asset_directory_is_reported() {
+    let mut tree = valid();
+    tree.insert(&at("firasans/MANIFEST.toml"), Entry::File(Vec::new()));
+    assert_eq!(
+        problems(&tree),
+        (
+            vec![format!(
+                "{}: is not listed in MANIFEST.toml; the asset directory holds only the manifest and the files it lists",
+                at("firasans/MANIFEST.toml")
+            )],
+            2
+        )
+    );
+}
+
+#[test]
 fn a_third_font_is_reported_even_when_the_manifest_lists_it() {
     let (font, license) = (
         "notosanscjk/NotoSansCJKsc-Regular.otf",
@@ -219,6 +235,34 @@ fn a_font_outside_the_asset_directory_is_reported() {
             ),
             format!(
                 "framework/ui/assets/NotoSansCJK.TTF: is a font outside {DIR}, the only place for bundled fonts"
+            ),
+        ]
+    );
+}
+
+#[test]
+fn binary_fonts_and_links_outside_the_asset_directory_are_reported() {
+    let mut tree = valid();
+    // The first bytes of a TrueType font and a byte that is not UTF-8, as
+    // the bytes of a real font are not.
+    tree.insert(
+        "docs/fonts/Extra.ttf",
+        Entry::File(vec![0x00, 0x01, 0x00, 0x00, 0xff]),
+    );
+    tree.insert(
+        "docs/fonts/Link.otf",
+        Entry::Symlink(
+            "../../framework/text/assets/fonts/firasans/FiraSans-Regular.ttf".to_string(),
+        ),
+    );
+    assert_eq!(
+        problems(&tree).0,
+        [
+            format!(
+                "docs/fonts/Extra.ttf: is a font outside {DIR}, the only place for bundled fonts"
+            ),
+            format!(
+                "docs/fonts/Link.otf: is a font outside {DIR}, the only place for bundled fonts"
             ),
         ]
     );
@@ -330,6 +374,38 @@ fn a_license_file_with_another_name_is_reported() {
             2
         )
     );
+}
+
+#[test]
+fn license_names_that_only_resemble_ofl_txt_are_reported() {
+    for renamed in [
+        "firasans/ofl.txt",
+        "firasans/OFL.TXT",
+        "firasans/NOTOFL.txt",
+    ] {
+        let old = format!(
+            "license-file = \"{SANS_LICENSE}\"\nlicense-sha256 = \"{}\"",
+            digest(&bytes_of(SANS_LICENSE))
+        );
+        let new = format!(
+            "license-file = \"{renamed}\"\nlicense-sha256 = \"{}\"",
+            digest(&bytes_of(renamed))
+        );
+        let tree = tree_of(
+            &manifest().replacen(&old, &new, 1),
+            &[MONO, MONO_LICENSE, SANS, renamed],
+        );
+        assert_eq!(
+            problems(&tree),
+            (
+                vec![format!(
+                    "{MANIFEST_PATH}:15: the license file `{renamed}` of `{SANS}` is not named OFL.txt, as the original license file is"
+                )],
+                2
+            ),
+            "{renamed}"
+        );
+    }
 }
 
 #[test]
