@@ -16,9 +16,16 @@
 //!
 //! let desc = BufferDesc::new(2, 1, 8, PixelFormat::Xrgb8888).unwrap();
 //! let digest = PixelDigest::of(desc, &[0, 0, 255, 255, 0, 0, 255, 255]).unwrap();
-//! assert!(digest.to_string().starts_with("2x1 stride=8 xrgb8888 sha256="));
-//! assert_eq!(digest.to_string().len(), "2x1 stride=8 xrgb8888 sha256=".len() + 64);
+//! assert_eq!(
+//!     digest.to_string(),
+//!     "2x1 stride=8 xrgb8888 sha256=087d03f6805d1ebdb32a4bd305c90feb463099a1f02a1d3db258d29b2aabb51c"
+//! );
 //! ```
+//!
+//! The digest of this example is the SHA-256 of the 24 bytes
+//! `02 00 00 00 01 00 00 00 08 00 00 00 02 00 00 00 00 00 ff ff 00 00 ff ff`,
+//! so it also fixes the code 2 of `Xrgb8888`; the goldens fix the code 1 of
+//! `Rgba8Premul`.
 
 use std::fmt;
 
