@@ -485,6 +485,34 @@ mod tests {
     }
 
     #[test]
+    fn the_crate_documentation_of_the_testkit_links_the_section_on_call_probes() {
+        // rustdoc resolves no link into the repository, so the crate
+        // documentation of `kosmo-testkit` links the section with an
+        // absolute URL, which this step does not check.
+        let root = crate::repo::root();
+        let contributing = std::fs::read_to_string(root.join("CONTRIBUTING.md")).unwrap();
+        assert!(
+            contributing.lines().any(|line| line == "### Call probes"),
+            "CONTRIBUTING.md has no heading `### Call probes`"
+        );
+        assert!(anchors(&contributing).contains("call-probes"));
+        let lib = std::fs::read_to_string(root.join("framework/testkit/src/lib.rs")).unwrap();
+        let links: Vec<&str> = lib
+            .split("](")
+            .skip(1)
+            .filter_map(|rest| rest.split(')').next())
+            .filter(|target| target.contains("CONTRIBUTING.md"))
+            .collect();
+        assert!(
+            !links.is_empty(),
+            "the testkit links no section of CONTRIBUTING.md"
+        );
+        for link in links {
+            assert!(link.ends_with("/CONTRIBUTING.md#call-probes"), "{link}");
+        }
+    }
+
+    #[test]
     fn computes_github_anchors() {
         let markdown = "# Release notes\n## `cargo xtask check`\n## What's new?\n\
             ## Notes\n## Notes\n## Link to [the guide](guide.md) ##\n    # indented code\n#hashtag\n";
