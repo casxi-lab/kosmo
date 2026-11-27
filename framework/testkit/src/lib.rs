@@ -6,7 +6,11 @@
 //! the call [`probes`] that a crate places at its entries for tests of
 //! call relations. Such a test checks the record of the whole
 //! process, so it owns its test binary: it is the only test in its file
-//! under `tests/`, and the calls of other tests do not mix in.
+//! under `tests/`, and the calls of other tests do not mix in. The rules of
+//! call probes, where crates place them, how the check keeps them out of
+//! ordinary builds and what their pass costs in CI are in the section
+//! [Call probes](https://github.com/casxi-lab/kosmo/blob/main/CONTRIBUTING.md#call-probes)
+//! of `CONTRIBUTING.md` at the repository root.
 //!
 //! The crate depends on `kosmo-platform` with the feature `test-hooks`,
 //! so only tests and test drivers depend on it. Its records use ordered

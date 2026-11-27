@@ -47,13 +47,18 @@ order and stops at the first one that fails:
    this pass builds the other crates as ordinary builds do, without them,
    so that code outside tests cannot name them. `clippy` and `test` also
    build each package that `FEATURE_PASSES` lists once more with its
-   features on, so far `kosmo-backend-headless` twice, with `test-hooks`
-   and with `test-hooks,call-probes`: the workspace's command builds it
-   without them, which compiles the test files that `#![cfg(feature = ...)]`
-   gates on them empty. The first pass builds the test hooks and runs those
-   tests; the second also turns on the call probes of `kosmo-testkit` and
-   `kosmo-ui` and runs the test of call relations,
-   `tests/call_relations.rs`, as well;
+   features on, so far `kosmo-backend-headless` with `test-hooks`: the
+   workspace's command builds it without them, which compiles the test
+   files that `#![cfg(feature = ...)]` gates on them empty, and this pass
+   builds the test hooks and runs those tests, without call probes. Last,
+   `clippy` and `test` cover each workspace that `PROBE_PASSES` lists once
+   more with its call probes on, so far `framework` with
+   `kosmo-testkit/call-probes`, `kosmo-ui/call-probes`,
+   `kosmo-backend-headless/test-hooks` and
+   `kosmo-backend-headless/call-probes`: this probe pass lints the probe
+   code and runs every test of the workspace with the probes compiled in,
+   among them the test of call relations of the headless backend,
+   `tests/call_relations.rs`, as [call probes](#call-probes) describes;
 5. `docs`: relative links and anchors in the Markdown files;
 6. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the
@@ -94,8 +99,9 @@ the working tree was clean before and after the run, each step with its
 status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
 `<workspace>_ms`, of each pass without a member, as
-`<workspace>_without_<member>_ms`, and of each feature pass, as
-`<package>_<feature>_ms`; for the `fetch` step and the `cargo metadata`
+`<workspace>_without_<member>_ms`, of each feature pass, as
+`<package>_<feature>_ms`, and of each probe pass, as
+`<workspace>_call-probes_ms`; for the `fetch` step and the `cargo metadata`
 commands of the `deps` step, the duration of each command as
 `<workspace>_<target>_ms`; for the `deps` step also the observations that its
 section lists; for the `goldens` step, the number of goldens that the
@@ -1093,6 +1099,113 @@ architecture that it links:
     CI, and a local digest that differs stops the work and goes to the
     maintainers, without taking CI's digest instead
     ([authority](docs/architecture.md#determinism-rules)).
+
+### Call probes
+
+A test of call relations checks that what it runs reaches a fixed list of
+public entries. It does so with the call probes of `kosmo-testkit`:
+statements at the start of the entries that record their names when a test
+build turns them on. kosmo uses no coverage tools, neither
+`-C instrument-coverage` nor coverage packages.
+
+- The feature: a crate with probes has the feature `call-probes`, off by
+  default, which turns on an optional dependency on `kosmo-testkit` and
+  nothing else, as `call-probes = ["dep:kosmo-testkit"]` does in
+  `kosmo-ui`. Only the command line turns it on, as
+  `--features kosmo-ui/call-probes`: no dependency declaration of any
+  manifest turns on the `call-probes` of a crate, dev-dependencies
+  included, because Cargo's resolver also merges the features of
+  dev-dependencies into ordinary test builds. Two crates have a feature
+  `call-probes` of another kind. The one of `kosmo-testkit` turns on
+  nothing and compiles the probe of the crate's own entry. The one of
+  `kosmo-backend-headless`, a crate without probes, turns on the
+  `call-probes` of its dev-dependencies `kosmo-testkit` and `kosmo-ui` for
+  its test of call relations.
+- The probe and the record: a probe is the statement
+  `kosmo_testkit::probe!("<crate>::<entry>")`, written `crate::probe!` in
+  `kosmo-testkit`, under `#[cfg(feature = "call-probes")]` at the start of
+  the entry. It adds the name to one record for the whole process, which
+  holds each name once, in the order of the names. `probes::check` takes
+  the entries that a test covers and returns `Ok` when the record holds
+  all of them, or else `Missing` with the entries that no probe recorded,
+  in the order the test listed them; `probes::recorded` returns the
+  record.
+- One test per binary: the record holds the calls of every test of a test
+  binary, so a test of call relations is the only test in its file under
+  `tests/`, and the file compiles empty without the features that it
+  needs, as `tests/call_relations.rs` of `kosmo-backend-headless` does
+  with `#![cfg(all(feature = "test-hooks", feature = "call-probes"))]`;
+  review checks this, the check does not.
+- Where probes go, by layer of the [source
+  layout](docs/architecture.md#source-layout):
+  - in `framework/`, a crate of layer F0 other than `kosmo-testkit`
+    depends on `kosmo-testkit` through an optional dependency in its own
+    layer, which its `same-layer` in `layout.toml` lists, and a crate of
+    layers F1 to F3 through an optional dependency on layer F0, as
+    `kosmo-ui` does;
+  - `kosmo-platform` and the facade `kosmo-sdk` have no probes:
+    `kosmo-testkit` depends on `kosmo-platform`, so a dependency the other
+    way would close a cycle, and the facade only re-exports;
+  - pure-core crates, so far those of layers D0 and D1 of `display/`, have
+    no probes, since a pure-core crate depends only on pure-core crates; a
+    probe in the crate that calls a pure-core entry, named after that
+    entry, counts it;
+  - the applications of `desktop/` call the entries that have probes and
+    have none of their own;
+  - the server crates of `display/` will keep their probes in a module of
+    `display/` itself, because `display/` depends on no other product
+    workspace; none exists yet.
+
+  The directions of the layout step reject a dependency of a pure-core
+  crate on `kosmo-testkit` and of `display/` on `framework/`. So far the
+  probes are `kosmo-testkit::run`, at the entry of the script runner, and
+  `kosmo-ui::run_round`, at the single-round entry of the shell.
+- No probe code in ordinary builds: without the feature, the compiler
+  removes a probe before it resolves the macro's path, and the crate does
+  not depend on `kosmo-testkit`, so ordinary builds and ordinary tests
+  compile no probe code. The layout step checks the manifests for this,
+  as the bullet on call probes and test hooks of [the layout
+  step](#the-layout-step) states: a dependency on `kosmo-testkit` other
+  than a dev-dependency is optional and turned on only by the crate's
+  `call-probes`; no dependency declaration turns on the `call-probes` of a
+  crate; none but a dev-dependency, and the dependency of `kosmo-testkit`
+  on `kosmo-platform`, turns on the `test-hooks` of a crate; the
+  `test-hooks` of a crate turns on no call probes, its own or those of a
+  dependency; no other feature, the default features included, turns on
+  call probes or test hooks; and the default features do not turn on
+  `kosmo-testkit`.
+- The probe pass: `cargo xtask check` covers each workspace with crates
+  with probes or with tests of call relations once more with every probe
+  on, so far `framework/`, as step 4 of [building and
+  checking](#building-and-checking) describes. `clippy` lints and `test`
+  runs the whole workspace with `--features` naming the `call-probes` of
+  every member that has the feature and the `test-hooks` of
+  `kosmo-backend-headless`, which its test of call relations needs, as
+  `PROBE_PASSES` in `xtask/src/check.rs` lists; a test of `xtask` checks
+  that the list names exactly the workspaces that have members with the
+  feature `call-probes` and, in each, the `call-probes` of exactly the
+  members that have one. The other commands of the step build no probe
+  code. The pass builds again the crates whose features it changes,
+  `kosmo-testkit`, `kosmo-ui` and the crates that depend on them, and runs
+  every test of the workspace again, so its time adds to the check; the
+  receipt records it as `framework_call-probes_ms` in both steps.
+
+The hosted check took these times, in milliseconds, as the receipts of its
+runs record them: the ten steps together, the test command of `framework/`
+(`framework_ms` of the `test` step) and the passes with call probes.
+
+| Commit | Run | Ten steps | Test of `framework/` | Passes with call probes |
+| --- | --- | --- | --- | --- |
+| `7f1d039` on `main`, before call probes | 45872455784 | 73,677 | 34,344 | None |
+| `7b7e11e` on `main`, with call probes in a pass of the headless backend | 45931895261 | 101,205 | 37,352 | `kosmo-backend-headless` with `test-hooks,call-probes`: 4,499 in `test` and 736 in `clippy` |
+| `d3d2daf`, in the pull request that adds the probe pass over `framework/` | 45943120576 | 119,459 | 36,884 | `framework/` with every probe on: 25,897 in `test` and 858 in `clippy` |
+
+The probe pass over `framework/` took 26,755 ms of the ten steps at
+`d3d2daf`, where the pass of the headless backend that it replaces took
+5,235 ms at `7b7e11e`. The ten steps took 18,254 ms more than at `7b7e11e` and
+45,782 ms more than at `7f1d039`, which had neither the platform interface, the
+headless backend and `kosmo-testkit` nor the passes with test hooks. The runs
+are far below the target of 10 minutes.
 
 ## License
 

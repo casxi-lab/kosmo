@@ -387,9 +387,10 @@ parameters the drawing entry reaches neither a mutable model, nor the
 execution port, nor a port of the platform interface. Three examples of the
 documentation of `Control` check this: each tries one of the three in the
 drawing entry and fails to compile, and the same code without that line
-compiles. The platform interface does not exist yet, so the third uses a
-stand-in trait for one of its ports. The toolchain does not check the error
-code of an example that fails to compile, so the examples state none.
+compiles. The third uses a stand-in trait for one of the ports of the
+platform interface rather than a trait of `kosmo-platform`. The toolchain
+does not check the error code of an example that fails to compile, so the
+examples state none.
 
 ## The drawing pass
 
