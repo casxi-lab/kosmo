@@ -478,12 +478,19 @@ The first crate of a workspace also adds the workspace's root manifest,
 
 ### The goldens step and `cargo xtask golden`
 
-A crate with pixel goldens, so far `kosmo-render`, keeps them in its
-directory `tests/golden/`: a file `<name>.px` for each golden, which holds a
-drawn buffer as the [digests rule](docs/architecture.md#determinism-rules)
+A crate with pixel goldens, so far `kosmo-render` and `kosmo-text`, as
+`SETS` in `xtask/src/golden.rs` lists them, keeps them in its directory
+`tests/golden/`: a file `<name>.px` for each golden, which holds a drawn
+buffer as the [digests rule](docs/architecture.md#determinism-rules)
 encodes it, and `MANIFEST`, with one line `<digest>  <name>` for each
 golden: the SHA-256 of the file in 64 lowercase hexadecimal digits, two
-spaces and the name, sorted by name. Names are lowercase letters, digits and
+spaces and the name, sorted by name. The goldens of `kosmo-render` hold a
+scene of each kind of command. Those of `kosmo-text` hold the strings whose
+glyphs its tests pin, each laid out by the font set and drawn by vello_cpu
+from the coverage masks of the glyph cache, in opaque black on transparent
+black, on a canvas of its layout box rounded outwards to whole pixels with
+a margin of 2 pixels on each side; its line breaks are pinned as text in
+its tests and have no goldens. Names are lowercase letters, digits and
 `-`. A test refers to a golden by calling `matches_golden` with the name as
 a string literal; the call draws the golden's scene, encodes it in memory and
 compares it with the file byte for byte. These commands write and verify the

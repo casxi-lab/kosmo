@@ -49,11 +49,18 @@ pub struct Goldens {
 }
 
 /// The crates with goldens. A golden directory elsewhere fails the step.
-pub const SETS: [Goldens; 1] = [Goldens {
-    workspace: "framework",
-    package: "kosmo-render",
-    dir: "framework/render",
-}];
+pub const SETS: [Goldens; 2] = [
+    Goldens {
+        workspace: "framework",
+        package: "kosmo-render",
+        dir: "framework/render",
+    },
+    Goldens {
+        workspace: "framework",
+        package: "kosmo-text",
+        dir: "framework/text",
+    },
+];
 
 /// The integration test of each crate with goldens that compares and
 /// writes them.

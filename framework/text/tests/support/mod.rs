@@ -1,7 +1,10 @@
 //! Support of the integration tests: the font set of the two bundled fonts,
-//! the strings whose glyphs the tests pin and the cases of line breaking.
+//! the strings whose glyphs the tests pin, the cases of line breaking and
+//! the pixel goldens of the strings.
 //! Each test file declares it `pub`, so the parts that it does not use are
 //! not reported as unused.
+
+pub mod golden;
 
 use kosmo_render::{Color, DisplayList, FontId, ListBuilder};
 use kosmo_text::{FontSet, MONO, Paragraph, SANS, TextStyle};

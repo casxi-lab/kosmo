@@ -54,10 +54,15 @@ fn valid() -> Tree {
     )
 }
 
-/// The problems of `tree` and how many goldens its manifests list.
+/// The crate with goldens of the fixtures, `kosmo-render`, the first of
+/// [`SETS`].
+const RENDER: [Goldens; 1] = [SETS[0]];
+
+/// The problems of `tree`, with the goldens of [`RENDER`] alone, and how
+/// many goldens its manifests list.
 fn problems(tree: &Tree) -> (Vec<String>, usize) {
     let mut problems = Problems::default();
-    let count = check(tree, &SETS, &mut problems);
+    let count = check(tree, &RENDER, &mut problems);
     (problems.lines(), count)
 }
 
@@ -415,8 +420,30 @@ fn every_problem_is_reported_in_order() {
 #[test]
 fn the_goldens_of_this_repository_pass() {
     let tree = Tree::load(&repo::root()).expect("the repository is a Git working copy");
-    let (found, _) = problems(&tree);
-    assert_eq!(found, Vec::<String>::new());
+    let mut problems = Problems::default();
+    let count = check(&tree, &SETS, &mut problems);
+    assert_eq!(problems.lines(), Vec::<String>::new());
+    assert!(count > 0);
+}
+
+#[test]
+fn a_crate_with_goldens_without_its_test_file_is_reported() {
+    // The fixtures hold the goldens of kosmo-render alone, so with every
+    // crate of `SETS` the test file of kosmo-text is missing.
+    let mut problems = Problems::default();
+    assert_eq!(check(&valid(), &SETS, &mut problems), 2);
+    let tests = "framework/text/tests/golden.rs";
+    assert_eq!(
+        problems.lines(),
+        [
+            format!(
+                "{tests}: has no ignored test `redraw_goldens`, which `cargo xtask golden` runs"
+            ),
+            format!(
+                "{tests}: has no ignored test `write_goldens`, which `cargo xtask golden` runs"
+            ),
+        ]
+    );
 }
 
 #[test]
@@ -427,7 +454,7 @@ fn the_step_fails_with_its_problems_and_counts_the_goldens() {
         Entry::File(b"edited".to_vec()),
     );
     let mut facts = Facts::new();
-    let error = report(&tree, &SETS, None, &mut facts).unwrap_err();
+    let error = report(&tree, &RENDER, None, &mut facts).unwrap_err();
     assert!(
         error.starts_with(&format!("{DIR}/fill-rect.px: SHA-256 ")),
         "{error}"
@@ -437,7 +464,7 @@ fn the_step_fails_with_its_problems_and_counts_the_goldens() {
         facts,
         counts.map(|(key, value)| (key.to_string(), value.to_string()))
     );
-    assert_eq!(report(&valid(), &SETS, None, &mut Facts::new()), Ok(()));
+    assert_eq!(report(&valid(), &RENDER, None, &mut Facts::new()), Ok(()));
 }
 
 #[test]
@@ -451,10 +478,16 @@ fn the_check_runs_the_goldens_step_on_this_repository() {
     };
     let mut facts = Facts::new();
     assert_eq!(run(&repo::root(), &mut facts), Ok(()));
-    let listed = fs::read_to_string(repo::root().join(MANIFEST))
-        .unwrap()
-        .lines()
-        .count();
+    let listed: usize = SETS
+        .iter()
+        .map(|set| {
+            let manifest = format!("{}/MANIFEST", set.golden_dir());
+            fs::read_to_string(repo::root().join(manifest))
+                .unwrap()
+                .lines()
+                .count()
+        })
+        .sum();
     let fonts = crate::assets::FONTS.fonts.len();
     assert_eq!(
         facts,
@@ -467,18 +500,32 @@ fn the_check_runs_the_goldens_step_on_this_repository() {
 
 #[test]
 fn the_command_runs_the_ignored_writers_of_each_crate() {
-    let args = |test: &str| SETS[0].writer(test).args.join(" ");
-    let start = "test --locked --manifest-path framework/Cargo.toml -p kosmo-render --test golden";
+    let crates: Vec<(&str, &str)> = SETS.iter().map(|set| (set.package, set.dir)).collect();
     assert_eq!(
-        args(WRITE),
-        format!("{start} -- --ignored --exact write_goldens")
+        crates,
+        [
+            ("kosmo-render", "framework/render"),
+            ("kosmo-text", "framework/text")
+        ]
     );
-    assert_eq!(
-        args(REDRAW),
-        format!("{start} -- --ignored --exact redraw_goldens")
-    );
+    for set in SETS {
+        let args = |test: &str| set.writer(test).args.join(" ");
+        let package = set.package;
+        let start = format!(
+            "test --locked --manifest-path framework/Cargo.toml -p {package} --test golden"
+        );
+        assert_eq!(
+            args(WRITE),
+            format!("{start} -- --ignored --exact write_goldens")
+        );
+        assert_eq!(
+            args(REDRAW),
+            format!("{start} -- --ignored --exact redraw_goldens")
+        );
+        assert_eq!(set.golden_dir(), format!("{}/tests/golden", set.dir));
+        assert_eq!(set.redrawn(), format!("framework/target/golden/{package}"));
+    }
     assert_eq!(SETS[0].golden_dir(), DIR);
-    assert_eq!(SETS[0].redrawn(), "framework/target/golden/kosmo-render");
 }
 
 /// An empty scratch directory in this crate's ignored build directory.
