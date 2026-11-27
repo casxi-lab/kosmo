@@ -8,7 +8,7 @@ pub mod support;
 use kosmo_render::{Command, Step, place_glyph};
 use kosmo_text::TextError;
 use kosmo_types::{Fx, Point};
-use support::{BLACK, Checked, STRINGS, font_set, lay_out, list, runs};
+use support::{BLACK, Checked, STRINGS, failed, font_set, lay_out, list, runs};
 
 /// Checks that the runs of the string named `name` are `expected`.
 fn pinned(name: &str, expected: &[&str]) -> Checked {
@@ -362,5 +362,40 @@ fn a_run_moved_beyond_the_fixed_point_is_refused() -> Checked {
     assert_eq!(paragraph.run(origin, BLACK), Err(TextError::OutOfRange));
     let origin = Point::new(Fx::ZERO, Fx::MAX);
     assert_eq!(paragraph.run(origin, BLACK), Err(TextError::OutOfRange));
+    Ok(())
+}
+
+#[test]
+fn a_run_holds_the_glyphs_of_every_line_in_order() -> Checked {
+    let mut set = font_set()?;
+    let paragraph = lay_out(&mut set, "1 + 2\n= 3", kosmo_text::SANS, 16, None)?;
+    assert_eq!(paragraph.lines().len(), 2);
+    let origin = Point::new(Fx::from_units(5), Fx::from_units(7));
+    let Command::Glyphs { glyphs, .. } = paragraph.run(origin, BLACK).map_err(failed)? else {
+        return Err("not a glyph run".into());
+    };
+    let expected: Vec<(u32, Option<Point>)> = paragraph
+        .lines()
+        .iter()
+        .flat_map(|line| line.glyphs())
+        .map(|glyph| (glyph.id.get(), glyph.origin.translated(origin.x, origin.y)))
+        .collect();
+    let got: Vec<(u32, Option<Point>)> = glyphs
+        .iter()
+        .map(|glyph| (glyph.id.get(), Some(glyph.origin)))
+        .collect();
+    assert_eq!(got, expected);
+    Ok(())
+}
+
+#[test]
+fn a_size_between_whole_pixels_reaches_parley_exactly() -> Checked {
+    let mut set = font_set()?;
+    // At 1,000 units, 15.625 pixels per em, a unit of the em of Fira Sans,
+    // which has 1,000, is 1/64 pixel: the advance of "1" is its 433 units.
+    let style =
+        kosmo_text::TextStyle::new(kosmo_text::SANS, Fx::from_units(1000)).map_err(failed)?;
+    let paragraph = set.layout("1", style, None).map_err(failed)?;
+    assert_eq!(paragraph.width().units(), 433);
     Ok(())
 }
