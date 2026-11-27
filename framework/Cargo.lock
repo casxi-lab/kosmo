@@ -283,6 +283,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kosmo-text"
+version = "0.1.0-dev.1"
+dependencies = [
+ "kosmo-render",
+]
+
+[[package]]
 name = "kosmo-types"
 version = "0.1.0-dev.1"
 

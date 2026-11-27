@@ -56,7 +56,7 @@
   `docs/architecture.md` describes. So far `display/`, with the shared types
   `kosmo-types`, `framework/`, with the libraries `kosmo-math-model`,
   `kosmo-jobs`, `kosmo-render`, `kosmo-platform`, `kosmo-testkit`,
-  `kosmo-math-kalyx`, `kosmo-ui`, `kosmo-backend-headless` and
+  `kosmo-text`, `kosmo-math-kalyx`, `kosmo-ui`, `kosmo-backend-headless` and
   `kosmo-scratchpad` and the facade `kosmo-sdk`, `desktop/`, with the program
   `kosmo`, and `xtask/` exist; a workspace root is added with the workspace's
   first crate.

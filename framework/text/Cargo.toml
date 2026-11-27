@@ -1,0 +1,16 @@
+[package]
+name = "kosmo-text"
+description = "Text: the two bundled fonts with their asset manifest, and the planned shaping, line breaking and glyph cache"
+version.workspace = true
+edition.workspace = true
+# The fonts in `assets/fonts/` keep their own license, so the crate is not
+# under the workspace's MIT License alone.
+license = "MIT AND OFL-1.1"
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+kosmo-render.workspace = true
+
+[lints]
+workspace = true

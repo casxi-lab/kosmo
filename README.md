@@ -111,7 +111,9 @@ jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 [display lists](docs/features/framework/rendering.md) with their text
 form, the renderer interface, the rasterizer on vello_cpu that draws display
 lists on the CPU and the wrapper of the transcendental functions that
-rendering and layout are to call, `kosmo-platform`, the [platform
+rendering and layout are to call, `kosmo-text`, which so far holds the two
+fonts that kosmo bundles, Fira Sans and Fira Mono, with their license files
+and their asset manifest, `kosmo-platform`, the [platform
 interface](docs/features/framework/platform-interface.md) through which the
 framework reaches surfaces, input, its clock, resources and the
 accessibility tree, with AccessKit re-exported, `kosmo-math-kalyx`,
@@ -217,4 +219,9 @@ be checked first when kosmo runs on the device.
 ## License
 
 kosmo is released under the [MIT License](LICENSE). Copyright (c) 2026 The
-casξ Authors; see [AUTHORS](AUTHORS).
+casξ Authors; see [AUTHORS](AUTHORS). The two fonts that `kosmo-text`
+bundles in `framework/text/assets/fonts/` are not covered by the MIT License:
+Fira Sans and Fira Mono are distributed under the SIL Open Font License 1.1
+(`OFL-1.1`) with their original license files,
+[`firasans/OFL.txt`](framework/text/assets/fonts/firasans/OFL.txt) and
+[`firamono/OFL.txt`](framework/text/assets/fonts/firamono/OFL.txt).

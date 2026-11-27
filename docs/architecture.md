@@ -858,10 +858,10 @@ licenses and build scripts of the packages.
 Crates and workspaces appear with their first code. So far `display/` exists,
 with the shared types `kosmo-types`, `framework/`, with the libraries
 `kosmo-math-model`, `kosmo-jobs`, `kosmo-render`, `kosmo-platform`,
-`kosmo-testkit`, `kosmo-math-kalyx`, `kosmo-ui`, `kosmo-backend-headless` and
-`kosmo-scratchpad` and the facade `kosmo-sdk`, and `desktop/`,
-with the program `kosmo`. A change that
-adds a crate registers it in the table, and the first crate of a workspace adds
+`kosmo-testkit`, `kosmo-text`, `kosmo-math-kalyx`, `kosmo-ui`,
+`kosmo-backend-headless` and `kosmo-scratchpad` and the facade `kosmo-sdk`,
+and `desktop/`, with the program `kosmo`. A change that adds a crate
+registers it in the table, and the first crate of a workspace adds
 the workspace root. The layout step of `cargo xtask check` enforces this layout
 on the tracked files, and the deps step on what Cargo resolves; Contributing
 describes the checks of [the layout step](../CONTRIBUTING.md#the-layout-step)
@@ -905,11 +905,11 @@ and their limits.
   threads, and `kosmo-testkit` for files, which allows `std::fs` and
   `std::path` but not `std::io`, so that the script runner reads script files
   and converts the errors where it reads them; `kosmo-types`,
-  `kosmo-math-model`, `kosmo-math-kalyx`, `kosmo-render`, `kosmo-platform`,
-  `kosmo-backend-headless`, `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui`
-  are core libraries. Other crates are registered by the change that creates
-  them; [host programs](#host-programs) lists the boundary crates of the
-  display stack with their categories.
+  `kosmo-math-model`, `kosmo-math-kalyx`, `kosmo-render`, `kosmo-text`,
+  `kosmo-platform`, `kosmo-backend-headless`, `kosmo-scratchpad`, `kosmo-sdk`
+  and `kosmo-ui` are core libraries. Other crates are registered by the
+  change that creates them; [host programs](#host-programs) lists the
+  boundary crates of the display stack with their categories.
 - The layout step of `cargo xtask check` parses the Rust files under the
   `src/` of every library crate, unit tests included, expands `use` trees and
   reports every forbidden path, macro and type with file and line, and in a
@@ -1520,8 +1520,7 @@ pub trait Rasterizer {
   prepared before drawing; a glyph missing at drawing time is an error. The
   trait through which the renderer reads coverage, provisionally
   `GlyphCoverage`, is defined in `kosmo-render` and implemented by `kosmo-text`;
-  this same-layer dependency is listed in the layout table when `kosmo-text` is
-  created.
+  the layout table lists `kosmo-render` in the `same-layer` of `kosmo-text`.
 - Rasterization starts no threads and reads no clock and no file.
 - These rules assume rasterization on the CPU. If the rendering path on the
   device does not rasterize on the CPU, the renderer interface, the raster
@@ -1603,15 +1602,18 @@ pub trait Rasterizer {
 ### Fonts
 
 - kosmo bundles two unmodified OFL-1.1 fonts, without subsetting, in the asset
-  directory of `kosmo-text`: Fira Sans, the proportional interface font for
-  labels, results and the status area, and Fira Mono, the monospaced font for
-  the optional style of the one-line input and for aligned columns of numbers.
-  There is no CJK font, and a math font comes with two-dimensional typesetting.
+  directory of `kosmo-text`, `framework/text/assets/fonts/`, each in a
+  directory of its own with its original license file: Fira Sans, the
+  proportional interface font for labels, results and the status area, and
+  Fira Mono, the monospaced font for the optional style of the one-line input
+  and for aligned columns of numbers. There is no CJK font, and a math font
+  comes with two-dimensional typesetting.
 - The files are the static Regular styles `FiraSans-Regular.ttf`, version 4.203,
   and `FiraMono-Regular.ttf`, version 3.206, from the google/fonts repository at
-  commit `29b4ec6`. The planned asset manifest of `kosmo-text` records their
-  SHA-256 digests. Variable fonts are not used, because taking an instance
-  rewrites the file.
+  commit `29b4ec6`. The asset manifest of `kosmo-text`, `MANIFEST.toml` in the
+  asset directory, records the size, the SHA-256 digest, the source and the
+  license of each font and the SHA-256 digest of its license file. Variable
+  fonts are not used, because taking an instance rewrites the file.
 - Without fallback, each font covers every character of its role; the character
   set is fixed with `kosmo-text`. Fira Sans has no `□` (U+25A1), so the
   formula editing control draws a hole as a rectangle and no interface string
