@@ -199,17 +199,18 @@ impl FontSet {
     /// `width`, or only at line breaks of the text without a width.
     ///
     /// parley shapes the text with harfrust and breaks lines by the Unicode
-    /// line breaking algorithm, with the data of icu_segmenter compiled
-    /// into the program. The font is the style's font alone: there is no
-    /// fallback, so a character that it lacks becomes its glyph `.notdef`.
-    /// The base direction of the paragraph is left to right whatever its
-    /// first character; neither font has right-to-left characters, and
-    /// parley still orders a run of them, as `.notdef` glyphs, by the
-    /// Unicode bidirectional algorithm. The size and the width reach parley
-    /// as exact `f32` values, its alignment to pixels is off, and each
-    /// position it gives is rounded once into an [`Fx`]. The width is
-    /// between 0 and [`MAX_WIDTH`]; a word longer than it stays on a line of
-    /// its own.
+    /// line breaking algorithm, with the data of icu_segmenter compiled into
+    /// the program. The font is the style's font alone: there is no fallback,
+    /// so a character that it lacks becomes its glyph `.notdef`. The base
+    /// direction of the paragraph is left to right whatever its first
+    /// character. Neither font has right-to-left letters, which become
+    /// `.notdef`; Fira Sans maps only the right-to-left mark U+200F, which
+    /// shaping draws as a glyph without advance. parley still orders a run of
+    /// right-to-left characters by the Unicode bidirectional algorithm. The
+    /// size and the width reach parley as exact `f32` values, its alignment
+    /// to pixels is off, and each position it gives is rounded once into an
+    /// [`Fx`]. The width is between 0 and [`MAX_WIDTH`]; a word longer than
+    /// it stays on a line of its own.
     pub fn layout(
         &mut self,
         text: &str,

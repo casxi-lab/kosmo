@@ -45,17 +45,18 @@ pub const MAX_GLYPH_BYTES: usize = 4 * 1024 * 1024;
 /// ascending order of the frame that last used them and then of their key,
 /// until the new entry fits.
 ///
-/// A frame that alone exceeds a limit is refused before any of its masks
-/// is allocated. The cache counts the keys of the frame first and refuses
-/// a frame with more keys than it holds entries before it reads any
-/// outline. It then measures the mask of each key that it does not hold
+/// A frame that alone exceeds a limit is refused before any of its masks is
+/// allocated. The cache counts the keys of the frame first and refuses a
+/// frame with more keys than it holds entries before it reads any outline.
+/// It then measures the mask of each key of the frame that it does not hold
 /// from the bounds of the points of its outline, without building a path,
-/// adds the bytes of the masks that it holds, and refuses a frame beyond
-/// its bytes. Only then are the outlines of the new keys built and their
-/// masks allocated and filled, one outline at a time: a preparation
-/// allocates masks of at most the bytes of the cache, and a refused frame
-/// none. Dropping masks and filling them again gives the same bytes, so
-/// what is drawn does not depend on what the cache held before.
+/// adds the bytes of the masks of the frame's keys that it already holds,
+/// and refuses a frame beyond its bytes. Only then are the outlines of the
+/// new keys built and their masks allocated and filled, one outline at a
+/// time: a preparation allocates masks of at most the bytes of the cache,
+/// and a frame refused for its size none. Dropping masks and filling them
+/// again gives the same bytes, so what is drawn does not depend on what the
+/// cache held before.
 pub struct GlyphCache {
     fonts: [Blob<u8>; 2],
     max_entries: usize,

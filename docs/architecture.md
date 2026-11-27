@@ -1593,10 +1593,10 @@ pub trait Rasterizer {
   frame that last used them and then of their key, until the mask fits. A
   frame whose own masks exceed a limit is refused with a distinct error
   before any of them is allocated: a frame with more keys than entries before
-  any outline is read, and otherwise one whose masks, measured from the
-  bounds of their outlines and added to those that the cache holds, exceed
-  the bytes. Sizes are from 1 to 256 pixels per em, so that one mask stays
-  small beside the limits.
+  any outline is read, and otherwise one whose masks exceed the bytes,
+  counting those of its keys that the cache already holds and measuring the
+  others from the bounds of their outlines. Sizes are from 1 to 256 pixels per
+  em, so that one mask stays small beside the limits.
 - A mask is the unhinted outline that skrifa reads at the glyph's size, moved
   right by the step and filled through `fill_coverage`, so dropping masks and
   filling them again gives the same pixels.
