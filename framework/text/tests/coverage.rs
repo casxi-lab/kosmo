@@ -8,6 +8,7 @@
 
 pub mod support;
 
+use std::collections::BTreeSet;
 use std::fmt;
 
 use kosmo_text::{MONO_FILE, SANS_FILE};
@@ -188,13 +189,31 @@ fn covered(entries: &[Entry]) -> Checked {
     ))
 }
 
+/// The strings of the characters of the interface by Unicode block, which
+/// the group of each font holds.
+const BLOCKS: [&str; 4] = ["ascii", "latin-1", "greek", "operators-and-arrows"];
+
 #[test]
 fn the_bundled_fonts_cover_every_interface_string() {
     let entries = parse(INTERFACE_STRINGS).unwrap();
-    for file in [SANS_FILE, MONO_FILE] {
+    for (file, least) in [(SANS_FILE, 257), (MONO_FILE, 255)] {
+        for name in BLOCKS {
+            assert!(
+                entries
+                    .iter()
+                    .any(|entry| entry.font == file && entry.name == name),
+                "no string {name} of {file}"
+            );
+        }
+        let characters: BTreeSet<char> = entries
+            .iter()
+            .filter(|entry| entry.font == file)
+            .flat_map(|entry| entry.text.chars())
+            .collect();
         assert!(
-            entries.iter().any(|entry| entry.font == file),
-            "no string of {file}"
+            characters.len() >= least,
+            "{file} has {} distinct characters, fewer than {least}",
+            characters.len()
         );
     }
     if let Err(report) = covered(&entries) {
@@ -240,7 +259,7 @@ fn the_check_lists_every_missing_character_once_for_each_string() {
         Entry {
             font: SANS_FILE,
             name: "holes".into(),
-            text: "\u{25a1}/\u{25a1}".into(),
+            text: "\u{25a1}/\u{3a2}\u{25a1}".into(),
         },
         Entry {
             font: SANS_FILE,
@@ -259,13 +278,14 @@ fn the_check_lists_every_missing_character_once_for_each_string() {
             "firamono/FiraMono-Regular.ttf: increment: U+2206 '\u{2206}'",
             "firamono/FiraMono-Regular.ttf: increment: U+22C5 '\u{22c5}'",
             "firasans/FiraSans-Regular.ttf: holes: U+25A1 '\u{25a1}'",
+            "firasans/FiraSans-Regular.ttf: holes: U+03A2 '\\u{3a2}'",
             "firasans/FiraSans-Regular.ttf: hole: U+25A1 '\u{25a1}'",
         ]
     );
     assert!(
         covered(&entries)
             .unwrap_err()
-            .starts_with("the fonts lack 4 of the characters")
+            .starts_with("the fonts lack 5 of the characters")
     );
 }
 
