@@ -599,16 +599,17 @@ of a font with the line of its `[[font]]` table:
   any letter case, outside the asset directory.
 
 The step compares the files with the manifest: a font changed together with
-its digest and size in the manifest passes it. A test of `xtask` keeps the
-sizes and digests of both fonts and the digests of their license files as
-those of the google/fonts files at commit `29b4ec6`, their `upstream` as
-google/fonts records it and their `version` as their name tables give it,
-so such a change also changes that test, and review compares it with the
-files of `source`. The step does not read the fonts themselves, neither
-their tables nor the characters that they cover. It recognizes a font
-outside the asset directory only by the extensions above, so a font under
-another extension, such as `.otc` or `.bin`, or one embedded in another
-file is not reported; review covers these.
+its digest and size in the manifest passes it, and so does a license file
+changed together with its digest, even into the bytes of a font. A test of
+`xtask` keeps the sizes and digests of both fonts and the digests of their
+license files as those of the google/fonts files at commit `29b4ec6`, their
+`upstream` as google/fonts records it and their `version` as their name
+tables give it, so such a change also changes that test, and review
+compares it with the files of `source`. The step does not read the fonts
+themselves, neither their tables nor the characters that they cover. It
+recognizes a font outside the asset directory only by the extensions above,
+so a font under another extension, such as `.otc` or `.bin`, or one
+embedded in another file is not reported; review covers these.
 
 `kosmo-text` is not published yet. Its asset directory lies inside the
 crate's directory, so a published package would carry the fonts, their
