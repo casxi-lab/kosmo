@@ -1655,8 +1655,8 @@ fn features_of_members_name_no_external_dependency_of_any_table() {
     };
     let skrifa =
         "skrifa = { version = \"=0.49.0\", default-features = false, features = [\"libm\"] }";
-    // skrifa after another external dependency, named by the second value
-    // of a feature.
+    // skrifa between two other external dependencies, named by the second
+    // value of a feature.
     let found = problems_with(|files| {
         declare(files, "framework", skrifa);
         declare(
@@ -1664,10 +1664,15 @@ fn features_of_members_name_no_external_dependency_of_any_table() {
             "framework",
             "libm = { version = \"=0.2.16\", default-features = false }",
         );
+        declare(
+            files,
+            "framework",
+            "vello_cpu = { version = \"=0.4.0\", default-features = false }",
+        );
         append(
             files,
             "framework/render/Cargo.toml",
-            "\n[features]\nhint = []\ndefault = [\"hint\", \"skrifa/autohint_shaping\"]\n\n[dependencies]\nlibm.workspace = true\nskrifa.workspace = true\n",
+            "\n[features]\nhint = []\ndefault = [\"hint\", \"skrifa/autohint_shaping\"]\n\n[dependencies]\nlibm.workspace = true\nskrifa.workspace = true\nvello_cpu.workspace = true\n",
         );
     });
     assert_eq!(found, [names("default", "skrifa/autohint_shaping")]);
@@ -1689,6 +1694,28 @@ fn features_of_members_name_no_external_dependency_of_any_table() {
         });
         assert_eq!(found, [names("hint", "skrifa/autohint_shaping")], "{table}");
     }
+}
+
+#[test]
+fn features_of_members_of_another_product_workspace_name_no_external_dependency() {
+    let found = problems_with(|files| {
+        declare(
+            files,
+            "desktop",
+            "skrifa = { version = \"=0.49.0\", default-features = false, features = [\"libm\"] }",
+        );
+        append(
+            files,
+            "desktop/kosmo/Cargo.toml",
+            "\n[features]\nhint = [\"skrifa/autohint_shaping\"]\n\n[target.'cfg(unix)'.dependencies]\nskrifa.workspace = true\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [
+            "desktop/kosmo/Cargo.toml: the feature hint names the external dependency skrifa in skrifa/autohint_shaping; features of a member name only crates of the layout table, so that the features of external packages come only from declarations, which the allow entries compare"
+        ]
+    );
 }
 
 #[test]
