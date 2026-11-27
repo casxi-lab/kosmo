@@ -269,6 +269,19 @@ fn binary_fonts_and_links_outside_the_asset_directory_are_reported() {
 }
 
 #[test]
+fn a_font_outside_the_asset_directory_is_found_by_its_last_extension() {
+    let mut tree = valid();
+    tree.insert("docs/fonts/NotoSans.Regular.ttf", Entry::File(Vec::new()));
+    tree.insert("docs/fonts/notes.ttf.md", Entry::File(Vec::new()));
+    assert_eq!(
+        problems(&tree).0,
+        [format!(
+            "docs/fonts/NotoSans.Regular.ttf: is a font outside {DIR}, the only place for bundled fonts"
+        )]
+    );
+}
+
+#[test]
 fn a_listed_file_that_is_missing_is_reported() {
     let tree = tree_of(&manifest(), &[MONO, SANS, SANS_LICENSE]);
     assert_eq!(
