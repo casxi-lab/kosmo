@@ -420,16 +420,19 @@ group open.
 ## The shell
 
 A `Shell` holds an application's `Runtime`, the application and its
-execution port, the receipts that wait for the next round and, for each
-surface, its size and the previous frame that presentation keeps. It holds
-no platform: `Shell::run_round(platform, deadline)`, the single-round entry,
-borrows one for each round, so a driver keeps its backend between rounds.
-`Shell::new(app, port, resources)` takes the resources that the application
-or its assembly lists. Before its first round the shell fetches each of them
-through `ResourceProvider`; when one does not exist, `run_round` returns
-`ShellError::MissingResource` and runs no round, and the next call fetches
-them again. The bytes go nowhere yet: the font set of `kosmo-text` that will
-take them is planned. Then each round:
+execution port, the receipts that wait for the next round, the font set of
+`kosmo-text` and, for each surface, its size and the previous frame that
+presentation keeps. It holds no platform:
+`Shell::run_round(platform, deadline)`, the single-round entry, borrows one
+for each round, so a driver keeps its backend between rounds.
+`Shell::new(app, port)` builds it. Before its first round the shell fetches
+the two fonts through `ResourceProvider`, Fira Sans and then Fira Mono, as
+the resources named by their files `SANS_FILE` and `MONO_FILE` in the asset
+manifest of `kosmo-text`, and builds its font set from their bytes with
+`FontSet::new`. When a font does not exist, `run_round` returns
+`ShellError::MissingResource`, and when the bytes are not the two fonts,
+`ShellError::Fonts`; it then runs no round, and the next call fetches the
+fonts again. Then each round:
 
 1. waits once with `deadline` through `EventSource`; the headless backend
    never blocks and returns at once;
@@ -469,11 +472,16 @@ of a surface, and the first after a `Configure` of another size or a buffer
 of another size, starts as transparent black and is drawn, converted and
 presented whole, whatever the damage region holds, so that the buffer is the
 conversion of the frame, with X of `Xrgb8888` always `0xFF`. An empty
-damage region presents nothing. For a surface whose buffer is presented and
-not released, `present` returns `ShellError::Platform(PlatformError::Busy)`
-before anything changes; after an error of `buffer`, of the rasterizer or
-of the conversion of a new frame, too, the frame and the buffer are as they
-were. Its other errors are
+damage region presents nothing. Before it asks for the buffer, `present`
+prepares the coverage masks of the glyph runs of `list` in the glyph cache
+of the font set, and the rasterizer draws the glyphs from the cache; before
+a round has fetched the fonts, the shell has no font set, and glyph runs
+fail with a missing glyph. For a surface whose buffer is presented and not
+released, `present` returns `ShellError::Platform(PlatformError::Busy)`, and
+for glyph runs that the cache cannot prepare, such as glyphs of a font
+outside the font set, `ShellError::Glyphs`, both before anything changes;
+after an error of `buffer`, of the rasterizer or of the conversion of a new
+frame, too, the frame and the buffer are as they were. Its other errors are
 `Render`, for an error of the rasterizer, such as a missing glyph or a
 damage region that does not fit the frame, `Convert`, for a buffer whose
 bytes do not match its description, and `FrameTooLarge`, for a previous
@@ -490,13 +498,13 @@ an optional dependency on `kosmo-testkit` and nothing else, so ordinary
 builds and tests of `kosmo-ui` compile no probe code and do not depend on
 `kosmo-testkit`.
 
-`run(platform, app, port, resources)` runs a shell until it stops and then
+`run(platform, app, port)` runs a shell until it stops and then
 calls `shutdown` once. It runs each round with the `next_deadline` that the
 round before left. It returns an `ExitStatus` with the `reason` and what
 `shutdown` returned: `ExitReason::Disconnected` when a port returns
 `PlatformError::Disconnected`, which is how applications of the first
-release end; `ExitReason::MissingResource` when a listed resource does not
-exist before the first round; and `ExitReason::Failed` with the
+release end; `ExitReason::MissingResource` when a font does not exist
+before the first round; and `ExitReason::Failed` with the
 `ShellError` of any other error. Exit codes exist only at the entry of a
 program, which maps the status to one. `run` runs on the calling thread and
 creates no threads.
@@ -600,9 +608,9 @@ no wall-clock time; review checks these, as the
   not released makes `run_round` return
   `ShellError::Platform(PlatformError::Busy)` after both steps, and `run`
   then stops with `ExitReason::Failed`; rounds hold no frames yet.
-- The resources that the shell fetches go nowhere until the font set of
-  `kosmo-text` exists, and presentation has no glyph coverage, so a frame
-  with glyph runs fails with a missing glyph.
+- Rounds do not lay text out: a driver that presents text lays it out with
+  a font set of its own, built from the same bytes, and a frame with glyph
+  runs presented before the first round fails with a missing glyph.
 - With a backend that never blocks, such as the headless backend, a wait
   without events returns at once, so `run` keeps running rounds until the
   platform disconnects or fails; drivers of such a backend use
@@ -802,18 +810,20 @@ wall clock.
     `paint::tests::a_box_of_a_control_that_does_not_exist_is_refused`,
     `paint::tests::a_control_ends_only_the_groups_it_starts`,
     `paint::tests::the_groups_count_toward_the_limit_of_the_list`.
-17. A round of the shell fetches the listed resources before its first wait
+17. A round of the shell fetches the two fonts before its first wait
     and never again, waits with its deadline, reads the clock, takes the
     job reports and hands the effects to the execution port, in this order;
     the wait after a round with receipts has the round's time as its
     deadline, and while jobs are unfinished the polling deadline; `Key`,
     `FocusIn` and `FocusOut` become the round's events in their order,
-    `Configure` sets the surface's size, and a missing resource stops the
-    first round before its wait. Tests: `shell::tests::`
+    `Configure` sets the surface's size, and a missing font, or bytes that
+    are not the two fonts, stop the first round before its wait. Tests:
+    `shell::tests::`
     `a_round_waits_reads_the_clock_takes_reports_and_runs_both_steps_in_order`,
     `while_jobs_run_the_next_wait_has_the_polling_deadline`,
     `platform_events_become_round_events_and_the_shell_handles_the_others`,
-    `a_missing_resource_stops_the_first_round_before_its_wait`.
+    `a_missing_resource_stops_the_first_round_before_its_wait`,
+    `bytes_that_are_not_the_fonts_stop_the_first_round_before_its_wait`.
 18. The tree updates and frames of an output go to the platform in their
     order, and a frame for a presented buffer stops the delivery with
     `Busy`; presentation draws into the previous frame and converts only
@@ -825,7 +835,11 @@ wall clock.
     width or height, gives a new previous frame, which has 4 bytes per
     pixel also for an RGB565 buffer; on the headless backend, what the
     shell presents is what it reads back, and a new previous frame is
-    presented whole whatever its damage. Tests: `shell::tests::`
+    presented whole whatever its damage. Glyph runs are drawn from the
+    glyph cache of the fetched fonts, a run of a font outside the font set
+    is refused before the buffer is asked for, and the ASCII string that
+    the shell presents on the headless backend is the pixel golden of
+    `kosmo-text` byte for byte. Tests: `shell::tests::`
     `the_updates_and_frames_of_an_output_go_to_the_platform_in_order`,
     `a_frame_of_an_output_for_a_presented_buffer_stops_the_delivery_with_busy`,
     `presenting_converts_only_the_damage_of_the_frame_into_the_buffer`,
@@ -836,13 +850,15 @@ wall clock.
     `a_frame_beyond_the_buffer_limits_is_refused`,
     `a_configure_with_a_new_size_drops_the_previous_frame`,
     `a_buffer_of_another_size_without_a_configure_gets_a_new_frame`,
-    `an_rgb565_buffer_takes_the_conversion_of_a_frame_of_4_bytes_per_pixel`;
+    `an_rgb565_buffer_takes_the_conversion_of_a_frame_of_4_bytes_per_pixel`,
+    `glyph_runs_are_drawn_from_the_glyph_cache_of_the_fetched_fonts`;
     `framework/backend-headless/tests/shell.rs`:
     `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`,
-    `a_new_previous_frame_is_presented_whole_whatever_its_damage`.
+    `a_new_previous_frame_is_presented_whole_whatever_its_damage`,
+    `text_that_the_shell_presents_is_the_golden_of_kosmo_text`.
 19. `run` waits with the deadline that each round leaves, and when the
     platform disconnects it calls `shutdown` and returns
-    `ExitReason::Disconnected`; when a resource is missing at start-up, by
+    `ExitReason::Disconnected`; when a font is missing at start-up, by
     an injected fault or because the backend's table lacks it, it calls
     `shutdown` before any wait and returns `ExitReason::MissingResource`;
     any other error of a resource or of a wait stops it at once with
