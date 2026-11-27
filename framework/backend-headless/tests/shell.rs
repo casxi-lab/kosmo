@@ -1,7 +1,8 @@
 //! The shell of the framework core on the headless backend: `run` returns
-//! distinct exit statuses when the platform disconnects and when a resource
-//! is missing at start-up, shutting the backend down in both cases, and a
-//! frame that the shell presents is what the backend reads back.
+//! distinct exit statuses when the platform disconnects, when a resource is
+//! missing at start-up and when another error stops it, shutting the
+//! backend down in each case, and a frame that the shell presents is what
+//! the backend reads back.
 
 // These tests need the test hooks: the check builds this package once
 // more with them, and a build without them compiles this file empty.
@@ -132,6 +133,35 @@ fn run_returns_another_status_when_a_resource_is_missing_at_start_up() {
     let status = run(&mut self::backend(), Boxes, NoJobs, &[FONT, absent]);
     assert_eq!(status.reason, ExitReason::MissingResource(absent));
     assert_eq!(status.shutdown, Ok(()));
+}
+
+#[test]
+fn run_stops_at_any_other_error_with_a_failure_and_shuts_down() {
+    // A resource that fails otherwise than as missing. The shell runs no
+    // further round, so the disconnection that waits at the wait is never
+    // reached.
+    let mut resource = backend();
+    resource
+        .inject_fault(FaultPort::Resource, PlatformError::Backend)
+        .unwrap();
+    resource
+        .inject_fault(FaultPort::Wait, PlatformError::Disconnected)
+        .unwrap();
+    let status = run(&mut resource, Boxes, NoJobs, &[FONT]);
+    let failed = ExitReason::Failed(ShellError::Platform(PlatformError::Backend));
+    assert_eq!(status.reason, failed);
+    assert_ne!(status.reason, ExitReason::MissingResource(FONT));
+    assert_eq!(status.shutdown, Ok(()));
+    assert_eq!(resource.resource(FONT), Err(PlatformError::Disconnected));
+
+    // A wait that fails.
+    let mut wait = backend();
+    wait.inject_fault(FaultPort::Wait, PlatformError::Backend)
+        .unwrap();
+    let status = run(&mut wait, Boxes, NoJobs, &[FONT]);
+    assert_eq!(status.reason, failed);
+    assert_eq!(status.shutdown, Ok(()));
+    assert_eq!(wait.resource(FONT), Err(PlatformError::Disconnected));
 }
 
 #[test]

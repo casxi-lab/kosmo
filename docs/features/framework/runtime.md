@@ -811,30 +811,39 @@ wall clock.
     `platform_events_become_round_events_and_the_shell_handles_the_others`,
     `a_missing_resource_stops_the_first_round_before_its_wait`.
 18. The tree updates and frames of an output go to the platform in their
-    order; presentation draws into the previous frame and converts only the
-    damage into the buffer, presents a buffer again only after its release,
-    presents nothing for an empty damage region, changes nothing when the
-    frame cannot be drawn, refuses a previous frame beyond the buffer
-    limits, and a `Configure` of another size drops the previous frame; on
-    the headless backend, what the shell presents is what it reads back.
-    Tests: `shell::tests::`
+    order, and a frame for a presented buffer stops the delivery with
+    `Busy`; presentation draws into the previous frame and converts only
+    the damage into the buffer, presents a buffer again only after its
+    release, presents nothing for an empty damage region, changes nothing
+    when the frame cannot be drawn, presents nothing into a buffer that
+    does not take the frame, refuses a previous frame beyond the buffer
+    limits, and a `Configure` of another size, or a buffer of another
+    width or height, gives a new previous frame, which has 4 bytes per
+    pixel also for an RGB565 buffer; on the headless backend, what the
+    shell presents is what it reads back. Tests: `shell::tests::`
     `the_updates_and_frames_of_an_output_go_to_the_platform_in_order`,
+    `a_frame_of_an_output_for_a_presented_buffer_stops_the_delivery_with_busy`,
     `presenting_converts_only_the_damage_of_the_frame_into_the_buffer`,
     `a_presented_buffer_is_not_presented_again_until_it_is_released`,
     `an_empty_damage_region_presents_nothing`,
     `a_frame_that_cannot_be_drawn_changes_nothing`,
+    `a_buffer_that_does_not_take_the_frame_is_not_presented`,
     `a_frame_beyond_the_buffer_limits_is_refused`,
-    `a_configure_with_a_new_size_drops_the_previous_frame`;
+    `a_configure_with_a_new_size_drops_the_previous_frame`,
+    `a_buffer_of_another_size_without_a_configure_gets_a_new_frame`,
+    `an_rgb565_buffer_takes_the_conversion_of_a_frame_of_4_bytes_per_pixel`;
     `framework/backend-headless/tests/shell.rs`:
     `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`.
 19. `run` waits with the deadline that each round leaves, and when the
     platform disconnects it calls `shutdown` and returns
     `ExitReason::Disconnected`; when a resource is missing at start-up, by
     an injected fault or because the backend's table lacks it, it calls
-    `shutdown` before any wait and returns `ExitReason::MissingResource`.
-    Tests: `shell::tests::`
+    `shutdown` before any wait and returns `ExitReason::MissingResource`;
+    any other error of a resource or of a wait stops it at once with
+    `ExitReason::Failed`, and it calls `shutdown`. Tests: `shell::tests::`
     `run_waits_with_the_deadline_that_each_round_leaves_and_shuts_down`,
     `run_shuts_down_and_reports_a_missing_resource_before_any_wait`;
     `framework/backend-headless/tests/shell.rs`:
     `run_shuts_down_and_returns_when_the_platform_disconnects`,
-    `run_returns_another_status_when_a_resource_is_missing_at_start_up`.
+    `run_returns_another_status_when_a_resource_is_missing_at_start_up`,
+    `run_stops_at_any_other_error_with_a_failure_and_shuts_down`.

@@ -8,7 +8,7 @@ use kosmo_platform::{
     ResourceProvider, SurfacePort, SurfaceRequest,
 };
 use kosmo_render::{Color, Command, FontId, Glyph, GlyphId, ListBuilder, RenderError};
-use kosmo_types::{DamageRect, Fx, KeyAction, KeyMeaning, NamedKey, Point, Rect, Size};
+use kosmo_types::{DamageRect, Fx, KeyAction, KeyMeaning, NamedKey, Point, Rect, Size, convert};
 
 use super::*;
 use crate::command::{EVALUATE_SELECTION, MOVE_LEFT};
@@ -216,6 +216,15 @@ fn damage(fake: &Fake, rects: &[(u32, u32, u32, u32)]) -> Damage {
     damage
 }
 
+/// Returns the release of the surface's buffer through a round, so that the
+/// shell presents on it again.
+fn release(shell: &mut Shell<TestApp>, fake: &mut Fake) {
+    fake.in_flight = false;
+    fake.batches
+        .push_back(vec![PlatformEvent::Released { surface: SURFACE }]);
+    shell.run_round(fake, None).unwrap();
+}
+
 #[test]
 fn a_round_waits_reads_the_clock_takes_reports_and_runs_both_steps_in_order() {
     let log = Log::default();
@@ -368,6 +377,27 @@ fn the_updates_and_frames_of_an_output_go_to_the_platform_in_order() {
 }
 
 #[test]
+fn a_frame_of_an_output_for_a_presented_buffer_stops_the_delivery_with_busy() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let mut shell = calculator(&log, 0);
+    let mut output = shell.run_round(&mut fake, None).unwrap().output;
+    let whole = damage(&fake, &[(0, 0, 4, 2)]);
+    output
+        .frames
+        .push((SURFACE, fill(0, 0, 4, 2, Color::opaque(1, 2, 3)), whole));
+    shell.deliver(&mut fake, &output).unwrap();
+    taken(&log);
+    // The buffer is presented and not released, so the same output's frame
+    // is refused, and the delivery returns the error.
+    assert_eq!(
+        shell.deliver(&mut fake, &output),
+        Err(ShellError::Platform(PlatformError::Busy))
+    );
+    assert!(taken(&log).is_empty());
+}
+
+#[test]
 fn presenting_converts_only_the_damage_of_the_frame_into_the_buffer() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 4, 2, PixelFormat::Xrgb8888);
@@ -472,6 +502,27 @@ fn a_frame_that_cannot_be_drawn_changes_nothing() {
 }
 
 #[test]
+fn a_buffer_that_does_not_take_the_frame_is_not_presented() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    // One byte fewer than its description says.
+    fake.bytes.truncate(31);
+    let mut shell = calculator(&log, 0);
+    let whole = damage(&fake, &[(0, 0, 4, 2)]);
+    let red = fill(0, 0, 4, 2, Color::opaque(255, 0, 0));
+    assert_eq!(
+        shell.present(&mut fake, SURFACE, &red, &whole),
+        Err(ShellError::Convert(ConvertError::TargetLength))
+    );
+    assert_eq!(taken(&log), ["buffer 1"]);
+    assert!(fake.bytes.iter().all(|&byte| byte == 0x11));
+    // Nothing was presented, so the surface is not busy.
+    fake.bytes = vec![0x11; 32];
+    shell.present(&mut fake, SURFACE, &red, &whole).unwrap();
+    assert_eq!(taken(&log), ["buffer 1", "present 1 0,0 4x2"]);
+}
+
+#[test]
 fn a_configure_with_a_new_size_drops_the_previous_frame() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
@@ -500,6 +551,31 @@ fn a_configure_with_a_new_size_drops_the_previous_frame() {
 }
 
 #[test]
+fn a_buffer_of_another_size_without_a_configure_gets_a_new_frame() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let mut shell = calculator(&log, 0);
+    let red = fill(0, 0, 5, 3, Color::opaque(255, 0, 0));
+    // Another width, then another height; no Configure comes between.
+    for (width, height) in [(4, 2), (5, 2), (5, 3)] {
+        fake.desc = BufferDesc::new(width, height, width * 4, PixelFormat::Rgba8Premul).unwrap();
+        fake.bytes = vec![0x11; fake.desc.byte_len() as usize];
+        let whole = damage(&fake, &[(0, 0, width, height)]);
+        shell.present(&mut fake, SURFACE, &red, &whole).unwrap();
+        let frame = shell.surfaces[&SURFACE].frame.as_ref().unwrap();
+        assert_eq!(
+            (frame.desc().width(), frame.desc().height()),
+            (width, height)
+        );
+        assert_eq!(
+            fake.bytes,
+            [255, 0, 0, 255].repeat((width * height) as usize)
+        );
+        release(&mut shell, &mut fake);
+    }
+}
+
+#[test]
 fn a_frame_beyond_the_buffer_limits_is_refused() {
     // An RGB565 buffer of 8,192 by 4,096 pixels holds 64 MiB, the limit;
     // its previous frame, 4 bytes per pixel, would hold twice as many.
@@ -512,6 +588,34 @@ fn a_frame_beyond_the_buffer_limits_is_refused() {
         Err(ShellError::FrameTooLarge)
     );
     assert_eq!(taken(&log), ["buffer 1"]);
+}
+
+#[test]
+fn an_rgb565_buffer_takes_the_conversion_of_a_frame_of_4_bytes_per_pixel() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgb565);
+    let mut shell = calculator(&log, 0);
+    let whole = damage(&fake, &[(0, 0, 4, 2)]);
+    let orange = fill(0, 0, 4, 2, Color::opaque(200, 100, 50));
+    shell.present(&mut fake, SURFACE, &orange, &whole).unwrap();
+    // The buffer has 2 bytes per pixel, its previous frame 4.
+    let frame = shell.surfaces[&SURFACE].frame.as_ref().unwrap();
+    assert_eq!(frame.desc().stride(), 16);
+    let source = BufferDesc::new(4, 2, 16, PixelFormat::Rgba8Premul).unwrap();
+    let mut expected = vec![0; 16];
+    convert(
+        source,
+        &[200, 100, 50, 255].repeat(8),
+        DamageRect::new(0, 0, 4, 2).unwrap(),
+        fake.desc,
+        &mut expected,
+        0,
+        0,
+    )
+    .unwrap();
+    assert_eq!(fake.bytes, expected);
+    // R 24, G 25 and B 6 in a little-endian word.
+    assert_eq!(&fake.bytes[..2], &[0x26, 0xC3]);
 }
 
 #[test]
