@@ -1868,9 +1868,13 @@ steps](../CONTRIBUTING.md#limits-of-the-fetch-and-deps-steps) state. So
 skrifa's resolved features are `autohint_shaping` and `libm`: glifo, an
 optional dependency of vello_cpu that only its `text` feature turns on,
 depends on skrifa with `autohint_shaping`, and Cargo lists it because the
-`libm` feature of vello_cpu names `glifo?/libm`. `cargo tree -e features`
-shows that no build of the framework, for either target, turns on
-`autohint_shaping`.
+`libm` feature of vello_cpu names `glifo?/libm`. Since the resolved features
+already list it, the deps step would not see a build that turns on
+`autohint_shaping`. The manifests of the framework turn it on in no build:
+the layout step lets no feature of a member name a feature of an external
+dependency, so only the declarations, which the allow entries compare,
+choose the features of skrifa. `cargo tree -e features -i skrifa` for both
+targets confirms it as a cross-check.
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |
@@ -1884,8 +1888,11 @@ shows that no build of the framework, for either target, turns on
 - Each row is one direct dependency of one crate; a package that two crates
   depend on takes two rows.
 - Changing the version or the features of a listed package is a pull request of
-  its own, checked by the deps step and with the goldens updated by
-  category. Adding or replacing a package is a design change.
+  its own, checked by the deps step, which compares the declarations with the
+  allow entries, and with the goldens updated by category. The layout step
+  keeps the features of members from changing the features of a listed
+  package outside its declaration. Adding or replacing a package is a design
+  change.
 
 ## Display stack
 

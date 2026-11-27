@@ -195,6 +195,15 @@ attribute of a library root, do not. It checks:
   `rev`, `registry`, `registry-index` or `package`, and no manifest has
   `[patch]` or `[replace]` or the spellings `dev_dependencies`,
   `build_dependencies`, `default_features`, `proc_macro` and `crate_type`;
+- features of members: no feature of a member names an external dependency
+  of the member, neither as `<dependency>/<feature>` or
+  `<dependency>?/<feature>`, which turn on a feature of it, nor as
+  `dep:<dependency>`, which turns it on, nor as a bare `<dependency>` that is
+  not a feature of the member, which turns on an optional dependency as
+  `dep:` does. Features of members name only crates of the table, so within
+  the repository only declarations, which the allow entries of
+  [the deps step](#the-fetch-and-deps-steps) compare, choose the features of
+  crates.io packages;
 - directions: every internal dependency that a manifest declares, in
   `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]` and their
   `[target.*]` forms under any condition, follows the directions of the
@@ -854,7 +863,18 @@ The fetch and deps steps have limits:
   of vello_cpu, although no feature turns the dependency on: the allowlist
   lists it and the packages that only it brings in, the features that they
   turn on count in the resolved features of the packages they depend on,
-  and the build compiles none of those packages.
+  and the build compiles none of those packages. A feature that the
+  resolved features list only because of such a package, as they list
+  `autohint_shaping` of skrifa only because of glifo, changes neither them
+  nor a declaration nor the allowlist when a build turns it on, so these
+  steps would not see such a build. Within the repository only a
+  declaration, which an allow entry compares, can turn it on: the layout
+  step lets no feature of a member name a feature of an external
+  dependency, and the commands of the check turn on features of crates of
+  the repository alone. Review reads
+  `cargo tree -e features --all-features --workspace -i <package>` with
+  `--target` set to each target, only as a cross-check; the tree without
+  `-i` does not show a feature that only a feature of a member turns on.
 - Cargo compares a package with the checksum in `Cargo.lock` only when it
   downloads it. It does not compare again the sources that it unpacked
   into a local `CARGO_HOME` or the `.crate` files that it keeps there, so a

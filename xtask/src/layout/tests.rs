@@ -1587,6 +1587,89 @@ fn crates_of_the_table_are_declared_only_with_their_path() {
     );
 }
 
+/// The problems of the valid layout in which `kosmo-render` declares
+/// skrifa, as an optional dependency when `optional` holds, and has the
+/// feature table `features`. As for `kosmo-text` in this repository, other
+/// packages may already turn on skrifa's `autohint_shaping`, so its
+/// resolved features stay the same when a member turns it on.
+fn external_features_with(features: &str, optional: bool) -> Vec<String> {
+    problems_with(|files| {
+        declare(
+            files,
+            "framework",
+            "skrifa = { version = \"=0.49.0\", default-features = false, features = [\"libm\"] }",
+        );
+        let entry = if optional {
+            "skrifa = { workspace = true, optional = true }"
+        } else {
+            "skrifa.workspace = true"
+        };
+        append(
+            files,
+            "framework/render/Cargo.toml",
+            &format!("\n[features]\n{features}\n\n[dependencies]\n{entry}\n"),
+        );
+    })
+}
+
+#[test]
+fn features_of_members_name_no_external_dependency() {
+    let names = |feature: &str, value: &str| {
+        format!(
+            "framework/render/Cargo.toml: the feature {feature} names the external dependency skrifa in {value}; features of a member name only crates of the layout table, so that the features of external packages come only from declarations, which the allow entries compare"
+        )
+    };
+    // A default feature and a feature that is off by default, each turning
+    // on a feature of skrifa that its declaration leaves off.
+    assert_eq!(
+        external_features_with("default = [\"skrifa/autohint_shaping\"]", false),
+        [names("default", "skrifa/autohint_shaping")]
+    );
+    assert_eq!(
+        external_features_with("hint = [\"skrifa/autohint_shaping\"]", false),
+        [names("hint", "skrifa/autohint_shaping")]
+    );
+    // The weak form, and the two forms that turn on an optional dependency.
+    assert_eq!(
+        external_features_with(
+            "hint = [\"skrifa?/autohint_shaping\"]\nfonts = [\"dep:skrifa\"]",
+            true
+        ),
+        [
+            names("fonts", "dep:skrifa"),
+            names("hint", "skrifa?/autohint_shaping"),
+        ]
+    );
+    assert_eq!(
+        external_features_with("fonts = [\"skrifa\"]", true),
+        [names("fonts", "skrifa")]
+    );
+}
+
+#[test]
+fn features_of_members_may_name_crates_of_the_table_and_their_own_features() {
+    // A bare value that names a feature of the crate is that feature, also
+    // when a dependency has the same name.
+    let found = problems_with(|files| {
+        declare(
+            files,
+            "framework",
+            "skrifa = { version = \"=0.49.0\", default-features = false, features = [\"libm\"] }",
+        );
+        append(
+            files,
+            "framework/render/Cargo.toml",
+            "\n[features]\nskrifa = []\nhint = [\"skrifa\"]\n\n[dependencies]\nskrifa = { workspace = true, optional = true }\n",
+        );
+        append(
+            files,
+            "framework/ui/Cargo.toml",
+            "\n[features]\nhint = [\"kosmo-render/hint\", \"kosmo-types/x\", \"kosmo-render?/skrifa\"]\n",
+        );
+    });
+    assert_eq!(found, Vec::<String>::new());
+}
+
 // Directions.
 
 #[test]
