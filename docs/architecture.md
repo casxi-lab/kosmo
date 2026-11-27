@@ -888,7 +888,8 @@ and their limits.
 - No core library declares an external window, terminal, async-runtime,
   `libc` or system font discovery package as a direct dependency; such a
   package reaches a core library only through test support in test builds,
-  as `libc` does through `sha2` of `kosmo-testkit`. `HashMap` and `HashSet`
+  the builds with the feature `call-probes` among them, as `libc` does
+  through `sha2` of `kosmo-testkit`. `HashMap` and `HashSet`
   with the default hasher are not listed; determinism belongs to the
   [rendering and determinism rules](#rendering-text-and-determinism). The
   list forbids; it is not an allow-list of `std` interfaces. Adding
