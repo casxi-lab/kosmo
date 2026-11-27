@@ -15,15 +15,24 @@ use crate::{commits, deps, docs, fetch, golden, layout, receipt, workflows};
 /// layout table, which the fetch and deps steps read from the table.
 pub const WORKSPACES: [&str; 4] = ["xtask", "display", "framework", "desktop"];
 
-/// The packages that the clippy and test steps build once more with a
-/// feature of their own turned on, as `(workspace, package, feature)`: the
-/// test hooks of the headless backend, which only tests turn on. The
-/// workspace's command builds the package without the feature, which
-/// compiles the test files that `#![cfg(feature = ...)]` gates on it
-/// empty; this pass, run after the workspace commands, builds the package
-/// with it and runs them.
-pub const FEATURE_PASSES: [(&str, &str, &str); 1] =
-    [("framework", "kosmo-backend-headless", "test-hooks")];
+/// The packages that the clippy and test steps build once more with
+/// features of their own turned on, as `(workspace, package, features)`,
+/// the features separated by commas: the headless backend with its test
+/// hooks, which only tests turn on, and with its test hooks and call
+/// probes, which turn on the probes of its dev-dependencies for its test
+/// of call relations, `tests/call_relations.rs`. The workspace's command
+/// builds the package without them, which compiles the test files that
+/// `#![cfg(feature = ...)]` gates on them empty; each pass, run after the
+/// workspace commands, builds the package with its features and runs the
+/// test files that they turn on.
+pub const FEATURE_PASSES: [(&str, &str, &str); 2] = [
+    ("framework", "kosmo-backend-headless", "test-hooks"),
+    (
+        "framework",
+        "kosmo-backend-headless",
+        "test-hooks,call-probes",
+    ),
+];
 
 /// The workspaces that the clippy step lints once more without one of
 /// their members, as `(workspace, member)`: `kosmo-testkit` turns on the
@@ -504,7 +513,7 @@ mod tests {
                     expected.push("framework/Cargo.toml");
                 }
                 if step.name == "clippy" || step.name == "test" {
-                    expected.push("framework/Cargo.toml");
+                    expected.extend(["framework/Cargo.toml"; 2]);
                 }
                 assert_eq!(targets, expected, "{}", step.name);
             }
@@ -512,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    fn clippy_and_test_build_the_test_hooks_in_a_pass_of_their_own() {
+    fn clippy_and_test_build_the_test_hooks_and_the_call_probes_in_passes_of_their_own() {
         for step in steps() {
             if step.name != "clippy" && step.name != "test" {
                 continue;
@@ -520,7 +529,7 @@ mod tests {
             let Action::Commands(commands) = step.action else {
                 panic!("the {} step runs Cargo", step.name);
             };
-            let (pass, workspaces) = commands.split_last().expect("there are commands");
+            let (workspaces, passes) = commands.split_at(commands.len() - 2);
             for cmd in workspaces {
                 assert!(
                     !cmd.args.iter().any(|arg| arg == "--features"),
@@ -529,18 +538,27 @@ mod tests {
                 );
             }
             let wanted = [
-                "--package",
-                "kosmo-backend-headless",
-                "--features",
-                "test-hooks",
+                ("test-hooks", "kosmo-backend-headless_test-hooks_ms"),
+                (
+                    "test-hooks,call-probes",
+                    "kosmo-backend-headless_test-hooks,call-probes_ms",
+                ),
             ];
-            assert!(
-                pass.args.windows(4).any(|window| window == wanted),
-                "{}",
-                pass.shown()
-            );
-            assert!(!pass.args.iter().any(|arg| arg == "--workspace"));
-            assert_eq!(pass.timing, "kosmo-backend-headless_test-hooks_ms");
+            for (pass, (features, timing)) in passes.iter().zip(wanted) {
+                let window = [
+                    "--package",
+                    "kosmo-backend-headless",
+                    "--features",
+                    features,
+                ];
+                assert!(
+                    pass.args.windows(4).any(|args| args == window),
+                    "{}",
+                    pass.shown()
+                );
+                assert!(!pass.args.iter().any(|arg| arg == "--workspace"));
+                assert_eq!(pass.timing, timing);
+            }
         }
     }
 

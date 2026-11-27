@@ -47,10 +47,13 @@ order and stops at the first one that fails:
    this pass builds the other crates as ordinary builds do, without them,
    so that code outside tests cannot name them. `clippy` and `test` also
    build each package that `FEATURE_PASSES` lists once more with its
-   feature on, so far `kosmo-backend-headless` with `test-hooks`: the
-   workspace's command builds it without its test hooks, which compiles the
-   test files that `#![cfg(feature = "test-hooks")]` gates on them empty,
-   and this pass builds the hooks and runs those tests;
+   features on, so far `kosmo-backend-headless` twice, with `test-hooks`
+   and with `test-hooks,call-probes`: the workspace's command builds it
+   without them, which compiles the test files that `#![cfg(feature = ...)]`
+   gates on them empty. The first pass builds the test hooks and runs those
+   tests; the second also turns on the call probes of `kosmo-testkit` and
+   `kosmo-ui` and runs the test of call relations,
+   `tests/call_relations.rs`, as well;
 5. `docs`: relative links and anchors in the Markdown files;
 6. `commits`: the header of every commit message in `<base>..HEAD` keeps to
    the rules of the commit message hook. The base is the commit that the

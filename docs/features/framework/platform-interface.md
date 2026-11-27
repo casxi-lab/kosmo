@@ -291,9 +291,10 @@ single-round entry records `kosmo-ui::run_round`. The test of call relations
 owns its test binary, `tests/call_relations.rs` of the headless backend, and
 compiles empty without the feature `call-probes` of the headless backend,
 which turns on the call probes of `kosmo-testkit` and `kosmo-ui` for its tests
-only. These commands run from the repository root; the first two run the
-tests of scripts and the digests, and of the runner on the headless backend,
-and the third the test of call relations:
+only. `cargo xtask check` runs it in its test pass of the headless backend
+with `test-hooks,call-probes`. These commands run from the repository root;
+the first two run the tests of scripts and the digests, and of the runner on
+the headless backend, and the third the test of call relations:
 
 ```sh
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-testkit
