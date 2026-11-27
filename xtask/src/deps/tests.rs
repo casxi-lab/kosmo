@@ -1493,6 +1493,8 @@ fn with_parley() -> Model {
 // allow entry of the text stack keeps parley's default features off, which
 // turn on its system font back end. Like the two cases above, it is change
 // detection: entries rewritten as the deps step prints them pass again.
+// With parley's real closure, the fontconfig back end on Linux also needs a
+// build-script exception, which the printed entries do not give.
 
 #[test]
 fn the_allow_entry_detects_system_font_discovery_turned_on_for_the_text_stack() {
