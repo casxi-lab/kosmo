@@ -1626,11 +1626,13 @@ Fonts are loaded through the platform interface:
 
 - `ResourceProvider::resource` returns the bytes of a resource. `ResourceId` is
   a kosmo value type; in the first release it names one of the two fonts by its
-  file name in the asset manifest.
+  file name in the asset manifest, which `kosmo-text` exports as `SANS_FILE`
+  and `MONO_FILE`.
 - Before the first round, `run` and the single-round entry obtain both fonts and
-  hand them to the font set constructor of `kosmo-text`. `kosmo-text` accepts
-  only bytes, does not depend on `kosmo-platform`, holds no platform handle and
-  stays a core library.
+  hand them to the font set constructor of `kosmo-text`, `FontSet::new`, which
+  registers only them with fontique, with system fonts off. `kosmo-text`
+  accepts only bytes, does not depend on `kosmo-platform`, holds no platform
+  handle and stays a core library.
 - Each backend gets its resource table, from identifiers to bytes, from whoever
   builds it, and reads no files. The builder, a driver or the application's
   assembly, takes the bytes from the asset directory, with `include_bytes!`
