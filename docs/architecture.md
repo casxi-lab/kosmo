@@ -885,12 +885,14 @@ and their limits.
   | Input and output | All of `std::io`; `print!`, `println!`, `eprint!`, `eprintln!`, `dbg!` |
   | kalyx | `MonotonicClock`, and `kalyx::Context::new`, which builds one; the fallback line uses `Context::with_observers` |
 
-- External window, terminal, async-runtime, `libc` and system font discovery
-  packages never enter a core library. `HashMap` and `HashSet` with the
-  default hasher are not listed; determinism belongs to the [rendering and
-  determinism rules](#rendering-text-and-determinism). The list forbids; it is
-  not an allow-list of `std` interfaces. Adding frontends adds no external
-  dependencies to core libraries.
+- No core library declares an external window, terminal, async-runtime,
+  `libc` or system font discovery package as a direct dependency; such a
+  package reaches a core library only through test support in test builds,
+  as `libc` does through `sha2` of `kosmo-testkit`. `HashMap` and `HashSet`
+  with the default hasher are not listed; determinism belongs to the
+  [rendering and determinism rules](#rendering-text-and-determinism). The
+  list forbids; it is not an allow-list of `std` interfaces. Adding
+  frontends adds no external dependencies to core libraries.
 - Capabilities are injected. Time comes from an injected clock (job deadlines
   in the job layer, the framework clock in the framework); real clocks are
   built only in boundary crates. Computation goes through the job layer. Fonts
