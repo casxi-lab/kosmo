@@ -8,6 +8,7 @@ use kosmo_platform::{
     ResourceProvider, SurfacePort, SurfaceRequest,
 };
 use kosmo_render::{Color, Command, FontId, Glyph, GlyphId, ListBuilder, RenderError};
+use kosmo_text::{GlyphError, MONO, SANS};
 use kosmo_types::{DamageRect, Fx, KeyAction, KeyMeaning, NamedKey, Point, Rect, Size, convert};
 
 use super::*;
@@ -34,7 +35,7 @@ struct Fake {
 
 impl Fake {
     /// A platform with a `width` by `height` buffer of `format` whose bytes
-    /// are all `0x11`, the resource `font` and its clock at 7.
+    /// are all `0x11`, the two fonts as resources and its clock at 7.
     fn new(log: &Log, width: u32, height: u32, format: PixelFormat) -> Fake {
         let stride = width * format.bytes_per_pixel();
         let desc = BufferDesc::new(width, height, stride, format).unwrap();
@@ -43,7 +44,10 @@ impl Fake {
             batches: VecDeque::new(),
             disconnect: false,
             clock: MonoTime::from_nanos(7),
-            resources: BTreeMap::from([(FONT, vec![1, 2, 3])]),
+            resources: BTreeMap::from([
+                (SANS_RESOURCE, SANS_BYTES.to_vec()),
+                (MONO_RESOURCE, MONO_BYTES.to_vec()),
+            ]),
             desc,
             bytes: vec![0x11; desc.byte_len() as usize],
             in_flight: false,
@@ -148,7 +152,17 @@ impl Platform for Fake {
     }
 }
 
-const FONT: ResourceId = ResourceId::new("font.ttf");
+/// The bytes of the two fonts, from the asset directory of `kosmo-text`.
+const SANS_BYTES: &[u8] =
+    include_bytes!("../../../text/assets/fonts/firasans/FiraSans-Regular.ttf");
+const MONO_BYTES: &[u8] =
+    include_bytes!("../../../text/assets/fonts/firamono/FiraMono-Regular.ttf");
+
+/// The calls of the shell that fetch the fonts, as the platform logs them.
+const FETCHES: [&str; 2] = [
+    "resource firasans/FiraSans-Regular.ttf",
+    "resource firamono/FiraMono-Regular.ttf",
+];
 
 /// An application whose root submits a job on `Execute` and whose focused
 /// line handles `MoveLeft`, and its port, which shares `log` and reports
@@ -173,7 +187,7 @@ fn calculator(log: &Log, unfinished: usize) -> Shell<TestApp> {
         calls: Some(Rc::clone(log)),
         ..TestPort::default()
     };
-    Shell::new(app, port, &[FONT])
+    Shell::new(app, port)
 }
 
 fn focus_in() -> PlatformEvent {
@@ -233,12 +247,13 @@ fn a_round_waits_reads_the_clock_takes_reports_and_runs_both_steps_in_order() {
     let mut shell = calculator(&log, 0);
 
     let first = shell.run_round(&mut fake, shell.next_deadline()).unwrap();
-    // The resource before the first wait, then the wait, the clock, the
+    // The fonts before the first wait, then the wait, the clock, the
     // reports and the effect of the first step.
     assert_eq!(
         taken(&log),
         [
-            "resource font.ttf",
+            FETCHES[0],
+            FETCHES[1],
             "wait 0",
             "now",
             "take_reports",
@@ -257,7 +272,7 @@ fn a_round_waits_reads_the_clock_takes_reports_and_runs_both_steps_in_order() {
     assert_eq!(first.output.view, crate::round::ViewPass::Rebuilt);
 
     // The receipt waits for the next round, so its wait does not block;
-    // the resources are not fetched again.
+    // the fonts are not fetched again.
     assert!(shell.has_receipts());
     assert_eq!(shell.next_deadline(), Some(MonoTime::from_nanos(7)));
     let second = shell.run_round(&mut fake, shell.next_deadline()).unwrap();
@@ -331,25 +346,38 @@ fn platform_events_become_round_events_and_the_shell_handles_the_others() {
 fn a_missing_resource_stops_the_first_round_before_its_wait() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
-    let missing = ResourceId::new("missing.ttf");
-    let mut shell = Shell::new(TestApp::default(), TestPort::default(), &[FONT, missing]);
+    let mono = fake.resources.remove(&MONO_RESOURCE).unwrap();
+    let mut shell = Shell::new(TestApp::default(), TestPort::default());
     assert_eq!(
         shell.run_round(&mut fake, None),
-        Err(ShellError::MissingResource(missing))
+        Err(ShellError::MissingResource(MONO_RESOURCE))
     );
-    assert_eq!(taken(&log), ["resource font.ttf", "resource missing.ttf"]);
+    assert_eq!(taken(&log), FETCHES);
     // Nothing ran, so the next round fetches them again.
-    fake.resources.insert(missing, Vec::new());
+    fake.resources.insert(MONO_RESOURCE, mono);
     shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(taken(&log), [FETCHES[0], FETCHES[1], "wait none", "now"]);
+}
+
+#[test]
+fn bytes_that_are_not_the_fonts_stop_the_first_round_before_its_wait() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    // Fira Mono in the place of Fira Sans: the font set takes each family
+    // only once.
+    fake.resources.insert(SANS_RESOURCE, MONO_BYTES.to_vec());
+    let mut shell = Shell::new(TestApp::default(), TestPort::default());
     assert_eq!(
-        taken(&log),
-        [
-            "resource font.ttf",
-            "resource missing.ttf",
-            "wait none",
-            "now"
-        ]
+        shell.run_round(&mut fake, None),
+        Err(ShellError::Fonts(FontSetError::SameFamily))
     );
+    fake.resources.insert(SANS_RESOURCE, vec![1, 2, 3]);
+    assert_eq!(
+        shell.run_round(&mut fake, None),
+        Err(ShellError::Fonts(FontSetError::NotTrueType(SANS)))
+    );
+    assert_eq!(taken(&log), [FETCHES, FETCHES].concat());
+    assert!(shell.fonts.is_none());
 }
 
 #[test]
@@ -475,25 +503,72 @@ fn an_empty_damage_region_presents_nothing() {
     assert!(fake.bytes.iter().all(|&byte| byte == 0x11));
 }
 
+/// A list of one glyph run of glyph 3 of `font` at 10 pixels per em, on
+/// the baseline 2 pixels down.
+fn glyph_run(font: FontId) -> DisplayList {
+    let mut builder = ListBuilder::new();
+    builder
+        .push(Command::Glyphs {
+            font,
+            size: Fx::from_units(640),
+            color: Color::opaque(0, 0, 0),
+            glyphs: vec![Glyph {
+                id: GlyphId::new(3),
+                origin: Point::new(Fx::ZERO, Fx::from_units(128)),
+            }],
+        })
+        .unwrap();
+    builder.finish().unwrap()
+}
+
+#[test]
+fn glyph_runs_are_drawn_from_the_glyph_cache_of_the_fetched_fonts() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let mut shell = calculator(&log, 0);
+    shell.run_round(&mut fake, None).unwrap();
+    taken(&log);
+    let whole = damage(&fake, &[(0, 0, 4, 2)]);
+    // A font outside the font set: the glyph cache refuses the frame
+    // before the shell asks for the buffer.
+    assert_eq!(
+        shell.present(&mut fake, SURFACE, &glyph_run(FontId::new(2)), &whole),
+        Err(ShellError::Glyphs(GlyphError::UnknownFont(FontId::new(2))))
+    );
+    assert!(taken(&log).is_empty());
+    assert!(fake.bytes.iter().all(|&byte| byte == 0x11));
+    // Fira Sans: the cache holds the glyph's mask, and it is drawn as the
+    // rasterizer draws it from a font set of the same bytes.
+    let list = glyph_run(SANS);
+    shell.present(&mut fake, SURFACE, &list, &whole).unwrap();
+    assert_eq!(taken(&log), ["buffer 1", "present 1 0,0 4x2"]);
+    let fonts = shell.fonts.as_ref().unwrap();
+    assert_eq!(fonts.glyphs().entries(), 1);
+    let mut set = FontSet::new(SANS_BYTES, MONO_BYTES).unwrap();
+    let mut rasterizer = VelloRasterizer::new();
+    set.prepare(&list, &mut rasterizer).unwrap();
+    let mut expected = new_frame(fake.desc).unwrap();
+    rasterizer
+        .render(
+            &list,
+            &whole,
+            set.glyphs(),
+            &ImageStore::EMPTY,
+            &mut expected,
+        )
+        .unwrap();
+    assert_eq!(fake.bytes, expected.bytes());
+    assert!(fake.bytes.iter().any(|&byte| byte != 0));
+}
+
 #[test]
 fn a_frame_that_cannot_be_drawn_changes_nothing() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
     let mut shell = calculator(&log, 0);
     let whole = damage(&fake, &[(0, 0, 4, 2)]);
-    let mut builder = ListBuilder::new();
-    builder
-        .push(Command::Glyphs {
-            font: FontId::new(0),
-            size: Fx::from_units(640),
-            color: Color::opaque(0, 0, 0),
-            glyphs: vec![Glyph {
-                id: GlyphId::new(3),
-                origin: Point::default(),
-            }],
-        })
-        .unwrap();
-    let glyphs = builder.finish().unwrap();
+    // No round has fetched the fonts, so the shell has no glyph cache.
+    let glyphs = glyph_run(SANS);
     assert!(matches!(
         shell.present(&mut fake, SURFACE, &glyphs, &whole),
         Err(ShellError::Render(RenderError::MissingGlyph(_)))
@@ -655,7 +730,7 @@ fn run_waits_with_the_deadline_that_each_round_leaves_and_shuts_down() {
     fake.batches.push_back(Vec::new());
     fake.disconnect = true;
     let Shell { app, port, .. } = calculator(&log, 1);
-    let status = run(&mut fake, app, port, &[FONT]);
+    let status = run(&mut fake, app, port);
     assert_eq!(
         status,
         ExitStatus {
@@ -667,7 +742,8 @@ fn run_waits_with_the_deadline_that_each_round_leaves_and_shuts_down() {
     assert_eq!(
         taken(&log),
         [
-            "resource font.ttf".to_string(),
+            FETCHES[0].to_string(),
+            FETCHES[1].to_string(),
             "wait 0".to_string(),
             "now".to_string(),
             "take_reports".to_string(),
@@ -685,14 +761,16 @@ fn run_waits_with_the_deadline_that_each_round_leaves_and_shuts_down() {
 fn run_shuts_down_and_reports_a_missing_resource_before_any_wait() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
-    let missing = ResourceId::new("missing.ttf");
-    let status = run(
-        &mut fake,
-        TestApp::default(),
-        TestPort::default(),
-        &[missing],
-    );
-    assert_eq!(status.reason, ExitReason::MissingResource(missing));
+    fake.resources.remove(&SANS_RESOURCE);
+    let status = run(&mut fake, TestApp::default(), TestPort::default());
+    assert_eq!(status.reason, ExitReason::MissingResource(SANS_RESOURCE));
     assert_eq!(status.shutdown, Ok(()));
-    assert_eq!(taken(&log), ["resource missing.ttf", "shutdown"]);
+    assert_eq!(taken(&log), [FETCHES[0], "shutdown"]);
+    // Bytes that are not the fonts end it with a failure.
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    fake.resources.insert(MONO_RESOURCE, Vec::new());
+    let status = run(&mut fake, TestApp::default(), TestPort::default());
+    let fonts = ShellError::Fonts(FontSetError::NotTrueType(MONO));
+    assert_eq!(status.reason, ExitReason::Failed(fonts));
+    assert_eq!(taken(&log), [FETCHES[0], FETCHES[1], "shutdown"]);
 }

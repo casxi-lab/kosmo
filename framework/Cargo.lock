@@ -386,6 +386,7 @@ dependencies = [
  "kosmo-platform",
  "kosmo-render",
  "kosmo-testkit",
+ "kosmo-text",
  "kosmo-types",
  "kosmo-ui",
 ]
@@ -477,6 +478,7 @@ dependencies = [
  "kosmo-platform",
  "kosmo-render",
  "kosmo-testkit",
+ "kosmo-text",
  "kosmo-types",
 ]
 

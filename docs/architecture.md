@@ -1097,11 +1097,13 @@ against the new version instead of being shown as current and at once as stale.
   second step runs the passes from the view to accessibility and outputs the
   update regions, the display lists, the accessibility updates of each surface,
   the next deadline and the event handling record.
-- Before the first round, `run` obtains the [fonts](#fonts). In each round it
-  waits for platform events with the round's deadline, reads the clock once,
-  takes job reports through the execution port, calls the first step, hands the
-  effects to the execution port, calls the second step, pushes the accessibility
-  updates of each surface and, if there are update regions, rasterizes and
+- Before the first round, `run` obtains the [fonts](#fonts) and builds the
+  font set of `kosmo-text` from them. In each round it waits for platform
+  events with the round's deadline, reads the clock once, takes job reports
+  through the execution port, calls the first step, hands the effects to the
+  execution port, calls the second step, pushes the accessibility updates of
+  each surface and, if there are update regions, prepares the glyphs of their
+  display lists in the glyph cache of the font set, rasterizes them and
   presents them. A single-round entry, provisionally `run_round`, lets a driver
   advance the framework one round at a time.
 - The wait does not block while receipts or messages are pending. Otherwise its
@@ -1658,16 +1660,22 @@ Fonts are loaded through the platform interface:
   a kosmo value type; in the first release it names one of the two fonts by its
   file name in the asset manifest, which `kosmo-text` exports as `SANS_FILE`
   and `MONO_FILE`.
-- Before the first round, `run` and the single-round entry obtain both fonts and
-  hand them to the font set constructor of `kosmo-text`, `FontSet::new`, which
-  registers only them with fontique, with system fonts off. `kosmo-text`
-  accepts only bytes, does not depend on `kosmo-platform`, holds no platform
-  handle and stays a core library.
+- Before the first round, `run` and the single-round entry obtain both fonts,
+  Fira Sans and then Fira Mono, and hand them to the font set constructor of
+  `kosmo-text`, `FontSet::new`, which registers only them with fontique, with
+  system fonts off. `kosmo-text` accepts only bytes, does not depend on
+  `kosmo-platform`, holds no platform handle and stays a core library. Bytes
+  that are not the two fonts stop the shell with a distinct error before the
+  first round.
+- The shell keeps the font set. Before it rasterizes a frame, it prepares the
+  coverage masks of the frame's glyph runs in the glyph cache of the set and
+  hands the cache to the rasterizer as the frame's glyph coverage.
 - Each backend gets its resource table, from identifiers to bytes, from whoever
   builds it, and reads no files. The builder, a driver or the application's
   assembly, takes the bytes from the asset directory, with `include_bytes!`
   inside its workspace or by reading the files in a boundary crate; the expected
-  digests are those of the asset manifest.
+  digests are those of the asset manifest. The tests that run the shell on the
+  headless backend embed the two files with `include_bytes!`.
 - A resource missing from the table, or injected as missing through
   `inject_fault`, gives `NotFound` and changes nothing. If `run` meets one at
   start-up, it calls `shutdown` and returns a distinct exit status. The

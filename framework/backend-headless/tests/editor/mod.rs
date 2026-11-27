@@ -27,9 +27,12 @@ use kosmo_jobs::{
     Request, RequestReport, SessionId, Submission, TerminalState,
 };
 use kosmo_math_model::version::Versions;
-use kosmo_platform::{PixelSize, PlatformCaps, PlatformError, Stamp, SurfaceId, WaitEnd};
+use kosmo_platform::{
+    PixelSize, PlatformCaps, PlatformError, ResourceId, Stamp, SurfaceId, WaitEnd,
+};
 use kosmo_render::{Color, Command, DisplayList};
 use kosmo_testkit::script::Driver;
+use kosmo_text::{MONO_FILE, SANS_FILE};
 use kosmo_types::{BufferDesc, Damage, Fx, MonoTime, PixelFormat, Point, Rect, Size};
 use kosmo_ui::{
     App, CANCEL_JOB, Control, DELETE_BACKWARD, DrawContext, EVALUATE_SELECTION, INSERT_TEXT, Key,
@@ -394,7 +397,7 @@ impl EditorDriver {
     /// `release` says.
     pub fn new(plans: Vec<Plan>, release: Vec<Step>) -> EditorDriver {
         EditorDriver {
-            shell: Shell::new(Editor::default(), Jobs::new(plans), &[]),
+            shell: Shell::new(Editor::default(), Jobs::new(plans)),
             plan: release.into_iter().map(|step| (step, false)).collect(),
             keys: 0,
             record: Vec::new(),
@@ -503,7 +506,8 @@ impl Driver<HeadlessBackend> for EditorDriver {
 }
 
 /// A headless backend for a 64 by 8 output in `Xrgb8888` or
-/// `Rgba8Premul`.
+/// `Rgba8Premul`, with the two fonts of `kosmo-text` from its asset
+/// directory as resources, which the shell fetches before its first round.
 #[allow(clippy::unwrap_used, reason = "a fixed size that is valid")]
 pub fn backend() -> HeadlessBackend {
     let output = PixelSize::new(64, 8).unwrap();
@@ -511,7 +515,13 @@ pub fn backend() -> HeadlessBackend {
         vec![PixelFormat::Xrgb8888, PixelFormat::Rgba8Premul],
         output,
     );
-    HeadlessBackend::new(caps, BTreeMap::new())
+    let sans = include_bytes!("../../../text/assets/fonts/firasans/FiraSans-Regular.ttf");
+    let mono = include_bytes!("../../../text/assets/fonts/firamono/FiraMono-Regular.ttf");
+    let fonts = BTreeMap::from([
+        (ResourceId::new(SANS_FILE), sans.to_vec()),
+        (ResourceId::new(MONO_FILE), mono.to_vec()),
+    ]);
+    HeadlessBackend::new(caps, fonts)
 }
 
 /// A driver of a new editor whose first job completes with 3 once the

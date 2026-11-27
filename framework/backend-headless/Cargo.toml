@@ -26,6 +26,7 @@ kosmo-jobs.workspace = true
 kosmo-math-model.workspace = true
 kosmo-render.workspace = true
 kosmo-testkit.workspace = true
+kosmo-text.workspace = true
 kosmo-ui.workspace = true
 
 [lints]

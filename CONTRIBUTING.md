@@ -1200,11 +1200,15 @@ architecture that it links:
    submitted, without dithering
    ([color](docs/architecture.md#determinism-rules)).
 7. Fonts come only from the asset directory of `kosmo-text` through
-   `ResourceProvider`, with system font discovery off: the font set of
-   `kosmo-text` registers only the bytes of the two fonts, in a collection
-   without system fonts, and parley's default features, which would turn on
-   its system font back end `system`, stay off; the deps step compares them
-   as rule 2 states ([font sources](docs/architecture.md#determinism-rules)).
+   `ResourceProvider`, with system font discovery off: the shell of
+   `kosmo-ui` fetches the two fonts by their files `SANS_FILE` and
+   `MONO_FILE` before its first round, and tests that run it give the
+   headless backend the files of the asset directory with `include_bytes!`;
+   the font set of `kosmo-text` registers only the bytes of the two fonts, in
+   a collection without system fonts, and parley's default features, which
+   would turn on its system font back end `system`, stay off; the deps step
+   compares them as rule 2 states
+   ([font sources](docs/architecture.md#determinism-rules)).
 8. Output depends only on input: nothing reads the locale or environment
    variables, options are constants, and records hold no wall-clock time
    ([environment](docs/architecture.md#determinism-rules)). When the
