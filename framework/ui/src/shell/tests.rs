@@ -801,3 +801,34 @@ fn run_shuts_down_and_reports_a_missing_resource_before_any_wait() {
     assert_eq!(status.reason, ExitReason::Failed(fonts));
     assert_eq!(taken(&log), [FETCHES[0], FETCHES[1], "shutdown"]);
 }
+
+#[test]
+fn glyph_runs_are_drawn_from_the_glyph_cache_into_a_kept_frame() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let mut shell = calculator(&log, 0);
+    shell.run_round(&mut fake, None).unwrap();
+    let whole = damage(&fake, &[(0, 0, 4, 2)]);
+    // The first frame of the surface is new; the next is drawn into the
+    // frame that the shell keeps, and its glyphs come from the cache too.
+    let clear = fill(0, 0, 4, 2, Color::TRANSPARENT);
+    shell.present(&mut fake, SURFACE, &clear, &whole).unwrap();
+    release(&mut shell, &mut fake);
+    let list = glyph_run(SANS);
+    shell.present(&mut fake, SURFACE, &list, &whole).unwrap();
+    let mut set = FontSet::new(SANS_BYTES, MONO_BYTES).unwrap();
+    let mut rasterizer = VelloRasterizer::new();
+    set.prepare(&list, &mut rasterizer).unwrap();
+    let mut expected = new_frame(fake.desc).unwrap();
+    rasterizer
+        .render(
+            &list,
+            &whole,
+            set.glyphs(),
+            &ImageStore::EMPTY,
+            &mut expected,
+        )
+        .unwrap();
+    assert_eq!(fake.bytes, expected.bytes());
+    assert!(fake.bytes.iter().any(|&byte| byte != 0));
+}

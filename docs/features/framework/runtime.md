@@ -852,7 +852,8 @@ wall clock.
     `a_buffer_of_another_size_without_a_configure_gets_a_new_frame`,
     `an_rgb565_buffer_takes_the_conversion_of_a_frame_of_4_bytes_per_pixel`,
     `glyph_runs_are_drawn_from_the_glyph_cache_of_the_fetched_fonts`,
-    `an_empty_or_refused_presentation_leaves_the_glyph_cache_alone`;
+    `an_empty_or_refused_presentation_leaves_the_glyph_cache_alone`,
+    `glyph_runs_are_drawn_from_the_glyph_cache_into_a_kept_frame`;
     `framework/backend-headless/tests/shell.rs`:
     `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`,
     `a_new_previous_frame_is_presented_whole_whatever_its_damage`,
