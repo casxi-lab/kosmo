@@ -94,6 +94,11 @@ pub enum KeyAction {
 /// A key with a name rather than a character: a number in a table that
 /// only grows, so a number never changes its meaning. 0 is not a key.
 ///
+/// Event scripts name each of these keys, as `named:left` to
+/// `named:mod-gui`, through the table of names in the script module of
+/// `kosmo-testkit`, whose tests check that it names the keys 1 to 9; a key
+/// added here gets a name there in the same change.
+///
 /// ```
 /// use kosmo_types::NamedKey;
 ///

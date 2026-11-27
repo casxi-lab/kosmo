@@ -92,7 +92,8 @@ pub const MAX_SCRIPT_BYTES: u64 = 65_536 * 257;
 
 const _: () = assert!(MAX_SCRIPT_BYTES == (MAX_LINES * (MAX_LINE_BYTES + 1)) as u64);
 
-/// The names of the named keys in scripts.
+/// The names of the named keys in scripts: one for each named key of
+/// `kosmo-types`, which a test checks.
 const NAMED_KEYS: [(&str, NamedKey); 9] = [
     ("left", NamedKey::LEFT),
     ("right", NamedKey::RIGHT),

@@ -164,6 +164,20 @@ fn every_named_key_and_format_has_its_name() {
 }
 
 #[test]
+fn the_names_cover_the_named_keys_of_kosmo_types() {
+    // The nine named keys of `kosmo-types`, `LEFT` to `MOD_GUI`, are the
+    // numbers 1 to 9, and the table names each of them once. A key added
+    // there needs a name here.
+    for number in 1..=9 {
+        let names = NAMED_KEYS
+            .iter()
+            .filter(|&&(_, key)| key == NamedKey::new(number))
+            .count();
+        assert_eq!(names, 1, "the named key {number}");
+    }
+}
+
+#[test]
 fn unknown_lines_are_errors_with_their_line_numbers() {
     assert_eq!(after_header("jump 5"), Problem::Unknown("jump".to_string()));
     assert_eq!(

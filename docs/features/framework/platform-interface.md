@@ -144,10 +144,12 @@ The tests of scripts are in `framework/testkit`, in the module
 `script::tests` and in `tests/script_files.rs`:
 
 1. Every kind of line is read with its fields, at the largest values too,
-   both forms of a character give the same meaning, and each named key and
-   format has its name. Tests:
+   both forms of a character give the same meaning, each named key and
+   format has its name, and the names cover the nine named keys of
+   `kosmo-types` once each. Tests:
    `every_kind_of_line_is_read_with_its_fields`,
-   `every_named_key_and_format_has_its_name`.
+   `every_named_key_and_format_has_its_name`,
+   `the_names_cover_the_named_keys_of_kosmo_types`.
 2. Unknown lines, missing fields and extra fields are errors with their line
    numbers, and so are fields with invalid values. Tests:
    `unknown_lines_are_errors_with_their_line_numbers`,
