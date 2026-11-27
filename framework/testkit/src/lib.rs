@@ -15,3 +15,4 @@
 pub mod conformance;
 pub mod pixels;
 pub mod probes;
+pub mod script;
