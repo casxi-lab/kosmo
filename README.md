@@ -111,8 +111,9 @@ jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 [display lists](docs/features/framework/rendering.md) with their text
 form, the renderer interface, the rasterizer on vello_cpu that draws display
 lists on the CPU and the wrapper of the transcendental functions that
-rendering and layout are to call, `kosmo-text`, which holds the two fonts
-that kosmo bundles, Fira Sans and Fira Mono, with their license files and
+rendering and layout are to call, `kosmo-text`, which holds the [two
+fonts](docs/features/framework/text.md) that kosmo bundles, Fira Sans and
+Fira Mono, with their license files and
 their asset manifest, the font set that registers their bytes for the text
 stack parley without system fonts, the shaping and line breaking of
 paragraphs into glyph runs of display lists and the glyph cache of their
