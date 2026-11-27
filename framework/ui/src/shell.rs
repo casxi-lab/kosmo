@@ -26,8 +26,8 @@ use crate::round::{Input, Output, Runtime};
 /// [`Shell::run_round`], the single-round entry, runs one round through a
 /// platform, and [`run`] runs rounds until the platform disconnects. The
 /// shell holds no platform: each call borrows it, so a driver keeps its
-/// backend between rounds. The shell creates no surface; the application's
-/// assembly or the driver creates them through `SurfacePort`.
+/// backend between rounds. The shell creates and destroys no surface; the
+/// application's assembly or the driver creates them through `SurfacePort`.
 pub struct Shell<A: App> {
     runtime: Runtime<A>,
     app: A,
@@ -218,7 +218,9 @@ impl<A: App> Shell<A> {
     /// # Errors
     ///
     /// A port's error, [`PlatformError::Disconnected`] among them, and the
-    /// errors of presentation, as [`ShellError`] states.
+    /// errors of presentation, as [`ShellError`] states. A frame of the
+    /// output for a surface whose buffer is presented and not released
+    /// gives [`PlatformError::Busy`] after both steps.
     pub fn run_round<P: Platform>(
         &mut self,
         platform: &mut P,
@@ -433,7 +435,9 @@ pub struct ExitStatus {
 /// creates no threads. With a backend that never blocks, such as the
 /// headless backend, a wait without events returns at once, so `run`
 /// keeps running rounds until the platform disconnects; a driver of such
-/// a backend runs rounds with [`Shell::run_round`] instead.
+/// a backend runs rounds with [`Shell::run_round`] instead. `run` destroys
+/// no surface, so the surfaces of the application that it drives are not
+/// destroyed before `shutdown`.
 pub fn run<P: Platform, A: App>(
     platform: &mut P,
     app: A,

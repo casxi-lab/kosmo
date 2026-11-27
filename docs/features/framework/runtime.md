@@ -586,8 +586,17 @@ no wall-clock time; review checks these, as the
   drawing pass has no caller outside tests; a driver that presents a frame
   builds its layout result, draws it with `paint` and presents it with
   `Shell::present`.
-- The shell creates no surface: the application's assembly or the driver
-  creates them through `SurfacePort` and destroys them before `shutdown`.
+- The shell creates and destroys no surface: the application's assembly or
+  the driver creates them through `SurfacePort` before the first round. A
+  driver of `Shell::run_round` destroys them before it calls `shutdown`;
+  `run` calls `shutdown` itself, so the surfaces of an application that
+  `run` drives are not destroyed before `shutdown`.
+- A frame of a round's output for a surface whose buffer is presented and
+  not released makes `run_round` return
+  `ShellError::Platform(PlatformError::Busy)` after both steps, and `run`
+  then stops with `ExitReason::Failed`; rounds hold no frames yet, and
+  frames of such a surface are planned to wait for `Released` once rounds
+  draw.
 - The resources that the shell fetches go nowhere until the font set of
   `kosmo-text` exists, and presentation has no glyph coverage, so a frame
   with glyph runs fails with a missing glyph.
