@@ -1325,9 +1325,10 @@ methods are only for whoever builds them.
   surface by its `SurfaceId`.
 - The number of events returned by one wait, of rectangles in one presentation,
   of surfaces, of queued injected events and of accessibility nodes per surface
-  is bounded, with values fixed with the implementation. Events beyond the bound
-  wait for the next wait; any other operation beyond a bound returns `Exhausted`
-  and changes nothing.
+  is bounded, with the values that
+  [bounds](features/framework/platform-interface.md#bounds) lists. Events
+  beyond the bound wait for the next wait; any other operation beyond a bound
+  returns `Exhausted` and changes nothing.
 - Signatures hold only kosmo values such as `MonoTime`, `ResourceId` and
   `PlatformError`. Events, requests and capabilities are plain values that can
   be compared and recorded, without host or krepi types and without callbacks.
@@ -1366,11 +1367,14 @@ methods are only for whoever builds them.
 - Its clock and input come only from the driver: in tests through `advance_to`
   and `inject`, otherwise through inherent methods with the same meaning. The
   backend never advances its clock.
-- `present` records the buffer and the update regions and gives the buffer back
-  at once, so the next wait returns `Released`. The backend keeps the tree that
-  `AccessibilitySink` receives, and `ResourceProvider` returns the resource
-  table given at construction. Once the main surface exists, the backend queues
-  `Configure` and `FocusIn`, so a script of key presses needs no focus line.
+- Each surface has one buffer. `present` records the buffer and the update
+  regions and queues `Released`; the buffer is given back by the next wait
+  that returns `Released`, and until then `buffer` returns `Busy`, so a
+  driver writes a buffer again only after its release, as with the display
+  server backend. The backend keeps the tree that `AccessibilitySink`
+  receives, and `ResourceProvider` returns the resource table given at
+  construction. Once the main surface exists, the backend queues `Configure`
+  and `FocusIn`, so a script of key presses needs no focus line.
 - The headless frontend is the script runner of `kosmo-testkit` (layer F0) with
   the headless backend. The runner reads scripts of delivered key events and
   applies them line by line, advancing the framework round by round through the
@@ -1384,7 +1388,7 @@ methods are only for whoever builds them.
   `kosmo-testkit` also provides call probes, so it obtains records and display
   lists only through the driver trait and does not depend on `kosmo-render`, and
   `kosmo-platform` has no probes. The same-layer dependency of `kosmo-testkit`
-  on `kosmo-platform` is listed in the layout table when the crate is created.
+  on `kosmo-platform` is listed in the layout table.
   Tests never sleep or read the wall clock.
 
 Besides key lines, which follow the [event record](#time-decoding-and-scripts),
@@ -3678,7 +3682,9 @@ a runner on each side:
    pending, that is, every `Completed` of the headless backend at the current
    virtual time has been delivered. For this, scripts run on both sides use a
    device model in which `Completed` comes at the same virtual time as its
-   commit, as the framework's headless backend gives buffers back at once. The
+   commit, as the framework's headless backend gives a presented buffer back
+   with `Released` at the next wait that returns it, without its clock
+   moving. The
    model timed by the refresh rate is for tests of the frame budget and dropped
    frames, and for nested runs.
 5. Neither the server's runner nor the step mode of the headless server program
@@ -4085,9 +4091,9 @@ A component is a unit with its own role, contract and level.
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
 | Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | [Rendering](features/framework/rendering.md); tests in `framework/render/src/` and `framework/render/tests/` |
 | Text (shaping and line breaking with parley, glyph outlines and coverage cache, the two bundled fonts and their asset manifest) | `kosmo-text` | Presentation | A0 | `planned` |
-| Platform interface (nine traits, with AccessKit re-exported) and conformance suite | `kosmo-platform` (the suite's crate is chosen with the suite) | Platform contract | A1 | `planned` |
-| Headless backend (no threads, a virtual clock that only the driver advances) | `kosmo-backend-headless` | Backend | A0, passing the platform conformance suite | `planned` |
-| Test support (script runner with checkpoint records, clock control, call probes, pixel digests) | `kosmo-testkit` | Tool | A0 | `planned` |
+| Platform interface (nine traits, with AccessKit re-exported) and conformance suite | `kosmo-platform`, with the suite in `kosmo-testkit` | Platform contract | A1 | [Platform interface](features/framework/platform-interface.md); the suite in `framework/testkit/src/conformance.rs`, its positive and negative cases on the headless backend in `framework/backend-headless/tests/conformance.rs`, and tests in `framework/platform/src/` |
+| Headless backend (no threads, a virtual clock that only the driver advances) | `kosmo-backend-headless` | Backend | A0, passing the platform conformance suite | [The headless backend](features/framework/platform-interface.md#the-headless-backend); the example of the crate documentation in `framework/backend-headless/src/lib.rs` and tests in `framework/backend-headless/tests/` |
+| Test support (script runner with checkpoint records, clock control, call probes, pixel digests) | `kosmo-testkit` | Tool | A0 | [Platform interface](features/framework/platform-interface.md) for the script runner, pixel digests and call probes, and [call probes](../CONTRIBUTING.md#call-probes) for their rules; tests in `framework/testkit/src/`, `framework/testkit/tests/` and, for the runner and call relations, `framework/backend-headless/tests/` |
 | Basic controls | `kosmo-controls` | Controls | A0 | `planned` |
 | Math controls (one-line formula editing, result view) | `kosmo-math-controls` | Controls | A0 | `planned` |
 | One-line calculator | `kosmo-calc` | Application | A0 | `planned` |
