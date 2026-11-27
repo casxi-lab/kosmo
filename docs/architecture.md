@@ -1873,8 +1873,8 @@ already list it, the deps step would not see a build that turns on
 `autohint_shaping`. The manifests of the framework turn it on in no build:
 the layout step lets no feature of a member name a feature of an external
 dependency, so only the declarations, which the allow entries compare,
-choose the features of skrifa. `cargo tree -e features -i skrifa` for both
-targets confirms it as a cross-check.
+choose the features of skrifa. `cargo tree -e features --all-features
+--workspace -i skrifa` for both targets confirms it as a cross-check.
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |

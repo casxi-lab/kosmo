@@ -200,10 +200,11 @@ attribute of a library root, do not. It checks:
   `<dependency>?/<feature>`, which turn on a feature of it, nor as
   `dep:<dependency>`, which turns it on, nor as a bare `<dependency>` that is
   not a feature of the member, which turns on an optional dependency as
-  `dep:` does. Features of members name only crates of the table, so within
-  the repository only declarations, which the allow entries of
-  [the deps step](#the-fetch-and-deps-steps) compare, choose the features of
-  crates.io packages;
+  `dep:` does. Features of members name only their own features and crates
+  of the table, so in the product workspaces only declarations, which the
+  allow entries of [the deps step](#the-fetch-and-deps-steps) compare,
+  choose the features of crates.io packages; the tool workspace `xtask`
+  has no allow entries, and this rule does not read its manifest;
 - directions: every internal dependency that a manifest declares, in
   `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]` and their
   `[target.*]` forms under any condition, follows the directions of the
@@ -870,12 +871,12 @@ The fetch and deps steps have limits:
   and the build compiles none of those packages. A feature that the
   resolved features list only because of such a package, as they list
   `autohint_shaping` of skrifa only because of glifo, changes neither them
-  nor a declaration nor the allowlist when a build turns it on, so these
-  steps would not see such a build. Within the repository only a
-  declaration, which an allow entry compares, can turn it on: the layout
-  step lets no feature of a member name a feature of an external
-  dependency, and the commands of the check turn on features of crates of
-  the repository alone. Review reads
+  nor the allowlist when a build turns it on, so these steps see such a
+  build only through the declaration that turns it on. In the product
+  workspaces only a declaration, which an allow entry compares, can turn it
+  on: the layout step lets no feature of a member name a feature of an
+  external dependency, and the commands of the check turn on features of
+  crates of the repository alone. Review reads
   `cargo tree -e features --all-features --workspace -i <package>` with
   `--target` set to each target, only as a cross-check; the tree without
   `-i` does not show a feature that only a feature of a member turns on.
