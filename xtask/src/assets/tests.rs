@@ -108,6 +108,30 @@ fn a_font_changed_by_one_byte_is_reported_with_both_digests() {
 }
 
 #[test]
+fn the_bundled_fira_sans_changed_by_one_byte_is_reported_with_both_digests() {
+    // The tracked files of this repository, with one byte of the bundled
+    // Fira Sans flipped; its manifest lists the digest of the google/fonts
+    // file.
+    let mut tree = Tree::load(&repo::root()).expect("the repository is a Git working copy");
+    let path = at(SANS);
+    let Some(Entry::File(mut bytes)) = tree.entry(&path).cloned() else {
+        panic!("{path} is a regular file");
+    };
+    bytes[0] ^= 1;
+    let changed = digest(&bytes);
+    tree.insert(&path, Entry::File(bytes));
+    assert_eq!(
+        problems(&tree),
+        (
+            vec![format!(
+                "{path}: SHA-256 {changed} differs from c29556a2719bf613ef3d5e070e40d903a8965d9c081beca1375dc1e6e0f93c23, which MANIFEST.toml lists; bundled fonts and their license files are unmodified"
+            )],
+            2
+        )
+    );
+}
+
+#[test]
 fn a_changed_license_file_is_reported() {
     let mut tree = valid();
     tree.insert(&at(MONO_LICENSE), Entry::File(b"another license".to_vec()));
