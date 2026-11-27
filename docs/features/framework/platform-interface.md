@@ -196,8 +196,8 @@ A run:
 4. A checkpoint line runs the framework until it is idle and writes the next
    section.
 
-The framework is idle when a round's wait returned `Idle`, the driver has
-nothing pending and its next deadline is later than the clock. The runner
+The framework is idle when a round that starts with nothing pending and no
+deadline due finds no platform event: its wait returns `Idle`. The runner
 advances the clock only through `advance_to` of the test hooks and reads no
 other clock, and the headless backend never advances its clock itself. A line
 that does not let the framework become idle within `MAX_ROUNDS_PER_LINE`

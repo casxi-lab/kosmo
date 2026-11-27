@@ -103,10 +103,10 @@ impl Script {
     /// - A checkpoint line runs the framework until it is idle and writes a
     ///   section of the record.
     ///
-    /// The framework is idle when a round's wait returned `Idle`, the driver
-    /// has nothing pending and its next deadline is later than the clock.
-    /// The runner advances the clock only through the test hooks and reads
-    /// no other clock.
+    /// The framework is idle when a round that starts with nothing pending
+    /// in the driver and no deadline of the driver due finds no platform
+    /// event: its wait returns `Idle`. The runner advances the clock only
+    /// through the test hooks and reads no other clock.
     ///
     /// A section is the line `checkpoint <n> at <time>`, the line
     /// `view <count>` followed by the driver's view lines, for each surface
@@ -244,23 +244,26 @@ impl<P: PlatformTestHooks, D: Driver<P>> Runner<'_, P, D> {
         self.platform.advance_to(time).map_err(platform)
     }
 
-    /// Runs rounds until the framework is idle.
+    /// Runs rounds until the framework is idle: until a round that starts
+    /// quiet, with nothing pending and no deadline due, finds no platform
+    /// event.
     fn settle(&mut self) -> Result<(), Problem> {
         loop {
             if self.rounds >= MAX_ROUNDS_PER_LINE {
                 return Err(Problem::NotIdle);
             }
-            self.rounds += 1;
-            let wait = self
-                .driver
-                .round(self.platform)
-                .map_err(|error| Problem::Driver(error.to_string()))?;
             let clock = self.platform.now();
             let due = self
                 .driver
                 .next_deadline()
                 .is_some_and(|deadline| deadline <= clock);
-            if wait == WaitEnd::Idle && !self.driver.pending() && !due {
+            let quiet = !self.driver.pending() && !due;
+            self.rounds += 1;
+            let wait = self
+                .driver
+                .round(self.platform)
+                .map_err(|error| Problem::Driver(error.to_string()))?;
+            if quiet && wait == WaitEnd::Idle {
                 return Ok(());
             }
         }
