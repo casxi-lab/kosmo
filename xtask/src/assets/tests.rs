@@ -178,11 +178,20 @@ fn a_font_outside_the_asset_directory_is_reported() {
     );
     tree.insert("docs/fonts/extra.woff2", Entry::File(Vec::new()));
     tree.insert("docs/fonts/README.md", Entry::File(Vec::new()));
+    // A directory beside the asset directory whose name starts with the
+    // name of the asset directory is outside it too.
+    tree.insert(
+        "framework/text/assets/fonts-extra/Extra.ttf",
+        Entry::File(Vec::new()),
+    );
     assert_eq!(
         problems(&tree).0,
         [
             format!(
                 "docs/fonts/extra.woff2: is a font outside {DIR}, the only place for bundled fonts"
+            ),
+            format!(
+                "framework/text/assets/fonts-extra/Extra.ttf: is a font outside {DIR}, the only place for bundled fonts"
             ),
             format!(
                 "framework/ui/assets/NotoSansCJK.TTF: is a font outside {DIR}, the only place for bundled fonts"
