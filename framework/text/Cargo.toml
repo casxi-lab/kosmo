@@ -11,6 +11,8 @@ publish = false
 
 [dependencies]
 kosmo-render.workspace = true
+parley.workspace = true
+skrifa.workspace = true
 
 [lints]
 workspace = true

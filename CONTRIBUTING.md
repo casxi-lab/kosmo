@@ -1026,12 +1026,12 @@ pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
 crates.io packages in every `Cargo.lock` of the repository against the RustSec
 advisory database and records, with the release decision, the commit of the
 advisory database that was used. A weekly advisory job, not required for
-merging, will be added with the framework's text stack; with the framework's
-raster library, the allowlists of the product workspaces together list more
-than about 20 distinct packages, each name and version counted once however
-many allowlists list it, the packages of the tool workspace `xtask` not
-counted. The job will change neither the `cargo xtask check` job nor the
-branch rules of `main`.
+merging, is planned: with the framework's raster library and text stack, the
+allowlists of the product workspaces together list more than about 20
+distinct packages, each name and version counted once however many
+allowlists list it, the packages of the tool workspace `xtask` not counted.
+The job will change neither the `cargo xtask check` job nor the branch rules
+of `main`.
 
 ## Commit messages
 

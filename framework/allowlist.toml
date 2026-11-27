@@ -37,6 +37,15 @@ features = []
 crates = ["kosmo-math-kalyx", "kosmo-render"]
 
 [[package]]
+name = "bitflags"
+version = "2.13.2"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
 name = "block-buffer"
 version = "0.12.1"
 source = "crates.io"
@@ -52,7 +61,7 @@ source = "crates.io"
 license = "Zlib OR Apache-2.0 OR MIT"
 build-script = false
 features = ["bytemuck_derive", "derive", "extern_crate_alloc", "min_const_generics"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "bytemuck_derive"
@@ -62,7 +71,7 @@ license = "Zlib OR Apache-2.0 OR MIT"
 build-script = false
 proc-macro = true
 features = []
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "cfg-if"
@@ -89,7 +98,7 @@ source = "crates.io"
 license = "MIT"
 build-script = false
 features = []
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "cpufeatures"
@@ -117,6 +126,16 @@ license = "MIT OR Apache-2.0"
 build-script = false
 features = ["block-api", "default"]
 crates = ["kosmo-testkit"]
+
+[[package]]
+name = "displaydoc"
+version = "0.2.7"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+proc-macro = true
+features = []
+crates = ["kosmo-text"]
 
 [[package]]
 name = "euclid"
@@ -153,7 +172,7 @@ source = "crates.io"
 license = "Zlib"
 build-script = false
 features = []
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "font-types"
@@ -162,7 +181,16 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["bytemuck"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
+
+[[package]]
+name = "fontique"
+version = "0.13.0"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = ["libm"]
+crates = ["kosmo-text"]
 
 [[package]]
 name = "glifo"
@@ -183,13 +211,22 @@ features = []
 crates = ["kosmo-render"]
 
 [[package]]
+name = "harfrust"
+version = "0.15.0"
+source = "crates.io"
+license = "MIT"
+build-script = false
+features = ["libm"]
+crates = ["kosmo-text"]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["default-hasher", "raw-entry"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "hybrid-array"
@@ -199,6 +236,105 @@ license = "MIT OR Apache-2.0"
 build-script = false
 features = []
 crates = ["kosmo-testkit"]
+
+[[package]]
+name = "icu_collections"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_locale_core"
+version = "2.4.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc", "zerovec"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_locale_fallback"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["compiled_data"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_locale_fallback_data"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = true
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_normalizer"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["compiled_data"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_normalizer_data"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = true
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_properties"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["compiled_data"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_properties_data"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = true
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_provider"
+version = "2.4.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc", "baked"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_segmenter"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["compiled_data"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "icu_segmenter_data"
+version = "2.3.0"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = true
+features = []
+crates = ["kosmo-text"]
 
 [[package]]
 name = "kalyx"
@@ -234,7 +370,7 @@ source = "crates.io"
 license = "MIT"
 build-script = true
 features = ["arch", "default"]
-crates = ["kosmo-math-kalyx", "kosmo-render"]
+crates = ["kosmo-math-kalyx", "kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "linebender_resource_handle"
@@ -243,7 +379,16 @@ source = "crates.io"
 license = "Apache-2.0 OR MIT"
 build-script = false
 features = []
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
+
+[[package]]
+name = "litemap"
+version = "0.8.3"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc"]
+crates = ["kosmo-text"]
 
 [[package]]
 name = "log"
@@ -297,7 +442,52 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["alloc", "race"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
+
+[[package]]
+name = "parlance"
+version = "0.1.1"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "parley"
+version = "0.13.0"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = ["libm"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "parley_data"
+version = "0.13.0"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "parley_emoji"
+version = "0.13.0"
+source = "crates.io"
+license = "MIT"
+build-script = false
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "parley_engine"
+version = "0.13.0"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = ["libm"]
+crates = ["kosmo-text"]
 
 [[package]]
 name = "peniko"
@@ -318,13 +508,22 @@ features = ["libm"]
 crates = ["kosmo-render"]
 
 [[package]]
+name = "potential_utf"
+version = "0.1.6"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc", "writeable", "zerovec"]
+crates = ["kosmo-text"]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = true
 features = ["default", "proc-macro"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "quote"
@@ -333,7 +532,7 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = true
 features = ["default", "proc-macro"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "read-fonts"
@@ -342,7 +541,35 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["libm"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
+
+[[package]]
+name = "serde"
+version = "1.0.229"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["alloc", "derive", "serde_derive"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "serde_core"
+version = "1.0.229"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = true
+features = ["alloc", "result"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.229"
+source = "crates.io"
+license = "MIT OR Apache-2.0"
+build-script = false
+proc-macro = true
+features = ["default"]
+crates = ["kosmo-text"]
 
 [[package]]
 name = "sha2"
@@ -360,7 +587,7 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["autohint_shaping", "libm"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "smallvec"
@@ -369,7 +596,16 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["const_generics", "const_new", "union"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
+
+[[package]]
+name = "spin"
+version = "0.12.3"
+source = "crates.io"
+license = "MIT"
+build-script = false
+features = ["once"]
+crates = ["kosmo-text"]
 
 [[package]]
 name = "stable_deref_trait"
@@ -378,7 +614,7 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["alloc"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "syn"
@@ -387,7 +623,7 @@ source = "crates.io"
 license = "MIT OR Apache-2.0"
 build-script = false
 features = ["clone-impls", "default", "derive", "extra-traits", "fold", "full", "parsing", "printing", "proc-macro", "visit"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "synstructure"
@@ -396,7 +632,7 @@ source = "crates.io"
 license = "MIT"
 build-script = false
 features = ["default", "proc-macro"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "thiserror"
@@ -418,6 +654,15 @@ features = []
 crates = ["kosmo-render"]
 
 [[package]]
+name = "tinystr"
+version = "0.8.5"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc", "zerovec"]
+crates = ["kosmo-text"]
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "crates.io"
@@ -433,7 +678,25 @@ source = "crates.io"
 license = "(MIT OR Apache-2.0) AND Unicode-3.0"
 build-script = false
 features = []
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
+
+[[package]]
+name = "utf8_iter"
+version = "1.1.0"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = []
+crates = ["kosmo-text"]
+
+[[package]]
+name = "utf_types"
+version = "1.0.0"
+source = "crates.io"
+license = "Apache-2.0 OR MIT"
+build-script = false
+features = []
+crates = ["kosmo-text"]
 
 [[package]]
 name = "uuid"
@@ -463,13 +726,22 @@ features = ["libm", "u8_pipeline"]
 crates = ["kosmo-render"]
 
 [[package]]
+name = "writeable"
+version = "0.6.4"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc"]
+crates = ["kosmo-text"]
+
+[[package]]
 name = "yoke"
 version = "0.8.4"
 source = "crates.io"
 license = "Unicode-3.0"
 build-script = false
 features = ["alloc", "default", "derive", "zerofrom"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "yoke-derive"
@@ -479,7 +751,7 @@ license = "Unicode-3.0"
 build-script = false
 proc-macro = true
 features = []
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "zerofrom"
@@ -488,7 +760,7 @@ source = "crates.io"
 license = "Unicode-3.0"
 build-script = false
 features = ["alloc", "derive"]
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
 
 [[package]]
 name = "zerofrom-derive"
@@ -498,7 +770,35 @@ license = "Unicode-3.0"
 build-script = false
 proc-macro = true
 features = []
-crates = ["kosmo-render"]
+crates = ["kosmo-render", "kosmo-text"]
+
+[[package]]
+name = "zerotrie"
+version = "0.2.5"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc", "yoke", "zerofrom"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "zerovec"
+version = "0.11.9"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+features = ["alloc", "derive", "yoke"]
+crates = ["kosmo-text"]
+
+[[package]]
+name = "zerovec-derive"
+version = "0.11.7"
+source = "crates.io"
+license = "Unicode-3.0"
+build-script = false
+proc-macro = true
+features = []
+crates = ["kosmo-text"]
 
 [[license-exception]]
 name = "guillotiere"

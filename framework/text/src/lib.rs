@@ -23,7 +23,11 @@
 //! which gives the renderer of `kosmo-render` the coverage of glyphs, are
 //! planned in this crate.
 //!
-//! The crate is `no_std` with `alloc` and without unsafe code.
+//! The crate is `no_std` with `alloc` and without unsafe code. It depends
+//! on parley 0.13.0 and skrifa 0.49.0 without their default features and
+//! without `std`, with `libm`: parley's system font back end `system` is
+//! not built, and the transcendental functions inside both come from the
+//! same `libm` as those of `kosmo-render`.
 
 #![no_std]
 #![forbid(unsafe_code)]

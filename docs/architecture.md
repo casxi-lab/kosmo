@@ -1854,9 +1854,19 @@ Besides the rules above:
 ### External dependencies
 
 The libraries chosen above enter as these direct external dependencies, which
-the layout table lists for their crates; so far it lists those of
-`kosmo-render`, `kosmo-platform` and `kosmo-testkit`, and the others are added
-with their crates:
+the layout table lists for their crates. The enabled features and those kept
+off are those of the declaration, which the `features` of the crate's allow
+entry lists. The features after resolution, which its `resolved-features`
+lists, can be more: they include the features that a package turns on when
+Cargo lists it only because a weak dependency feature names it, although the
+build compiles no such package, as [the limits of the fetch and deps
+steps](../CONTRIBUTING.md#limits-of-the-fetch-and-deps-steps) state. So
+skrifa's resolved features are `autohint_shaping` and `libm`: glifo, an
+optional dependency of vello_cpu that only its `text` feature turns on,
+depends on skrifa with `autohint_shaping`, and Cargo lists it because the
+`libm` feature of vello_cpu names `glifo?/libm`. `cargo tree -e features`
+shows that no build of the framework, for either target, turns on
+`autohint_shaping`.
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |
