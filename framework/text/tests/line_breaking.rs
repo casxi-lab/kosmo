@@ -3,8 +3,9 @@
 
 pub mod support;
 
-use kosmo_text::SANS;
-use support::{BREAKS, Checked, font_set, lay_out, lines};
+use kosmo_text::{MAX_WIDTH, SANS, TextError, TextStyle};
+use kosmo_types::Fx;
+use support::{BREAKS, Checked, failed, font_set, lay_out, lines};
 
 /// Checks that the case named `name` breaks into the lines `expected`.
 fn breaks(name: &str, expected: &[&str]) -> Checked {
@@ -117,5 +118,21 @@ fn lines_lie_one_line_height_apart() -> Checked {
     // value is rounded once: the height of three lines is 57.6 pixels.
     assert_eq!(baselines, [957, 2186, 3415]);
     assert_eq!(paragraph.height().units(), 3686);
+    Ok(())
+}
+
+#[test]
+fn widths_outside_0_to_the_largest_are_refused() -> Checked {
+    let mut set = font_set()?;
+    let style = TextStyle::new(SANS, Fx::from_units(1024)).map_err(failed)?;
+    for width in [Fx::from_units(-1), Fx::from_units(MAX_WIDTH.units() + 1)] {
+        assert_eq!(
+            set.layout("1 + 2", style, Some(width)),
+            Err(TextError::WidthOutOfRange(width))
+        );
+    }
+    for width in [Fx::ZERO, MAX_WIDTH] {
+        assert!(set.layout("1 + 2", style, Some(width)).is_ok());
+    }
     Ok(())
 }

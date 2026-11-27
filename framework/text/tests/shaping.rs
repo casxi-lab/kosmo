@@ -6,7 +6,9 @@
 pub mod support;
 
 use kosmo_render::{Command, Step, place_glyph};
-use support::{Checked, STRINGS, font_set, lay_out, list, runs};
+use kosmo_text::TextError;
+use kosmo_types::{Fx, Point};
+use support::{BLACK, Checked, STRINGS, font_set, lay_out, list, runs};
 
 /// Checks that the runs of the string named `name` are `expected`.
 fn pinned(name: &str, expected: &[&str]) -> Checked {
@@ -347,5 +349,18 @@ fn a_paragraph_runs_left_to_right_whatever_its_first_character() -> Checked {
         .map(|glyph| (glyph.id.get(), glyph.origin.x.units()))
         .collect();
     assert_eq!(glyphs[..2], [(0, 0), (0, 682)]);
+    Ok(())
+}
+
+#[test]
+fn a_run_moved_beyond_the_fixed_point_is_refused() -> Checked {
+    let mut set = font_set()?;
+    let paragraph = lay_out(&mut set, "1 + 2", kosmo_text::SANS, 16, None)?;
+    // Moved right by the largest value, only the first glyph, at x = 0,
+    // fits; moved down by it, no glyph fits, as each lies on the baseline.
+    let origin = Point::new(Fx::MAX, Fx::ZERO);
+    assert_eq!(paragraph.run(origin, BLACK), Err(TextError::OutOfRange));
+    let origin = Point::new(Fx::ZERO, Fx::MAX);
+    assert_eq!(paragraph.run(origin, BLACK), Err(TextError::OutOfRange));
     Ok(())
 }
