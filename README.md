@@ -111,7 +111,10 @@ jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 [display lists](docs/features/framework/rendering.md) with their text
 form, the renderer interface, the rasterizer on vello_cpu that draws display
 lists on the CPU and the wrapper of the transcendental functions that
-rendering and layout are to call, `kosmo-platform`, the [platform
+rendering and layout are to call, `kosmo-text`, which so far holds the two
+fonts that kosmo bundles, Fira Sans and Fira Mono, with their license files
+and their asset manifest, and the font set that registers their bytes for
+the text stack parley without system fonts, `kosmo-platform`, the [platform
 interface](docs/features/framework/platform-interface.md) through which the
 framework reaches surfaces, input, its clock, resources and the
 accessibility tree, with AccessKit re-exported, `kosmo-math-kalyx`,
@@ -147,6 +150,7 @@ cargo test --locked --manifest-path desktop/Cargo.toml -p kosmo
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-model
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-jobs
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-render
+cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-text
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-platform --features test-hooks
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-math-kalyx
 cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-scratchpad
@@ -161,16 +165,17 @@ cargo xtask check
 The first runs two derivatives and lists the history in the terminal; without
 the pipe, `cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo`
 reads the lines that you type. The second prints `kosmo` and its version. The
-next twelve run the tests of the terminal, of the editing structure, of the
-job layer, of rendering, with its pixel goldens and the wrapper of
-transcendental functions, of the platform interface with its test hooks, of
-formula conversion with the kalyx runner, of the Scratchpad, of the
-framework core, of the headless backend with its test hooks, the
-conformance suite, the shell and the script runner, of the event scripts,
-the pixel digests and the call probes of the test support, of the facade
-and of the shared types, and the last runs the repository checks. No
-version has been released yet: a release is a tagged commit, and the
-version that `main` shows is not a release until it is tagged.
+next thirteen run the tests of the terminal, of the editing structure, of
+the job layer, of rendering, with its pixel goldens and the wrapper of
+transcendental functions, of the font set of the text crate, of the
+platform interface with its test hooks, of formula conversion with the
+kalyx runner, of the Scratchpad, of the framework core, of the headless
+backend with its test hooks, the conformance suite, the shell and the
+script runner, of the event scripts, the pixel digests and the call probes
+of the test support, of the facade and of the shared types, and the last
+runs the repository checks. No version has been released yet: a release is
+a tagged commit, and the version that `main` shows is not a release until
+it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates use only `core` and `alloc`. Its first releases will run
@@ -217,4 +222,9 @@ be checked first when kosmo runs on the device.
 ## License
 
 kosmo is released under the [MIT License](LICENSE). Copyright (c) 2026 The
-casξ Authors; see [AUTHORS](AUTHORS).
+casξ Authors; see [AUTHORS](AUTHORS). The two fonts that `kosmo-text`
+bundles in `framework/text/assets/fonts/` are not covered by the MIT License:
+Fira Sans and Fira Mono are distributed under the SIL Open Font License 1.1
+(`OFL-1.1`) with their original license files,
+[`firasans/OFL.txt`](framework/text/assets/fonts/firasans/OFL.txt) and
+[`firamono/OFL.txt`](framework/text/assets/fonts/firamono/OFL.txt).

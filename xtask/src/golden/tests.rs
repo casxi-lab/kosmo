@@ -427,13 +427,17 @@ fn the_step_fails_with_its_problems_and_counts_the_goldens() {
         Entry::File(b"edited".to_vec()),
     );
     let mut facts = Facts::new();
-    let error = report(&tree, &SETS, &mut facts).unwrap_err();
+    let error = report(&tree, &SETS, None, &mut facts).unwrap_err();
     assert!(
         error.starts_with(&format!("{DIR}/fill-rect.px: SHA-256 ")),
         "{error}"
     );
-    assert_eq!(facts, [("goldens".to_string(), "2".to_string())]);
-    assert_eq!(report(&valid(), &SETS, &mut Facts::new()), Ok(()));
+    let counts = [("goldens", "2"), ("fonts", "0")];
+    assert_eq!(
+        facts,
+        counts.map(|(key, value)| (key.to_string(), value.to_string()))
+    );
+    assert_eq!(report(&valid(), &SETS, None, &mut Facts::new()), Ok(()));
 }
 
 #[test]
@@ -451,7 +455,14 @@ fn the_check_runs_the_goldens_step_on_this_repository() {
         .unwrap()
         .lines()
         .count();
-    assert_eq!(facts, [("goldens".to_string(), listed.to_string())]);
+    let fonts = crate::assets::FONTS.fonts.len();
+    assert_eq!(
+        facts,
+        [
+            ("goldens".to_string(), listed.to_string()),
+            ("fonts".to_string(), fonts.to_string()),
+        ]
+    );
 }
 
 #[test]

@@ -213,6 +213,29 @@ default-features = false
 features = []
 resolved-features = []
 
+[crates.kosmo-text]
+path = "framework/text"
+layer = "F0"
+export = false
+pure-core = false
+publish = false
+same-layer = ["kosmo-render"]
+deterministic = true
+
+[[crates.kosmo-text.external]]
+name = "parley"
+version = "=0.13.0"
+default-features = false
+features = ["libm"]
+resolved-features = ["libm"]
+
+[[crates.kosmo-text.external]]
+name = "skrifa"
+version = "=0.49.0"
+default-features = false
+features = ["libm"]
+resolved-features = ["autohint_shaping", "libm"]
+
 [crates.kosmo-math-kalyx]
 path = "framework/math-kalyx"
 layer = "F1"

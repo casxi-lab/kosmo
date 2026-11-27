@@ -22,8 +22,8 @@ The Rust toolchain is pinned in `rust-toolchain.toml`, and rustup installs it
 on first use. Each workspace has its own `Cargo.lock`: so far the product
 workspaces `display/`, with the shared types `kosmo-types`, `framework/`, with
 the libraries `kosmo-math-model`, `kosmo-jobs`, `kosmo-render`,
-`kosmo-platform`, `kosmo-testkit`, `kosmo-math-kalyx`, `kosmo-ui`,
-`kosmo-backend-headless` and `kosmo-scratchpad` and the facade
+`kosmo-platform`, `kosmo-testkit`, `kosmo-text`, `kosmo-math-kalyx`,
+`kosmo-ui`, `kosmo-backend-headless` and `kosmo-scratchpad` and the facade
 `kosmo-sdk`, and `desktop/`, with the program `kosmo`, and the repository tasks
 in `xtask/`, run as `cargo xtask`.
 `cargo run --locked --manifest-path desktop/Cargo.toml -p kosmo` runs the
@@ -33,7 +33,9 @@ order and stops at the first one that fails:
 1. `layout`: the source layout, as [the layout step](#the-layout-step)
    describes;
 2. `goldens`: the pixel goldens against their manifests, as
-   [the goldens step](#the-goldens-step-and-cargo-xtask-golden) describes;
+   [the goldens step](#the-goldens-step-and-cargo-xtask-golden) describes,
+   and the fonts of `kosmo-text` against their asset manifest, as
+   [the font assets](#the-font-assets) describes;
 3. `fetch` and `deps`: the packages of each workspace, downloaded once and
    then checked offline, as
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
@@ -94,9 +96,11 @@ or carries an `#[allow]`, and every `#[allow]` states its reason with
 [the determinism lints](#the-determinism-lints) describes.
 
 `cargo xtask check --receipt <path>` also writes a JSON receipt of the run to
-`<path>`, whether the check passes or fails. It records the commit, whether
-the working tree was clean before and after the run, each step with its
-status, duration and the values it observed (for the `fmt`, `clippy` and
+`<path>`, whether the check passes or fails, unless it fails before the first
+step, as rule 8 of [golden images and
+determinism](#golden-images-and-determinism) states. It records the commit,
+whether the working tree was clean before and after the run, each step with
+its status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
 `<workspace>_ms`, of each pass without a member, as
 `<workspace>_without_<member>_ms`, of each feature pass, as
@@ -105,7 +109,8 @@ status, duration and the values it observed (for the `fmt`, `clippy` and
 commands of the `deps` step, the duration of each command as
 `<workspace>_<target>_ms`; for the `deps` step also the observations that its
 section lists; for the `goldens` step, the number of goldens that the
-manifests list, as `goldens`), the first line of `rustc --version`, the runner
+manifests list, as `goldens`, and the number of fonts that the asset manifest
+lists, as `fonts`), the first line of `rustc --version`, the runner
 image (`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
 `GITHUB_RUN_ATTEMPT`, `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a
 value the environment does not provide is `null`.
@@ -190,6 +195,16 @@ attribute of a library root, do not. It checks:
   `rev`, `registry`, `registry-index` or `package`, and no manifest has
   `[patch]` or `[replace]` or the spellings `dev_dependencies`,
   `build_dependencies`, `default_features`, `proc_macro` and `crate_type`;
+- features of members: no feature of a member names an external dependency
+  of the member, neither as `<dependency>/<feature>` or
+  `<dependency>?/<feature>`, which turn on a feature of it, nor as
+  `dep:<dependency>`, which turns it on, nor as a bare `<dependency>` that is
+  not a feature of the member, which turns on an optional dependency as
+  `dep:` does. Features of members name only their own features and crates
+  of the table, so in the product workspaces only declarations, which the
+  allow entries of [the deps step](#the-fetch-and-deps-steps) compare,
+  choose the features of crates.io packages; the tool workspace `xtask`
+  has no allow entries, and this rule does not read its manifest;
 - directions: every internal dependency that a manifest declares, in
   `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]` and their
   `[target.*]` forms under any condition, follows the directions of the
@@ -527,6 +542,80 @@ compares every file with `MANIFEST` and the test step every drawing with
 its file, byte for byte, so the digests of what CI draws are those of
 `MANIFEST`.
 
+### The font assets
+
+`kosmo-text` bundles the two [fonts](docs/architecture.md#fonts) of the
+framework in its asset directory `framework/text/assets/fonts/`, each in a
+directory of its own, `firamono/` and `firasans/` as in the google/fonts
+repository, beside its original license file `OFL.txt`, with the asset
+manifest `MANIFEST.toml`. The manifest has one `[[font]]` table for each
+font, sorted by `file`, with these fields, its paths relative to the asset
+directory:
+
+- `file`, the path of the font, `bytes`, its size in bytes, and `sha256`, its
+  SHA-256 digest in 64 lowercase hexadecimal digits;
+- `source`, the repository, commit and path from which it was copied, and
+  `upstream`, the commit of the font's own repository that the source
+  records;
+- `version`, the version of the font, and `role`, what kosmo uses it for;
+- `license`, which is `OFL-1.1`, `license-file`, the path of its license
+  file `OFL.txt`, in the directory of the font, and `license-sha256`, the
+  SHA-256 digest of the license file.
+
+The fonts and their license files are copied byte for byte from the commit of
+`source` and never subset, instanced or changed in any other way, and
+`.gitattributes` marks them binary, so no checkout converts them and their
+digests stay the same. Neither a third font, nor a CJK font, nor a font with
+a license other than OFL-1.1 is bundled: adding, removing or replacing a font,
+with another version of one of the two among the replacements, changes the
+fonts that the architecture fixes and is a design change. Because the crate
+tracks font files, the deps step requires its license to be
+`MIT AND OFL-1.1`, as [the fetch and deps steps](#the-fetch-and-deps-steps)
+describes.
+
+The `goldens` step reads the tracked files of the asset directory, without
+running Cargo, takes the digests with the `sha2` package of `xtask`, and
+reports every problem of the font assets with those of the goldens, a problem
+of a font with the line of its `[[font]]` table:
+
+- a manifest that is missing, is not a regular UTF-8 file or does not parse
+  into the fields above, with the line where parsing failed; nothing else of
+  the asset directory is checked then;
+- a font that the manifest lists other than `firamono/FiraMono-Regular.ttf`
+  and `firasans/FiraSans-Regular.ttf`, the two fonts that `FONTS` in
+  `xtask/src/assets.rs` lists, either of them missing from the manifest, a
+  file listed twice and fonts out of order;
+- a path that is not relative to the asset directory, a digest that is not
+  64 lowercase hexadecimal digits, a license other than `OFL-1.1`, a license
+  file that is not another file in the directory of its font or is not named
+  `OFL.txt`, and an empty `source`, `upstream`, `version` or `role`;
+- a file of the manifest that is not tracked or not a regular file, and a
+  tracked file of the asset directory, other than the manifest, that the
+  manifest does not list, so neither a third font nor a CJK font enters the
+  directory;
+- a file whose SHA-256 digest differs from the manifest, with both digests,
+  and a font whose size differs from `bytes`;
+- a tracked font file, a `.ttf`, `.otf`, `.ttc`, `.woff` or `.woff2` file in
+  any letter case, outside the asset directory.
+
+The step compares the files with the manifest: a font changed together with
+its digest and size in the manifest passes it, and so does a license file
+changed together with its digest, even into the bytes of a font. A test of
+`xtask` keeps the sizes and digests of both fonts and the digests of their
+license files as those of the google/fonts files at commit `29b4ec6`, their
+`upstream` as google/fonts records it and their `version` as their name
+tables give it, so such a change also changes that test, and review
+compares it with the files of `source`. The step does not read the fonts
+themselves, neither their tables nor the characters that they cover. It
+recognizes a font outside the asset directory only by the extensions above,
+so a font under another extension, such as `.otc` or `.bin`, or one
+embedded in another file is not reported; review covers these.
+
+`kosmo-text` is not published yet. Its asset directory lies inside the
+crate's directory, so a published package would carry the fonts, their
+license files and the manifest; before the crate is published for the first
+time, `cargo package --list` shows that they are in the package.
+
 ### The fetch and deps steps
 
 The `fetch` step downloads the packages that each workspace of the check needs:
@@ -780,7 +869,18 @@ The fetch and deps steps have limits:
   of vello_cpu, although no feature turns the dependency on: the allowlist
   lists it and the packages that only it brings in, the features that they
   turn on count in the resolved features of the packages they depend on,
-  and the build compiles none of those packages.
+  and the build compiles none of those packages. A feature that the
+  resolved features list only because of such a package, as they list
+  `autohint_shaping` of skrifa only because of glifo, changes neither them
+  nor the allowlist when a build turns it on, so these steps see such a
+  build only through the declaration that turns it on. In the product
+  workspaces only a declaration, which an allow entry compares, can turn it
+  on: the layout step lets no feature of a member name a feature of an
+  external dependency, and the commands of the check turn on features of
+  crates of the repository alone. Review reads
+  `cargo tree -e features --all-features --workspace -i <package>` with
+  `--target` set to each target, only as a cross-check; the tree without
+  `-i` does not show a feature that only a feature of a member turns on.
 - Cargo compares a package with the checksum in `Cargo.lock` only when it
   downloads it. It does not compare again the sources that it unpacked
   into a local `CARGO_HOME` or the `.crate` files that it keeps there, so a
@@ -800,6 +900,24 @@ The fetch and deps steps have limits:
   not have. Procedural macros also run at build time; the allowlists mark
   them with `proc-macro = true`, but the step does not judge them. Review
   covers these.
+- The build scripts of the four icu data packages of the framework read the
+  environment variable `ICU4X_DATA_DIR`, and when it is set they compile the
+  Unicode data of the directory it names instead of their own;
+  `cargo xtask check` and `cargo xtask golden` fail first when it is set, as
+  rule 8 of [golden images and determinism](#golden-images-and-determinism)
+  states.
+  This guard reads the environment of `cargo xtask`, which runs through
+  `cargo run`, so an `[env]` table of the Cargo configuration that it reads,
+  in a `config.toml` of the Cargo home or of a directory above the
+  checkout, sets the variable for it too, and the guard refuses that as
+  well. It does not see Cargo configuration that changes these packages
+  without the variable in that environment, such as `build.rustflags` that
+  set their `cfg` together with a compiler wrapper that gives the variable
+  to the compiler alone. The build script of `libm` reads
+  `ENSURE_NO_PANIC`, which marks its functions with the `no_panic`
+  attribute of one of its development dependencies, so a build that uses
+  `libm` as a dependency fails to compile when that build script runs with
+  it set and never gives other output; the guard leaves it.
 - The build-script rules cover crates.io packages. Which members may have a
   build script is set per crate in `layout.toml`, as the layout step checks,
   and their build dependencies are allow entries there; review reads what
@@ -954,12 +1072,12 @@ pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
 crates.io packages in every `Cargo.lock` of the repository against the RustSec
 advisory database and records, with the release decision, the commit of the
 advisory database that was used. A weekly advisory job, not required for
-merging, will be added with the framework's text stack; with the framework's
-raster library, the allowlists of the product workspaces together list more
-than about 20 distinct packages, each name and version counted once however
-many allowlists list it, the packages of the tool workspace `xtask` not
-counted. The job will change neither the `cargo xtask check` job nor the
-branch rules of `main`.
+merging, is planned: with the framework's raster library and text stack, the
+allowlists of the product workspaces together list more than about 20
+distinct packages, each name and version counted once however many
+allowlists list it, the packages of the tool workspace `xtask` not counted.
+The job will change neither the `cargo xtask check` job nor the branch rules
+of `main`.
 
 ## Commit messages
 
@@ -1054,8 +1172,9 @@ architecture that it links:
    the same `libm`, and the deps step compares their resolved features with
    the allow entries and the allowlists, which detects a change such as
    `std` turned on but passes once the entries are rewritten as the step
-   prints them, so review rejects `std` and threading features in such a
-   change ([transcendental functions](docs/architecture.md#transcendental-functions)).
+   prints them, so review rejects `std`, threading features and parley's
+   `system` in such a change
+   ([transcendental functions](docs/architecture.md#transcendental-functions)).
 3. The SIMD level of the pixel and text paths depends only on the
    compilation target and is given to the raster library explicitly, and
    builds add neither `-C target-cpu` nor `-C target-feature`
@@ -1074,11 +1193,25 @@ architecture that it links:
    submitted, without dithering
    ([color](docs/architecture.md#determinism-rules)).
 7. Fonts come only from the asset directory of `kosmo-text` through
-   `ResourceProvider`, with system font discovery off
-   ([font sources](docs/architecture.md#determinism-rules)).
+   `ResourceProvider`, with system font discovery off: the font set of
+   `kosmo-text` registers only the bytes of the two fonts, in a collection
+   without system fonts, and parley's default features, which would turn on
+   its system font back end `system`, stay off; the deps step compares them
+   as rule 2 states ([font sources](docs/architecture.md#determinism-rules)).
 8. Output depends only on input: nothing reads the locale or environment
    variables, options are constants, and records hold no wall-clock time
-   ([environment](docs/architecture.md#determinism-rules)).
+   ([environment](docs/architecture.md#determinism-rules)). When the
+   environment variable `ICU4X_DATA_DIR` is set, the build scripts of the
+   four icu data packages of the text stack, `icu_locale_fallback_data`,
+   `icu_normalizer_data`, `icu_properties_data` and `icu_segmenter_data`,
+   compile the Unicode data of the directory it names instead of their
+   own, which changes line breaking and normalization and with them the
+   goldens. So `cargo xtask check` and `cargo xtask golden`, with or
+   without `--verify`, fail before they do anything else, without a
+   receipt, when it is set in their environment to any value, and CI does
+   not set it; [the limits of the fetch and deps
+   steps](#limits-of-the-fetch-and-deps-steps) state what this guard does
+   not see.
 9. Layout trees, display lists and their serialization hold no NaN and no
    infinity ([finite values](docs/architecture.md#determinism-rules)).
 10. Pixel goldens come only from the CPU rasterizer and are compared by the
@@ -1211,4 +1344,5 @@ are far below the target of 10 minutes.
 
 kosmo is released under the [MIT License](LICENSE). The copyright holders are
 the casξ Authors, listed in [AUTHORS](AUTHORS). Contributions are accepted
-under the same license.
+under the same license. The fonts that `kosmo-text` bundles keep their own
+license, OFL-1.1, as [the font assets](#the-font-assets) describes.

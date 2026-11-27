@@ -2,3 +2,9 @@
 # every checkout and the goldens are never converted or merged as text.
 **/tests/golden/MANIFEST text eol=lf
 **/tests/golden/*.px binary
+# The fonts of kosmo-text are compared with their asset manifest by SHA-256,
+# so the fonts and their license files are never converted or merged as
+# text, and the manifest keeps LF line ends in every checkout.
+framework/text/assets/fonts/MANIFEST.toml text eol=lf
+framework/text/assets/fonts/*/*.ttf binary
+framework/text/assets/fonts/*/OFL.txt binary

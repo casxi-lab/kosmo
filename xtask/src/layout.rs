@@ -3,7 +3,8 @@
 //! files without running Cargo.
 //!
 //! The step reads the table, validates it, and then checks the workspace
-//! roots, the members, the form of the manifests, the direction of every
+//! roots, the members, the form of the manifests, the feature tables of
+//! members, which name no external dependency, the direction of every
 //! declared internal dependency, the declarations of kalyx, which only the
 //! kalyx adapter makes, the repository boundary, the Cargo
 //! configuration, pure-core crates, build scripts and procedural macros,
@@ -1690,6 +1691,7 @@ fn check_crate<'a>(
             ));
         }
     }
+    check_feature_table(manifest, table, &externals, problems);
     probes::check_crate(manifest, name, table, problems);
     check_build_scripts(tree, place, manifest, table, problems);
     if krate.pure_core {
@@ -1740,6 +1742,46 @@ fn check_crate<'a>(
         problems.insert(format!(
             "{manifest}: publish may not be false; the layout table marks the crate publishable"
         ));
+    }
+}
+
+/// The feature table of a member names no external dependency of the
+/// member, one of `externals`: neither `<dependency>/<feature>` nor
+/// `<dependency>?/<feature>`, which turn on a feature of it, nor
+/// `dep:<dependency>`, which turns it on, nor a bare `<dependency>` that is
+/// not a feature of the member, which turns on an optional dependency as
+/// `dep:` does. So the features of external packages come only from
+/// declarations, which the allow entries of the deps step compare; a
+/// feature that the resolved features of a package already list would not
+/// change them when a member turned it on.
+fn check_feature_table(
+    manifest: &str,
+    table: &Table,
+    externals: &[(String, &str)],
+    problems: &mut Problems,
+) {
+    let Some(features) = table.get("features").and_then(Value::as_table) else {
+        return;
+    };
+    for (feature, values) in features {
+        let values = values.as_array().into_iter().flatten();
+        for value in values.filter_map(Value::as_str) {
+            let named = if let Some(dependency) = value.strip_prefix("dep:") {
+                Some(dependency)
+            } else if let Some((dependency, _)) = value.split_once('/') {
+                Some(dependency.trim_end_matches('?'))
+            } else {
+                (!features.contains_key(value)).then_some(value)
+            };
+            let Some(dependency) =
+                named.filter(|named| externals.iter().any(|(_, external)| external == named))
+            else {
+                continue;
+            };
+            problems.insert(format!(
+                "{manifest}: the feature {feature} names the external dependency {dependency} in {value}; features of a member name only crates of the layout table, so that the features of external packages come only from declarations, which the allow entries compare"
+            ));
+        }
     }
 }
 
