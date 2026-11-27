@@ -28,8 +28,9 @@ operators-and-arrows = −∕√∞∑∫∂∆≈≠≤≥⋅←↑→↓
 error-kinds = Syntax UnknownSymbol DivisionByZero NonIntegerExponent NotPolynomial Unsupported Internal ResourceLimit Cancelled DeadlineExceeded
 stale-result = value (source 0, settings 0, stale): 1/2
 
-# The lifecycle states of an application and the entries of the shell,
-# planned with the shell, which fixes their wording.
+# The lifecycle states of an application and the stop and switch
+# entries of the graphical shell, whose wording the planned crate
+# `kosmo-shell` fixes.
 lifecycle = Starting Running Not responding Exited Stop Switch
 
 [firamono/FiraMono-Regular.ttf]

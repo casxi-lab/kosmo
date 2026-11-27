@@ -231,9 +231,9 @@ string, its font and its code point, such as
 
 The Fira Sans group also holds the names of the kinds of errors that kalyx
 reports, the annotation of a stale result, and the lifecycle states of an
-application and the entries of the shell, whose wording the planned shell
-fixes. The Fira Sans group holds 257 distinct characters and the Fira Mono
-group 255.
+application with the stop and switch entries of the graphical shell, whose
+wording the planned crate `kosmo-shell` fixes. The Fira Sans group holds 257
+distinct characters and the Fira Mono group 255.
 
 A change that adds a string to the interface, or a character to a string,
 also adds the string to the group of the font that shows it in this file,
@@ -335,8 +335,8 @@ which covers the hash containers inside the text stack.
   with the controls that use them.
 - Rounds do not lay text out: the shell's font set serves only the frames
   that its driver draws, and a driver that presents text lays it out with a
-  font set of its own built from the same bytes, as [the
-  shell](runtime.md#the-shell) describes.
+  font set of its own built from the same bytes, as the
+  [limits](runtime.md#limits) of the framework runtime state.
 - Each font set holds a copy of both fonts, 631,592 bytes, besides its glyph
   cache; the time of layout and of filling masks has not been measured.
 
