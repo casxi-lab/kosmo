@@ -11,7 +11,7 @@ use kosmo_render::{
     Command, CoverageMask, DisplayList, FontId, GlyphCoverage, GlyphKey, Path, Rasterizer,
     RenderError, place_glyph,
 };
-use kosmo_types::{Fx, Point, round};
+use kosmo_types::{Fx, MAX_BUFFER_SIDE, Point, round};
 use parley::fontique::Blob;
 use skrifa::instance::{LocationRef, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -43,10 +43,19 @@ pub const MAX_GLYPH_BYTES: usize = 4 * 1024 * 1024;
 /// of the frame as used in it; when a new entry would bring the cache
 /// beyond either limit, it evicts entries not used in the frame, in
 /// ascending order of the frame that last used them and then of their key,
-/// until the new entry fits. A frame whose own entries exceed a limit is
-/// refused before anything is filled. Dropping masks and filling them
-/// again gives the same bytes, so what is drawn does not depend on what
-/// the cache held before.
+/// until the new entry fits.
+///
+/// A frame that alone exceeds a limit is refused before any of its masks
+/// is allocated. The cache counts the keys of the frame first and refuses
+/// a frame with more keys than it holds entries before it reads any
+/// outline. It then measures the mask of each key that it does not hold
+/// from the bounds of the points of its outline, without building a path,
+/// adds the bytes of the masks that it holds, and refuses a frame beyond
+/// its bytes. Only then are the outlines of the new keys built and their
+/// masks allocated and filled, one outline at a time: a preparation
+/// allocates masks of at most the bytes of the cache, and a refused frame
+/// none. Dropping masks and filling them again gives the same bytes, so
+/// what is drawn does not depend on what the cache held before.
 pub struct GlyphCache {
     fonts: [Blob<u8>; 2],
     max_entries: usize,
@@ -84,7 +93,9 @@ pub enum GlyphError {
     FrameTooLarge {
         /// The keys of the frame.
         entries: usize,
-        /// The bytes of their masks.
+        /// The bytes of their masks, counted only when the keys fit in the
+        /// entries of the cache, and 0 otherwise: a frame with more keys is
+        /// refused before any outline is read.
         bytes: usize,
     },
     /// The font is neither [`SANS`](crate::SANS) nor
@@ -106,6 +117,10 @@ pub enum GlyphError {
 impl fmt::Display for GlyphError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            GlyphError::FrameTooLarge { entries, bytes: 0 } => write!(
+                f,
+                "the frame needs {entries} glyph masks, more than the cache holds"
+            ),
             GlyphError::FrameTooLarge { entries, bytes } => write!(
                 f,
                 "the frame needs {entries} glyph masks of {bytes} bytes, beyond the cache"
@@ -185,17 +200,17 @@ impl GlyphCache {
         rasterizer: &mut dyn Rasterizer,
     ) -> Result<Prepared, GlyphError> {
         let keys = keys(list)?;
-        let (bytes, mut missing) = self.missing(&keys)?;
-        if keys.len() > self.max_entries || bytes > self.max_bytes {
-            return Err(GlyphError::FrameTooLarge {
-                entries: keys.len(),
-                bytes,
-            });
-        }
-        for glyph in &mut missing {
+        let missing = self.missing(&keys)?;
+        // The frame is within both limits: only now are the outlines of its
+        // new keys built and their masks allocated, as each is filled.
+        let mut fonts = Fonts::new(&self.fonts);
+        let mut masks = Vec::with_capacity(missing.len());
+        for key in missing {
+            let (outline, mut mask) = outline(fonts.get(key)?, key)?;
             rasterizer
-                .fill_coverage(&glyph.outline, &mut glyph.mask)
+                .fill_coverage(&outline, &mut mask)
                 .map_err(GlyphError::Render)?;
+            masks.push((key, mask));
         }
         self.frame += 1;
         let frame = self.frame;
@@ -207,8 +222,8 @@ impl GlyphCache {
             }
         }
         let mut evicted = 0;
-        let filled = missing.len();
-        for Missing { key, mask, .. } in missing {
+        let filled = masks.len();
+        for (key, mask) in masks {
             let size = mask.coverage().len();
             while self.entries.len() + 1 > self.max_entries || self.bytes + size > self.max_bytes {
                 // The frame fits, so the oldest entry is of an earlier frame.
@@ -235,45 +250,70 @@ impl GlyphCache {
         })
     }
 
-    /// The bytes of the masks of `keys`, and the outline and the empty mask
-    /// of each key that the cache does not hold, in the order of the keys.
-    fn missing(&self, keys: &BTreeSet<GlyphKey>) -> Result<(usize, Vec<Missing>), GlyphError> {
+    /// The keys of `keys` whose masks the cache does not hold, in their
+    /// order, once the frame is known to be within both limits, as the
+    /// [cache](GlyphCache) states. Neither a path nor a mask is made here.
+    fn missing(&self, keys: &BTreeSet<GlyphKey>) -> Result<Vec<GlyphKey>, GlyphError> {
+        if keys.len() > self.max_entries {
+            return Err(GlyphError::FrameTooLarge {
+                entries: keys.len(),
+                bytes: 0,
+            });
+        }
         let mut bytes = 0;
         let mut missing = Vec::new();
-        let mut fonts = [None, None];
+        let mut fonts = Fonts::new(&self.fonts);
         for &key in keys {
             if let Some(entry) = self.entries.get(&key) {
                 bytes += entry.mask.coverage().len();
                 continue;
             }
-            let index = key.font.get() as usize;
-            let (Some(data), Some(slot)) = (self.fonts.get(index), fonts.get_mut(index)) else {
-                return Err(GlyphError::UnknownFont(key.font));
-            };
-            if key.size < MIN_SIZE || key.size > MAX_SIZE {
-                return Err(GlyphError::SizeOutOfRange(key.size));
-            }
-            let font = match slot {
-                Some(font) => font,
-                None => {
-                    let font = FontRef::new(data.data()).map_err(|_| GlyphError::NoOutline(key))?;
-                    slot.insert(font)
-                }
-            };
-            let (outline, mask) = outline(font, key)?;
-            bytes += mask.coverage().len();
-            missing.push(Missing { key, outline, mask });
+            bytes += measure(fonts.get(key)?, key)?.bytes();
+            missing.push(key);
         }
-        Ok((bytes, missing))
+        if bytes > self.max_bytes {
+            return Err(GlyphError::FrameTooLarge {
+                entries: keys.len(),
+                bytes,
+            });
+        }
+        Ok(missing)
     }
 }
 
-/// A glyph that the cache does not hold: its key, its outline and its
-/// mask.
-struct Missing {
-    key: GlyphKey,
-    outline: Path,
-    mask: CoverageMask,
+/// The two fonts of a cache, each read by skrifa when a key first needs
+/// it.
+struct Fonts<'a> {
+    data: &'a [Blob<u8>; 2],
+    fonts: [Option<FontRef<'a>>; 2],
+}
+
+impl<'a> Fonts<'a> {
+    fn new(data: &'a [Blob<u8>; 2]) -> Fonts<'a> {
+        Fonts {
+            data,
+            fonts: [None, None],
+        }
+    }
+
+    /// The font of `key`, when it is one of the two and the size of `key`
+    /// lies within [`MIN_SIZE`] to [`MAX_SIZE`].
+    fn get(&mut self, key: GlyphKey) -> Result<&FontRef<'a>, GlyphError> {
+        let index = key.font.get() as usize;
+        let (Some(data), Some(slot)) = (self.data.get(index), self.fonts.get_mut(index)) else {
+            return Err(GlyphError::UnknownFont(key.font));
+        };
+        if key.size < MIN_SIZE || key.size > MAX_SIZE {
+            return Err(GlyphError::SizeOutOfRange(key.size));
+        }
+        match slot {
+            Some(font) => Ok(font),
+            None => {
+                let font = FontRef::new(data.data()).map_err(|_| GlyphError::NoOutline(key))?;
+                Ok(slot.insert(font))
+            }
+        }
+    }
 }
 
 impl GlyphCoverage for GlyphCache {
@@ -334,53 +374,84 @@ fn keys(list: &DisplayList) -> Result<BTreeSet<GlyphKey>, GlyphError> {
 /// in pixels from the glyph's whole pixel on the baseline with `y` growing
 /// down, and an empty mask that covers it.
 fn outline(font: &FontRef<'_>, key: GlyphKey) -> Result<(Path, CoverageMask), GlyphError> {
+    let mut pen = Pen {
+        bounds: Bounds::new(key.step.offset()),
+        path: None,
+    };
+    draw(font, key, &mut pen)?;
+    let area = pen.bounds.area()?;
+    let path = pen.path.unwrap_or_else(|| Path::new(Point::default()));
+    Ok((path, area.mask()?))
+}
+
+/// The area of the mask of `key`, which [`outline`] would allocate,
+/// measured from the bounds of the points of the outline without building
+/// a path or allocating the mask.
+fn measure(font: &FontRef<'_>, key: GlyphKey) -> Result<Area, GlyphError> {
+    let mut bounds = Bounds::new(key.step.offset());
+    draw(font, key, &mut bounds)?;
+    bounds.area()
+}
+
+/// Draws the outline of `key`, unhinted at its size, into `pen`.
+fn draw(font: &FontRef<'_>, key: GlyphKey, pen: &mut impl OutlinePen) -> Result<(), GlyphError> {
     let glyph = font
         .outline_glyphs()
         .get(GlyphId::new(key.glyph.get()))
         .ok_or(GlyphError::NoOutline(key))?;
     // The size is within 2^14 units, so it converts exactly.
     let ppem = key.size.units() as f32 / 64.0;
-    let mut pen = Pen {
-        step: key.step.offset(),
-        path: None,
-        bounds: None,
-        out_of_range: false,
-    };
     glyph
         .draw(
             DrawSettings::unhinted(Size::new(ppem), LocationRef::default()),
-            &mut pen,
+            pen,
         )
         .map_err(|_| GlyphError::NoOutline(key))?;
-    if pen.out_of_range {
-        return Err(GlyphError::OutOfRange);
-    }
-    let path = pen.path.unwrap_or_else(|| Path::new(Point::default()));
-    let mask = match pen.bounds {
-        None => CoverageMask::new(0, 0, 0, 0),
-        Some((left, top, right, bottom)) => {
-            let (left, top) = (left.div_euclid(64), top.div_euclid(64));
-            let (right, bottom) = (-(-right).div_euclid(64), -(-bottom).div_euclid(64));
-            let width = u32::try_from(right - left).map_err(|_| GlyphError::OutOfRange)?;
-            let height = u32::try_from(bottom - top).map_err(|_| GlyphError::OutOfRange)?;
-            CoverageMask::new(left as i32, top as i32, width, height)
-        }
-    };
-    Ok((path, mask.ok_or(GlyphError::OutOfRange)?))
+    Ok(())
 }
 
-/// The pen that writes an outline of skrifa, whose `y` grows up, as a
-/// [`Path`] whose `y` grows down, moved right by `step`, and keeps the
-/// bounds of its points in units.
-struct Pen {
+/// The whole pixels of a mask: its top-left value at (`left`, `top`) and
+/// `width` by `height` values.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Area {
+    left: i32,
+    top: i32,
+    width: u32,
+    height: u32,
+}
+
+impl Area {
+    /// The bytes of the mask, at most 2^26, as each side is within
+    /// [`MAX_BUFFER_SIDE`].
+    fn bytes(self) -> usize {
+        self.width as usize * self.height as usize
+    }
+
+    /// An empty mask of the area.
+    fn mask(self) -> Result<CoverageMask, GlyphError> {
+        CoverageMask::new(self.left, self.top, self.width, self.height)
+            .ok_or(GlyphError::OutOfRange)
+    }
+}
+
+/// The bounds in units of the points of an outline of skrifa, whose `y`
+/// grows up, moved right by `step` with `y` growing down.
+struct Bounds {
     step: Fx,
-    path: Option<Path>,
     /// The least `x` and `y` and the greatest `x` and `y`.
     bounds: Option<(i64, i64, i64, i64)>,
     out_of_range: bool,
 }
 
-impl Pen {
+impl Bounds {
+    fn new(step: Fx) -> Bounds {
+        Bounds {
+            step,
+            bounds: None,
+            out_of_range: false,
+        }
+    }
+
     /// The point of skrifa's (`x`, `y`): TrueType outlines are scaled in
     /// units of 1/64 pixel, so the products are whole numbers and the
     /// rounding changes nothing.
@@ -402,6 +473,63 @@ impl Pen {
         Point::new(Fx::from_units(x as i32), Fx::from_units(y as i32))
     }
 
+    /// The whole pixels that cover the points, none without points. A side
+    /// longer than [`MAX_BUFFER_SIDE`] is refused here, as
+    /// [`CoverageMask::new`] would refuse it.
+    fn area(&self) -> Result<Area, GlyphError> {
+        if self.out_of_range {
+            return Err(GlyphError::OutOfRange);
+        }
+        let Some((left, top, right, bottom)) = self.bounds else {
+            return Ok(Area::default());
+        };
+        let (left, top) = (left.div_euclid(64), top.div_euclid(64));
+        let (right, bottom) = (-(-right).div_euclid(64), -(-bottom).div_euclid(64));
+        let width = u32::try_from(right - left).map_err(|_| GlyphError::OutOfRange)?;
+        let height = u32::try_from(bottom - top).map_err(|_| GlyphError::OutOfRange)?;
+        if width > MAX_BUFFER_SIDE || height > MAX_BUFFER_SIDE {
+            return Err(GlyphError::OutOfRange);
+        }
+        Ok(Area {
+            left: left as i32,
+            top: top as i32,
+            width,
+            height,
+        })
+    }
+}
+
+impl OutlinePen for Bounds {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.point(x, y);
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.point(x, y);
+    }
+
+    fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+        self.point(cx0, cy0);
+        self.point(x, y);
+    }
+
+    fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+        self.point(cx0, cy0);
+        self.point(cx1, cy1);
+        self.point(x, y);
+    }
+
+    fn close(&mut self) {}
+}
+
+/// The pen that writes an outline of skrifa as a [`Path`] whose `y` grows
+/// down, moved right by its step, and keeps the bounds of its points.
+struct Pen {
+    bounds: Bounds,
+    path: Option<Path>,
+}
+
+impl Pen {
     fn path(&mut self, start: Point) -> &mut Path {
         self.path.get_or_insert_with(|| Path::new(start))
     }
@@ -409,7 +537,7 @@ impl Pen {
 
 impl OutlinePen for Pen {
     fn move_to(&mut self, x: f32, y: f32) {
-        let to = self.point(x, y);
+        let to = self.bounds.point(x, y);
         match &mut self.path {
             Some(path) => {
                 path.move_to(to);
@@ -419,20 +547,20 @@ impl OutlinePen for Pen {
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
-        let to = self.point(x, y);
+        let to = self.bounds.point(x, y);
         self.path(Point::default()).line_to(to);
     }
 
     fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
-        let control = self.point(cx0, cy0);
-        let to = self.point(x, y);
+        let control = self.bounds.point(cx0, cy0);
+        let to = self.bounds.point(x, y);
         self.path(Point::default()).quad_to(control, to);
     }
 
     fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
-        let first = self.point(cx0, cy0);
-        let second = self.point(cx1, cy1);
-        let to = self.point(x, y);
+        let first = self.bounds.point(cx0, cy0);
+        let second = self.bounds.point(cx1, cy1);
+        let to = self.bounds.point(x, y);
         self.path(Point::default()).cubic_to(first, second, to);
     }
 

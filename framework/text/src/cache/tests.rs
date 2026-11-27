@@ -1,3 +1,4 @@
+use alloc::string::ToString;
 use alloc::vec;
 
 use kosmo_render::{Color, GlyphId, ImageStore, ListBuilder, RenderTarget, Step, VelloRasterizer};
@@ -59,6 +60,30 @@ fn frame_of(font: FontId, size: Fx, glyphs: &[u32]) -> DisplayList {
 
 fn frame(glyphs: &[u32]) -> DisplayList {
     frame_of(SANS, SIZE, glyphs)
+}
+
+/// A display list of glyphs 3 to `2 + count` of Fira Sans at the largest
+/// size, each at every step of `steps`.
+fn largest(count: u32, steps: &[Step]) -> DisplayList {
+    let mut glyphs = Vec::new();
+    for &step in steps {
+        for glyph in 3..3 + count {
+            glyphs.push(kosmo_render::Glyph {
+                id: GlyphId::new(glyph),
+                origin: Point::new(step.offset(), px(300)),
+            });
+        }
+    }
+    let mut builder = ListBuilder::new();
+    builder
+        .push(Command::Glyphs {
+            font: SANS,
+            size: MAX_SIZE,
+            color: Color::opaque(0, 0, 0),
+            glyphs,
+        })
+        .unwrap();
+    builder.finish().unwrap()
 }
 
 /// The bytes of the masks of the entries of `cache`, added together.
@@ -331,6 +356,133 @@ fn a_frame_beyond_the_capacity_is_refused_before_filling() {
     assert_eq!(error, GlyphError::FrameTooLarge { entries: 8, bytes });
     assert_eq!(rasterizer.fills, 0);
     assert_eq!((set.glyphs().entries(), set.glyphs().bytes()), (0, 0));
+}
+
+#[test]
+fn a_frame_beyond_the_capacity_is_refused_before_its_masks_are_allocated() {
+    let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
+    let mut rasterizer = Counting::new();
+    set.prepare(&frame(&[3, 4]), &mut rasterizer).unwrap();
+    let held = |set: &FontSet| {
+        let cache = set.glyphs();
+        (cache.entries(), cache.bytes(), cache.frame())
+    };
+    let before = held(&set);
+    rasterizer.fills = 0;
+    // 1,025 glyphs at each of the four steps are 4,100 keys, beyond the
+    // entries, whose masks at 256 pixels per em would take some 24 times
+    // the bytes of the cache. The step that lists the missing keys refuses
+    // them before it reads any outline, so it counts no bytes.
+    let many = largest(1_025, &Step::ALL);
+    let many_keys = keys(&many).unwrap();
+    let refused = GlyphError::FrameTooLarge {
+        entries: 4_100,
+        bytes: 0,
+    };
+    assert_eq!(set.glyphs.missing(&many_keys), Err(refused));
+    assert_eq!(set.prepare(&many, &mut rasterizer), Err(refused));
+    assert_eq!(
+        refused.to_string(),
+        "the frame needs 4100 glyph masks, more than the cache holds"
+    );
+    // Not even a glyph without an outline is read.
+    let mut small = font_set(2, MAX_GLYPH_BYTES);
+    assert_eq!(
+        small.prepare(&frame(&[3, 4, 60_000]), &mut rasterizer),
+        Err(GlyphError::FrameTooLarge {
+            entries: 3,
+            bytes: 0
+        })
+    );
+    // 200 glyphs at one step fit in the entries. Their masks are measured
+    // without being allocated, and their bytes, exactly those of the masks,
+    // exceed the cache.
+    let font = FontRef::new(SANS_BYTES).unwrap();
+    let wide = largest(200, &[Step::Whole]);
+    let wide_keys = keys(&wide).unwrap();
+    let bytes: usize = wide_keys
+        .iter()
+        .map(|&key| outline(&font, key).unwrap().1.coverage().len())
+        .sum();
+    assert!(bytes > MAX_GLYPH_BYTES, "{bytes}");
+    let refused = GlyphError::FrameTooLarge {
+        entries: 200,
+        bytes,
+    };
+    assert_eq!(set.glyphs.missing(&wide_keys), Err(refused));
+    assert_eq!(set.prepare(&wide, &mut rasterizer), Err(refused));
+    assert_eq!(
+        refused.to_string(),
+        alloc::format!("the frame needs 200 glyph masks of {bytes} bytes, beyond the cache")
+    );
+    assert_eq!(rasterizer.fills, 0);
+    assert_eq!(held(&set), before);
+    // A frame within both limits lists the keys that the cache lacks, and
+    // their masks are allocated as they are filled.
+    let three = keys(&frame(&[3, 4, 5])).unwrap();
+    assert_eq!(set.glyphs.missing(&three), Ok(vec![key(5, Step::Whole)]));
+    let prepared = set.prepare(&frame(&[3, 4, 5]), &mut rasterizer).unwrap();
+    assert_eq!((prepared.filled, rasterizer.fills), (1, 1));
+}
+
+#[test]
+fn masks_are_measured_from_the_bounds_of_their_points() {
+    let font = FontRef::new(SANS_BYTES).unwrap();
+    // The measure of a mask is the mask that the outline allocates.
+    for size in [SIZE, MAX_SIZE] {
+        for glyph in 2..40 {
+            for step in Step::ALL {
+                let key = GlyphKey {
+                    font: SANS,
+                    size,
+                    glyph: GlyphId::new(glyph),
+                    step,
+                };
+                let (_, mask) = outline(&font, key).unwrap();
+                let area = measure(&font, key).unwrap();
+                assert_eq!(
+                    (area.left, area.top, area.width, area.height),
+                    (mask.left(), mask.top(), mask.width(), mask.height()),
+                    "{key:?}"
+                );
+                assert_eq!(area.bytes(), mask.coverage().len());
+            }
+        }
+    }
+    // Bounds in units take the whole pixels that cover them.
+    let bounds = |extent| Bounds {
+        step: Fx::ZERO,
+        bounds: Some(extent),
+        out_of_range: false,
+    };
+    let area = Area {
+        left: -1,
+        top: -11,
+        width: 11,
+        height: 12,
+    };
+    assert_eq!(bounds((-1, -700, 640, 1)).area(), Ok(area));
+    assert_eq!(area.bytes(), 132);
+    assert_eq!(Bounds::new(Fx::ZERO).area(), Ok(Area::default()));
+    // A side of the longest buffer is measured, and a longer one refused,
+    // as `CoverageMask::new` would refuse it.
+    let side = i64::from(MAX_BUFFER_SIDE) * 64;
+    assert_eq!(
+        bounds((0, 0, side, 64)).area().map(Area::bytes),
+        Ok(MAX_BUFFER_SIDE as usize)
+    );
+    assert_eq!(
+        bounds((0, 0, side + 1, 64)).area(),
+        Err(GlyphError::OutOfRange)
+    );
+    assert_eq!(
+        bounds((0, 0, 64, side + 1)).area(),
+        Err(GlyphError::OutOfRange)
+    );
+    assert!(CoverageMask::new(0, 0, MAX_BUFFER_SIDE + 1, 1).is_none());
+    let mut beyond = Bounds::new(Fx::ZERO);
+    beyond.out_of_range = true;
+    assert_eq!(beyond.area(), Err(GlyphError::OutOfRange));
 }
 
 #[test]
