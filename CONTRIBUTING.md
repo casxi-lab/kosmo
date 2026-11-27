@@ -888,8 +888,10 @@ The fetch and deps steps have limits:
   without the variable in that environment, such as `build.rustflags` that
   set their `cfg` together with a compiler wrapper that gives the variable
   to the compiler alone. The build script of `libm` reads
-  `ENSURE_NO_PANIC`, which only turns on checks that its functions do not
-  panic and changes no output, so the guard leaves it.
+  `ENSURE_NO_PANIC`, which marks its functions with the `no_panic`
+  attribute of one of its development dependencies, so a build that uses
+  `libm` as a dependency fails to compile when that build script runs with
+  it set and never gives other output; the guard leaves it.
 - The build-script rules cover crates.io packages. Which members may have a
   build script is set per crate in `layout.toml`, as the layout step checks,
   and their build dependencies are allow entries there; review reads what
