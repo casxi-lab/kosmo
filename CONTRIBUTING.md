@@ -96,9 +96,11 @@ or carries an `#[allow]`, and every `#[allow]` states its reason with
 [the determinism lints](#the-determinism-lints) describes.
 
 `cargo xtask check --receipt <path>` also writes a JSON receipt of the run to
-`<path>`, whether the check passes or fails. It records the commit, whether
-the working tree was clean before and after the run, each step with its
-status, duration and the values it observed (for the `fmt`, `clippy` and
+`<path>`, whether the check passes or fails, unless it fails before the first
+step, as rule 8 of [golden images and
+determinism](#golden-images-and-determinism) states. It records the commit,
+whether the working tree was clean before and after the run, each step with
+its status, duration and the values it observed (for the `fmt`, `clippy` and
 `test` steps, the duration of each workspace's command in milliseconds, as
 `<workspace>_ms`, of each pass without a member, as
 `<workspace>_without_<member>_ms`, of each feature pass, as
@@ -872,6 +874,19 @@ The fetch and deps steps have limits:
   not have. Procedural macros also run at build time; the allowlists mark
   them with `proc-macro = true`, but the step does not judge them. Review
   covers these.
+- The build scripts of the four icu data packages of the framework read the
+  environment variable `ICU4X_DATA_DIR`, and when it is set they compile the
+  Unicode data of the directory it names instead of their own;
+  `cargo xtask check` and `cargo xtask golden` fail first when it is set, as
+  rule 8 of [golden images and determinism](#golden-images-and-determinism)
+  states.
+  This guard reads only the environment of `cargo xtask`: Cargo
+  configuration outside the repository, such as an `[env]` table in a
+  `config.toml` of the Cargo home or of a directory above the checkout, can
+  set the variable for the build scripts alone, and the guard does not see
+  that. The build script of `libm` reads `ENSURE_NO_PANIC`, which only turns
+  on checks that its functions do not panic and changes no output, so the
+  guard leaves it.
 - The build-script rules cover crates.io packages. Which members may have a
   build script is set per crate in `layout.toml`, as the layout step checks,
   and their build dependencies are allow entries there; review reads what
@@ -1154,7 +1169,18 @@ architecture that it links:
    as rule 2 states ([font sources](docs/architecture.md#determinism-rules)).
 8. Output depends only on input: nothing reads the locale or environment
    variables, options are constants, and records hold no wall-clock time
-   ([environment](docs/architecture.md#determinism-rules)).
+   ([environment](docs/architecture.md#determinism-rules)). When the
+   environment variable `ICU4X_DATA_DIR` is set, the build scripts of the
+   four icu data packages of the text stack, `icu_locale_fallback_data`,
+   `icu_normalizer_data`, `icu_properties_data` and `icu_segmenter_data`,
+   compile the Unicode data of the directory it names instead of their
+   own, which changes line breaking and normalization and with them the
+   goldens. So `cargo xtask check` and `cargo xtask golden`, with or
+   without `--verify`, fail before they do anything else, without a
+   receipt, when it is set in their environment to any value, and CI does
+   not set it; [the limits of the fetch and deps
+   steps](#limits-of-the-fetch-and-deps-steps) state what this guard does
+   not see.
 9. Layout trees, display lists and their serialization hold no NaN and no
    infinity ([finite values](docs/architecture.md#determinism-rules)).
 10. Pixel goldens come only from the CPU rasterizer and are compared by the
