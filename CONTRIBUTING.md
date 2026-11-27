@@ -600,10 +600,11 @@ of a font with the line of its `[[font]]` table:
 The step compares the files with the manifest: a font changed together with
 its digest and size in the manifest passes it. A test of `xtask` keeps the
 sizes and digests of both fonts and the digests of their license files as
-those of the google/fonts files at commit `29b4ec6`, so such a change also
-changes that test, and review compares it with the files of `source`. The step does not
-read the fonts themselves, neither their tables nor the characters that they
-cover.
+those of the google/fonts files at commit `29b4ec6`, their `upstream` as
+google/fonts records it and their `version` as their name tables give it,
+so such a change also changes that test, and review compares it with the
+files of `source`. The step does not read the fonts themselves, neither
+their tables nor the characters that they cover.
 
 `kosmo-text` is not published yet. Its asset directory lies inside the
 crate's directory, so a published package would carry the fonts, their

@@ -511,12 +511,14 @@ fn the_font_assets_of_this_repository_pass() {
 fn the_manifest_of_this_repository_lists_the_unmodified_fonts_of_google_fonts() {
     // The fonts and license files of google/fonts at commit
     // 29b4ec6df2522a8aee279414b78a07910b065874, with their sizes and
-    // SHA-256 digests.
+    // SHA-256 digests, the commit of FiraGFVersion that google/fonts
+    // records for both fonts and the version in the name table of each.
     let tree = Tree::load(&repo::root()).expect("the repository is a Git working copy");
     let mut problems = Problems::default();
     let fonts = read(&tree, MANIFEST_PATH, &mut problems).expect("the manifest reads");
     assert_eq!(problems.lines(), Vec::<String>::new());
     let commit = "google/fonts@29b4ec6df2522a8aee279414b78a07910b065874";
+    let upstream = "googlefonts/FiraGFVersion@a7d6892325d5b7382e426bea13bd3ef2c32bd53e";
     let found: Vec<_> = fonts
         .iter()
         .map(|(_, font)| {
@@ -525,6 +527,8 @@ fn the_manifest_of_this_repository_lists_the_unmodified_fonts_of_google_fonts() 
                 font.bytes,
                 font.sha256.as_str(),
                 font.source.as_str(),
+                font.upstream.as_str(),
+                font.version.as_str(),
                 font.license_file.as_str(),
                 font.license_sha256.as_str(),
             )
@@ -538,6 +542,8 @@ fn the_manifest_of_this_repository_lists_the_unmodified_fonts_of_google_fonts() 
                 174_596,
                 "2e00b0cf3106a3d792f35711b7722740b76c02ee7300ea8c60f940584b7a8ac9",
                 format!("{commit}:ofl/{MONO}").as_str(),
+                upstream,
+                "3.206",
                 MONO_LICENSE,
                 "d1829ff3455bbf3b9d13dfb0a57758a863107c9108aab48558f26f37f1094180",
             ),
@@ -546,6 +552,8 @@ fn the_manifest_of_this_repository_lists_the_unmodified_fonts_of_google_fonts() 
                 456_996,
                 "c29556a2719bf613ef3d5e070e40d903a8965d9c081beca1375dc1e6e0f93c23",
                 format!("{commit}:ofl/{SANS}").as_str(),
+                upstream,
+                "4.203",
                 SANS_LICENSE,
                 "8f24842e9174beda18a556c2ae7d54f5dc444340c19a3a9ef77e23bca366adbd",
             ),
