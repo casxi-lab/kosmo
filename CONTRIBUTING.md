@@ -1134,7 +1134,8 @@ build turns them on. kosmo uses no coverage tools, neither
   binary, so a test of call relations is the only test in its file under
   `tests/`, and the file compiles empty without the features that it
   needs, as `tests/call_relations.rs` of `kosmo-backend-headless` does
-  with `#![cfg(all(feature = "test-hooks", feature = "call-probes"))]`.
+  with `#![cfg(all(feature = "test-hooks", feature = "call-probes"))]`;
+  review checks this, the check does not.
 - Where probes go, by layer of the [source
   layout](docs/architecture.md#source-layout):
   - in `framework/`, a crate of layer F0 other than `kosmo-testkit`
@@ -1189,21 +1190,16 @@ build turns them on. kosmo uses no coverage tools, neither
   every test of the workspace again, so its time adds to the check; the
   receipt records it as `framework_call-probes_ms` in both steps.
 
-The hosted check of `main` took these times, in milliseconds, as the
-receipts of its runs record them: the ten steps together, the test command
-of `framework/` (`framework_ms` of the `test` step) and the passes with
-call probes.
+The hosted check took these times, in milliseconds, as the receipts of its
+runs record them: the ten steps together, the test command of `framework/`
+(`framework_ms` of the `test` step) and the passes with call probes.
 
-| Commit of `main` | Run | Ten steps | Test of `framework/` | Passes with call probes |
+| Commit | Run | Ten steps | Test of `framework/` | Passes with call probes |
 | --- | --- | --- | --- | --- |
-| `7f1d039`, before call probes | 45872455784 | 73,677 | 34,344 | None |
-| `7b7e11e`, with call probes in a pass of the headless backend | 45931895261 | 101,205 | 37,352 | `kosmo-backend-headless` with `test-hooks,call-probes`: 4,499 in `test` and 736 in `clippy` |
+| `7f1d039` on `main`, before call probes | 45872455784 | 73,677 | 34,344 | None |
+| `7b7e11e` on `main`, with call probes in a pass of the headless backend | 45931895261 | 101,205 | 37,352 | `kosmo-backend-headless` with `test-hooks,call-probes`: 4,499 in `test` and 736 in `clippy` |
 
-Both runs are far below the target of 10 minutes. With the probe pass over
-`framework/` in its place, a local run of the check on an Apple silicon
-Mac, not on the hosted runner, took 43,096 ms for the ten steps and
-12,463 ms for the test command of `framework/`, and the probe pass took
-14,582 ms in `test` and 665 ms in `clippy`.
+The runs are far below the target of 10 minutes.
 
 ## License
 
