@@ -885,12 +885,15 @@ and their limits.
   | Input and output | All of `std::io`; `print!`, `println!`, `eprint!`, `eprintln!`, `dbg!` |
   | kalyx | `MonotonicClock`, and `kalyx::Context::new`, which builds one; the fallback line uses `Context::with_observers` |
 
-- External window, terminal, async-runtime, `libc` and system font discovery
-  packages never enter a core library. `HashMap` and `HashSet` with the
-  default hasher are not listed; determinism belongs to the [rendering and
-  determinism rules](#rendering-text-and-determinism). The list forbids; it is
-  not an allow-list of `std` interfaces. Adding frontends adds no external
-  dependencies to core libraries.
+- No core library declares an external window, terminal, async-runtime,
+  `libc` or system font discovery package as a direct dependency; such a
+  package reaches a core library only through test support in test builds,
+  the builds with the feature `call-probes` among them, as `libc` does
+  through `sha2` of `kosmo-testkit`. `HashMap` and `HashSet`
+  with the default hasher are not listed; determinism belongs to the
+  [rendering and determinism rules](#rendering-text-and-determinism). The
+  list forbids; it is not an allow-list of `std` interfaces. Adding
+  frontends adds no external dependencies to core libraries.
 - Capabilities are injected. Time comes from an injected clock (job deadlines
   in the job layer, the framework clock in the framework); real clocks are
   built only in boundary crates. Computation goes through the job layer. Fonts
@@ -898,14 +901,15 @@ and their limits.
   the framework and rendering define. Surfaces, events and devices come
   through the platform interface and the ports.
 - First-release registration: `kosmo` is a boundary crate for standard
-  streams, arguments, exit code and the real clock, and `kosmo-jobs` for
-  threads; `kosmo-types`, `kosmo-math-model`, `kosmo-math-kalyx`,
-  `kosmo-render`, `kosmo-platform`, `kosmo-testkit`,
+  streams, arguments, exit code and the real clock, `kosmo-jobs` for
+  threads, and `kosmo-testkit` for files, which allows `std::fs` and
+  `std::path` but not `std::io`, so that the script runner reads script files
+  and converts the errors where it reads them; `kosmo-types`,
+  `kosmo-math-model`, `kosmo-math-kalyx`, `kosmo-render`, `kosmo-platform`,
   `kosmo-backend-headless`, `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui`
   are core libraries. Other crates are registered by the change that creates
-  them; `kosmo-testkit` is expected to become a boundary crate for files when
-  it reads script files, and [host programs](#host-programs) lists the
-  boundary crates of the display stack with their categories.
+  them; [host programs](#host-programs) lists the boundary crates of the
+  display stack with their categories.
 - The layout step of `cargo xtask check` parses the Rust files under the
   `src/` of every library crate, unit tests included, expands `use` trees and
   reports every forbidden path, macro and type with file and line, and in a
@@ -1344,7 +1348,7 @@ methods are only for whoever builds them.
   resource, and `a11y_tree` returns the tree that the backend kept.
 - `kosmo-platform` and both backends read no files and are core libraries; they
   have `#![forbid(unsafe_code)]` and are not pure core. `kosmo-testkit` reads
-  script files and is expected to be a boundary crate.
+  script files and is a boundary crate for files.
 - Clipboard, text input, lifecycle and memory pressure are not part of the first
   release's interface. Adding a trait, a method or an event kind is a design
   change.
@@ -1384,7 +1388,9 @@ methods are only for whoever builds them.
   Tests never sleep or read the wall clock.
 
 Besides key lines, which follow the [event record](#time-decoding-and-scripts),
-a script has these lines; the text format is fixed with the runner:
+a script has these lines; [event
+scripts](features/framework/platform-interface.md#event-scripts) gives the
+text format, which is fixed with the runner:
 
 - a header with the format version and the size and pixel format of the main
   surface;
@@ -1825,6 +1831,9 @@ Besides the rules above:
   image encoding. The description takes 16 bytes: the width, the height, the
   stride and a format code, each a little-endian `u32`; the codes are 1 for
   `Rgba8Premul`, 2 for `Xrgb8888`, 3 for `Rgb565` and 4 for `Argb8888Premul`.
+  `kosmo-testkit` computes the digests of presented buffers in this encoding
+  with the `sha2` package, so the digest of a frame equals the digest that a
+  golden's manifest lists for the same frame.
 - **Pinning.** The toolchain and the chosen libraries are pinned exactly. Each
   upgrade is a pull request of its own, which updates the goldens by category,
   and the list of forbidden methods is generated again with a toolchain upgrade.
@@ -1837,8 +1846,8 @@ Besides the rules above:
 
 The libraries chosen above enter as these direct external dependencies, which
 the layout table lists for their crates; so far it lists those of
-`kosmo-render` and `kosmo-platform`, and the others are added with their
-crates:
+`kosmo-render`, `kosmo-platform` and `kosmo-testkit`, and the others are added
+with their crates:
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |
@@ -1847,6 +1856,7 @@ crates:
 | `skrifa` | `=0.49.0` | Off | `libm` | `std`, `autohint_shaping` | `kosmo-text` |
 | `accesskit` | `=0.25.2` | Off; it has none | None | `serde`, `schemars`, `pyo3`, `enumn` | `kosmo-platform` |
 | `libm` | `=0.2.16` | Off | None; `arch` and `default` after resolution, because other packages use `libm` with its default features | None | `kosmo-render` |
+| `sha2` | `=0.11.1` | Off | None | `alloc`, `oid`, `zeroize` | `kosmo-testkit` |
 
 - Each row is one direct dependency of one crate; a package that two crates
   depend on takes two rows.
@@ -4070,7 +4080,7 @@ A component is a unit with its own role, contract and level.
 | Scratchpad | `kosmo-scratchpad` | Composition | A0 | [Scratchpad](features/framework/scratchpad.md); tests in `framework/scratchpad/src/` and `framework/scratchpad/tests/` |
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | [Rendering](features/framework/rendering.md#pixel-formats-buffers-and-damage-regions) for pixel formats, buffer descriptions, conversion and damage regions, and [Framework runtime](features/framework/runtime.md) for the other types; tests in `display/types/src/` and `display/types/tests/` |
-| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/ui/src/` and `framework/ui/tests/` |
+| Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/ui/src/`, `framework/ui/tests/` and, for the shell on the headless backend, `framework/backend-headless/tests/shell.rs` |
 | Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
 | Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | [Rendering](features/framework/rendering.md); tests in `framework/render/src/` and `framework/render/tests/` |

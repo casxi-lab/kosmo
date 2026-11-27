@@ -115,7 +115,9 @@ lock-allowlist = "xtask/allowlist.toml"
 # `std::process::ExitCode` and `std::process::exit`; `real-clock`,
 # `std::time::Instant`, `SystemTime` and `UNIX_EPOCH`, and kalyx's
 # `MonotonicClock` and `kalyx::Context::new`; `threads`, `std::thread` and
-# `thread_local!`. A category never allows more than this, and other
+# `thread_local!`; `files`, `std::fs` and `std::path`, without `std::io`,
+# so a crate registered for it alone converts errors of reading files where
+# it reads them. A category never allows more than this, and other
 # categories are added with the first crate registered for them. The
 # layout step reads the Rust files under `src/` of each library crate and
 # reports, with file and line, every forbidden item that its categories do
@@ -202,6 +204,14 @@ export = false
 pure-core = false
 publish = false
 same-layer = ["kosmo-platform"]
+platform = ["files"]
+
+[[crates.kosmo-testkit.external]]
+name = "sha2"
+version = "=0.11.1"
+default-features = false
+features = []
+resolved-features = []
 
 [crates.kosmo-math-kalyx]
 path = "framework/math-kalyx"
@@ -231,6 +241,7 @@ layer = "F1"
 export = false
 pure-core = false
 publish = false
+same-layer = ["kosmo-ui"]
 
 [crates.kosmo-scratchpad]
 path = "framework/scratchpad"

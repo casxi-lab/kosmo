@@ -1,0 +1,25 @@
+kosmo-script 1 surface 64x8 xrgb8888
+checkpoint
+at 1000000 press 7:1e char:1 mods=0000
+at 1000000 release 7:1e char:1 mods=0000
+at 2000000 press 7:2e char:+ mods=0002
+at 2000000 release 7:2e char:+ mods=0002
+at 3000000 press 7:1f char:2 mods=0000
+at 3000000 release 7:1f char:2 mods=0000
+at 4000000 press 7:50 named:left mods=0000
+at 4500000 repeat 7:50 named:left mods=0000
+at 5000000 release 7:50 named:left mods=0000
+time 6000000
+checkpoint
+focus out 1 stamp=1/1
+focus in 1 stamp=1/2
+at 7000000 press 7:4f named:right mods=0000 stamp=1/2
+at 7000000 release 7:4f named:right mods=0000
+at 7000000 press 7:4f named:right mods=0000 stamp=1/1
+at 8000000 press 7:28 named:execute mods=0000
+at 8000000 release 7:28 named:execute mods=0000
+checkpoint
+time 40000000
+at 41000000 press 7:2a named:delete mods=0000
+at 41000000 release 7:2a named:delete mods=0000 synthetic
+checkpoint

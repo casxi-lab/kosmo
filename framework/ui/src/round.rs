@@ -1,6 +1,8 @@
 //! The round function: the event and update passes, then the view pass.
 
-use kosmo_types::{KeyAction, KeyEvent, KeyMeaning, MonoTime};
+use kosmo_platform::accesskit::TreeUpdate;
+use kosmo_render::DisplayList;
+use kosmo_types::{Damage, KeyAction, KeyEvent, KeyMeaning, MonoTime};
 
 use crate::JOB_POLL_INTERVAL;
 use crate::app::{App, Context, Control, Handling, Message, Out, Phase};
@@ -57,7 +59,7 @@ pub enum ViewPass {
 
 /// The output of the second step of a round.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Output {
     /// The event handling record of the round.
     pub record: Record,
@@ -69,6 +71,16 @@ pub struct Output {
     pub next_deadline: Option<MonoTime>,
     /// What the view pass did.
     pub view: ViewPass,
+    /// The AccessKit tree updates of the round, one for each surface whose
+    /// tree changed, in the order of the surfaces, which the shell pushes
+    /// to the platform. Rounds have no accessibility pass yet, so this is
+    /// empty.
+    pub accessibility: Vec<(SurfaceId, TreeUpdate)>,
+    /// The frames of the round: for each surface with update regions, in
+    /// the order of the surfaces, its display list and its damage region,
+    /// which the shell presents. Rounds do not run the drawing pass yet,
+    /// so this is empty.
+    pub frames: Vec<(SurfaceId, DisplayList, Damage)>,
 }
 
 /// The counts of what the runtime dropped or refused since it was built.
@@ -179,6 +191,8 @@ impl<A: App> Round<'_, A> {
             record,
             next_deadline,
             view,
+            accessibility: Vec::new(),
+            frames: Vec::new(),
         }
     }
 }
@@ -206,6 +220,13 @@ impl<A: App> Runtime<A> {
     /// What the runtime dropped or refused so far.
     pub fn counts(&self) -> Counts {
         self.counts
+    }
+
+    /// The focus stamp of the latest focus in of `surface` that a round
+    /// took, and whether the surface holds focus, as the focus check reads
+    /// them; `None` before the surface's first focus in.
+    pub fn focus(&self, surface: SurfaceId) -> Option<(Stamp, bool)> {
+        self.focus.get(surface)
     }
 
     /// The first step of a round: the event pass and the update pass.

@@ -38,16 +38,19 @@ pub enum Category {
     RealClock,
     /// Threads.
     Threads,
+    /// Files and paths.
+    Files,
 }
 
 impl Category {
     /// Every category, in the order of the table's comments.
-    pub const ALL: [Category; 5] = [
+    pub const ALL: [Category; 6] = [
         Category::StandardStreams,
         Category::Arguments,
         Category::ExitCode,
         Category::RealClock,
         Category::Threads,
+        Category::Files,
     ];
 
     /// The name that the table uses.
@@ -58,6 +61,7 @@ impl Category {
             Category::ExitCode => "exit-code",
             Category::RealClock => "real-clock",
             Category::Threads => "threads",
+            Category::Files => "files",
         }
     }
 
@@ -123,8 +127,8 @@ const fn called(path: &'static [&'static str], category: Category) -> Item {
 /// crate root, as the platform boundary names it; the macros' paths
 /// through `std::prelude` are read as their paths from the crate root.
 const ITEMS: [Item; 31] = [
-    path(&["std", "fs"], None),
-    path(&["std", "path"], None),
+    path(&["std", "fs"], Some(Category::Files)),
+    path(&["std", "path"], Some(Category::Files)),
     path(&["std", "ffi", "OsStr"], Some(Category::Arguments)),
     path(&["std", "ffi", "OsString"], Some(Category::Arguments)),
     path(

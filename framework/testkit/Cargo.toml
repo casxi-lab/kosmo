@@ -1,15 +1,22 @@
 [package]
 name = "kosmo-testkit"
-description = "Test support of the framework: the conformance suite of the platform interface and call probes"
+description = "Test support of the framework: the conformance suite of the platform interface, the script runner, pixel digests and call probes"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# The call probe of the script runner's entry, for tests of call relations.
+# Off by default; only the command line turns it on, as
+# `--features kosmo-testkit/call-probes`.
+call-probes = []
+
 [dependencies]
 kosmo-platform = { workspace = true, features = ["test-hooks"] }
 kosmo-types.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

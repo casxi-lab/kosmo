@@ -14,6 +14,9 @@
 //! - It is built with its capabilities, the accepted pixel formats and the
 //!   output size, and with the table of its resources, whose bytes
 //!   [`ResourceProvider::resource`] returns.
+//! - It numbers its surfaces from 1 in the order it creates them and never
+//!   gives a number twice, so the first surface of a new backend is
+//!   surface 1.
 //! - Once a surface of the role [`SurfaceRole::Main`] exists, the backend
 //!   queues [`PlatformEvent::Configure`] with its size and
 //!   [`PlatformEvent::FocusIn`] with the epoch [`HEADLESS_EPOCH`] and a

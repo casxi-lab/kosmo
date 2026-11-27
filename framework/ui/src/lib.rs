@@ -1,7 +1,8 @@
 //! The core of kosmo's framework: the control tree with its passes, the
-//! round function of the single-threaded event loop, versioned result
-//! slots, timers, the dispatch of key events with focus checks, command
-//! tables with the minimal key map, hit testing and the drawing pass.
+//! round function of the single-threaded event loop and its shell,
+//! versioned result slots, timers, the dispatch of key events with focus
+//! checks, command tables with the minimal key map, hit testing and the
+//! drawing pass.
 //!
 //! An application is a model that implements [`App`]: `update` handles
 //! [`Message`]s one at a time and is the only place that changes the model;
@@ -100,6 +101,18 @@
 //! assert_eq!(second.record.lines()[1], "receipt accepted 1");
 //! ```
 //!
+//! The [`Shell`] drives rounds through the platform interface of
+//! `kosmo-platform`. [`Shell::run_round`], the single-round entry, waits
+//! once for platform events, reads the clock, takes job reports, runs both
+//! steps with the execution port between them, and pushes the round's
+//! accessibility updates and presents its frames; [`Shell::present`] draws
+//! a display list into a surface's previous frame and presents its damage.
+//! [`run`] runs rounds until the platform disconnects and returns an
+//! [`ExitStatus`]. With the feature `call-probes`, off by default and
+//! turned on only from the command line, the single-round entry records
+//! the call probe `kosmo-ui::run_round` of `kosmo-testkit` for tests of
+//! call relations; ordinary builds and tests compile no probe code.
+//!
 //! The control tree holds at most [`MAX_WIDGETS`] controls and is at most
 //! [`MAX_DEPTH`] deep; a view beyond either leaves the tree as it was and
 //! the round reports a [`RebuildError`]. The timer table holds at most
@@ -118,6 +131,7 @@ mod paint;
 mod port;
 mod record;
 mod round;
+mod shell;
 mod slot;
 mod timer;
 mod tree;
@@ -138,6 +152,7 @@ pub use paint::{PaintError, paint};
 pub use port::{Effect, JobPort, Receipt, execute};
 pub use record::Record;
 pub use round::{Counts, Input, Output, Round, Runtime, ViewPass};
+pub use shell::{ExitReason, ExitStatus, RoundEnd, Shell, ShellError, run};
 pub use slot::{Delivered, ResultSlot, Shown, Tagged};
 pub use timer::{TIMER_CAPACITY, TimerLabel};
 pub use tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, RebuildError, Tree, View, WidgetId};
