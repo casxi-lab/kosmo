@@ -87,6 +87,12 @@ impl FocusTable {
         }
     }
 
+    /// The stamp of the surface's latest focus in, and whether it holds
+    /// focus.
+    pub(crate) fn get(&self, surface: SurfaceId) -> Option<(Stamp, bool)> {
+        self.surfaces.get(&surface).copied()
+    }
+
     /// Checks the stamp of a key event for `surface`: its epoch, then its
     /// focus generation, then whether the surface holds focus.
     pub(crate) fn check(&self, surface: SurfaceId, stamp: Stamp) -> Result<(), Dropped> {

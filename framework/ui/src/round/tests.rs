@@ -338,3 +338,52 @@ fn a_rejected_view_leaves_the_tree_and_is_recorded() {
     assert_eq!(runtime.tree().preorder(), before);
     assert_eq!(app.log, [Logged::Rejected("busy")]);
 }
+
+#[test]
+fn the_runtime_reports_the_latest_focus_of_a_surface() {
+    let mut app = TestApp::default();
+    let mut runtime = Runtime::new();
+    assert_eq!(runtime.focus(SURFACE), None);
+    round(
+        &mut runtime,
+        &mut app,
+        0,
+        vec![Event::FocusIn {
+            surface: SURFACE,
+            stamp: stamp(1, 1),
+        }],
+    );
+    assert_eq!(runtime.focus(SURFACE), Some((stamp(1, 1), true)));
+    round(
+        &mut runtime,
+        &mut app,
+        1,
+        vec![
+            Event::FocusOut {
+                surface: SURFACE,
+                stamp: stamp(1, 1),
+            },
+            Event::FocusIn {
+                surface: SURFACE,
+                stamp: stamp(1, 2),
+            },
+            Event::FocusOut {
+                surface: SURFACE,
+                stamp: stamp(1, 2),
+            },
+        ],
+    );
+    assert_eq!(runtime.focus(SURFACE), Some((stamp(1, 2), false)));
+    // A focus out with another stamp than the latest focus in changes
+    // nothing.
+    round(
+        &mut runtime,
+        &mut app,
+        2,
+        vec![Event::FocusOut {
+            surface: SURFACE,
+            stamp: stamp(1, 1),
+        }],
+    );
+    assert_eq!(runtime.focus(SURFACE), Some((stamp(1, 2), false)));
+}

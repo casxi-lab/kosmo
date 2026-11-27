@@ -222,6 +222,13 @@ impl<A: App> Runtime<A> {
         self.counts
     }
 
+    /// The focus stamp of the latest focus in of `surface` that a round
+    /// took, and whether the surface holds focus, as the focus check reads
+    /// them; `None` before the surface's first focus in.
+    pub fn focus(&self, surface: SurfaceId) -> Option<(Stamp, bool)> {
+        self.focus.get(surface)
+    }
+
     /// The first step of a round: the event pass and the update pass.
     ///
     /// The event pass queues the receipts, checks and dispatches the key

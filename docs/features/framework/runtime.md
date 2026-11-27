@@ -314,7 +314,9 @@ dispatch, and is dropped with its reason when:
 | `no-focus` | its surface does not hold focus |
 
 So a key of an earlier focus generation never reaches the new view.
-`Runtime::counts` gives the number of drops for each reason.
+`Runtime::counts` gives the number of drops for each reason, and
+`Runtime::focus` the recorded stamp of a surface and whether it holds focus,
+which a driver that injects key events gives them.
 
 ## Dispatch
 
