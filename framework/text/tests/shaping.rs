@@ -335,3 +335,17 @@ fn monospaced_glyphs_lie_9_6_pixels_apart() -> Checked {
     }
     Ok(())
 }
+
+#[test]
+fn a_paragraph_runs_left_to_right_whatever_its_first_character() -> Checked {
+    let mut set = font_set()?;
+    // U+05D0 and U+05D1 are right-to-left letters that Fira Sans lacks.
+    let paragraph = lay_out(&mut set, "\u{5d0}\u{5d1} ab 12", kosmo_text::SANS, 16, None)?;
+    let glyphs: Vec<(u32, i32)> = paragraph.lines()[0]
+        .glyphs()
+        .iter()
+        .map(|glyph| (glyph.id.get(), glyph.origin.x.units()))
+        .collect();
+    assert_eq!(glyphs[..2], [(0, 0), (0, 682)]);
+    Ok(())
+}

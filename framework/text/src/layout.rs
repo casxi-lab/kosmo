@@ -7,7 +7,7 @@ use core::ops::Range;
 
 use kosmo_render::{Color, Command, FontId, Glyph, GlyphId};
 use kosmo_types::{Fx, Point, round};
-use parley::{FontFamily, Layout, PositionedLayoutItem, StyleProperty};
+use parley::{BaseDirection, FontFamily, Layout, PositionedLayoutItem, StyleProperty};
 
 use crate::fonts::{FontSet, MONO, SANS};
 
@@ -201,12 +201,15 @@ impl FontSet {
     /// parley shapes the text with harfrust and breaks lines by the Unicode
     /// line breaking algorithm, with the data of icu_segmenter compiled
     /// into the program. The font is the style's font alone: there is no
-    /// fallback, so a character that it lacks becomes its glyph `.notdef`,
-    /// and there is no bidirectional reordering. The size and the width
-    /// reach parley as exact `f32` values, its alignment to pixels is off,
-    /// and each position it gives is rounded once into an [`Fx`]. The
-    /// width is between 0 and [`MAX_WIDTH`]; a word longer than it stays on
-    /// a line of its own.
+    /// fallback, so a character that it lacks becomes its glyph `.notdef`.
+    /// The base direction of the paragraph is left to right whatever its
+    /// first character; neither font has right-to-left characters, and
+    /// parley still orders a run of them, as `.notdef` glyphs, by the
+    /// Unicode bidirectional algorithm. The size and the width reach parley
+    /// as exact `f32` values, its alignment to pixels is off, and each
+    /// position it gives is rounded once into an [`Fx`]. The width is
+    /// between 0 and [`MAX_WIDTH`]; a word longer than it stays on a line of
+    /// its own.
     pub fn layout(
         &mut self,
         text: &str,
@@ -225,6 +228,7 @@ impl FontSet {
         let mut builder = self
             .layout_context
             .ranged_builder(&mut self.context, text, 1.0, false);
+        builder.set_base_direction(BaseDirection::Ltr);
         builder.push_default(StyleProperty::FontFamily(FontFamily::named(family)));
         builder.push_default(StyleProperty::FontSize(exact(style.size)));
         let mut layout: Layout<()> = builder.build(text);
