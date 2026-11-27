@@ -1612,7 +1612,9 @@ pub trait Rasterizer {
   and `FiraMono-Regular.ttf`, version 3.206, from the google/fonts repository at
   commit `29b4ec6`. The asset manifest of `kosmo-text`, `MANIFEST.toml` in the
   asset directory, records the size, the SHA-256 digest, the source and the
-  license of each font and the SHA-256 digest of its license file. Variable
+  license of each font and the SHA-256 digest of its license file, and the
+  goldens step of `cargo xtask check` compares the directory with it, as
+  [the font assets](../CONTRIBUTING.md#the-font-assets) describes. Variable
   fonts are not used, because taking an instance rewrites the file.
 - Without fallback, each font covers every character of its role; the character
   set is fixed with `kosmo-text`. Fira Sans has no `□` (U+25A1), so the

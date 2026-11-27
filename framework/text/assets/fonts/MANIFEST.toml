@@ -5,7 +5,10 @@
 # its version and role, its license and the path and SHA-256 digest of its
 # license file, which lies in the same directory as the font. The fonts and
 # their license files are unmodified copies of the files of the same names
-# in google/fonts at the commit of `source`.
+# in google/fonts at the commit of `source`. The goldens step of
+# `cargo xtask check` checks that this directory holds, besides this file,
+# exactly the files listed here, each with its digest, as the font assets
+# in CONTRIBUTING.md describe.
 
 [[font]]
 file = "firamono/FiraMono-Regular.ttf"

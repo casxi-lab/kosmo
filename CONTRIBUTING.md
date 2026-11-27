@@ -33,7 +33,9 @@ order and stops at the first one that fails:
 1. `layout`: the source layout, as [the layout step](#the-layout-step)
    describes;
 2. `goldens`: the pixel goldens against their manifests, as
-   [the goldens step](#the-goldens-step-and-cargo-xtask-golden) describes;
+   [the goldens step](#the-goldens-step-and-cargo-xtask-golden) describes,
+   and the fonts of `kosmo-text` against their asset manifest, as
+   [the font assets](#the-font-assets) describes;
 3. `fetch` and `deps`: the packages of each workspace, downloaded once and
    then checked offline, as
    [the fetch and deps steps](#the-fetch-and-deps-steps) describes;
@@ -105,7 +107,8 @@ status, duration and the values it observed (for the `fmt`, `clippy` and
 commands of the `deps` step, the duration of each command as
 `<workspace>_<target>_ms`; for the `deps` step also the observations that its
 section lists; for the `goldens` step, the number of goldens that the
-manifests list, as `goldens`), the first line of `rustc --version`, the runner
+manifests list, as `goldens`, and the number of fonts that the asset manifest
+lists, as `fonts`), the first line of `rustc --version`, the runner
 image (`ImageOS`, `ImageVersion`) and the GitHub Actions run (`GITHUB_RUN_ID`,
 `GITHUB_RUN_ATTEMPT`, `GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_SHA`); a
 value the environment does not provide is `null`.
@@ -526,6 +529,75 @@ for it would turn off; review covers these. In CI, the goldens step
 compares every file with `MANIFEST` and the test step every drawing with
 its file, byte for byte, so the digests of what CI draws are those of
 `MANIFEST`.
+
+### The font assets
+
+`kosmo-text` bundles the two [fonts](docs/architecture.md#fonts) of the
+framework in its asset directory `framework/text/assets/fonts/`, each in a
+directory of its own, `firamono/` and `firasans/` as in the google/fonts
+repository, beside its original license file `OFL.txt`, with the asset
+manifest `MANIFEST.toml`. The manifest has one `[[font]]` table for each
+font, sorted by `file`, with these fields, its paths relative to the asset
+directory:
+
+- `file`, the path of the font, `bytes`, its size in bytes, and `sha256`, its
+  SHA-256 digest in 64 lowercase hexadecimal digits;
+- `source`, the repository, commit and path from which it was copied, and
+  `upstream`, the commit of the font's own repository that the source
+  records;
+- `version`, the version of the font, and `role`, what kosmo uses it for;
+- `license`, which is `OFL-1.1`, `license-file`, the path of its license
+  file, in the directory of the font, and `license-sha256`, the SHA-256
+  digest of the license file.
+
+The fonts and their license files are copied byte for byte from the commit of
+`source` and never subset, instanced or changed in any other way, and
+`.gitattributes` marks them binary, so no checkout converts them and their
+digests stay the same. Neither a third font, nor a CJK font, nor a font with
+a license other than OFL-1.1 is bundled: adding, removing or replacing a font,
+with another version of one of the two among the replacements, changes the
+fonts that the architecture fixes and is a design change. Because the crate
+tracks font files, the deps step requires its license to be
+`MIT AND OFL-1.1`, as [the fetch and deps steps](#the-fetch-and-deps-steps)
+describes.
+
+The `goldens` step reads the tracked files of the asset directory, without
+running Cargo, takes the digests with the `sha2` package of `xtask`, and
+reports every problem of the font assets with those of the goldens, a problem
+of a font with the line of its `[[font]]` table:
+
+- a manifest that is missing, is not a regular UTF-8 file or does not parse
+  into the fields above, with the line where parsing failed; nothing else of
+  the asset directory is checked then;
+- a font that the manifest lists other than `firamono/FiraMono-Regular.ttf`
+  and `firasans/FiraSans-Regular.ttf`, the two fonts that `FONTS` in
+  `xtask/src/assets.rs` lists, either of them missing from the manifest, a
+  file listed twice and fonts out of order;
+- a path that is not relative to the asset directory, a digest that is not
+  64 lowercase hexadecimal digits, a license other than `OFL-1.1`, a license
+  file that is not another file in the directory of its font, and an empty
+  `source`, `upstream`, `version` or `role`;
+- a file of the manifest that is not tracked or not a regular file, and a
+  tracked file of the asset directory, other than the manifest, that the
+  manifest does not list, so neither a third font nor a CJK font enters the
+  directory;
+- a file whose SHA-256 digest differs from the manifest, with both digests,
+  and a font whose size differs from `bytes`;
+- a tracked font file, a `.ttf`, `.otf`, `.ttc`, `.woff` or `.woff2` file in
+  any letter case, outside the asset directory.
+
+The step compares the files with the manifest: a font changed together with
+its digest and size in the manifest passes it. A test of `xtask` keeps the
+sizes and digests of both fonts and the digests of their license files as
+those of the google/fonts files at commit `29b4ec6`, so such a change also
+changes that test, and review compares it with the files of `source`. The step does not
+read the fonts themselves, neither their tables nor the characters that they
+cover.
+
+`kosmo-text` is not published yet. Its asset directory lies inside the
+crate's directory, so a published package would carry the fonts, their
+license files and the manifest; before the crate is published for the first
+time, `cargo package --list` shows that they are in the package.
 
 ### The fetch and deps steps
 
@@ -1211,4 +1283,5 @@ are far below the target of 10 minutes.
 
 kosmo is released under the [MIT License](LICENSE). The copyright holders are
 the casξ Authors, listed in [AUTHORS](AUTHORS). Contributions are accepted
-under the same license.
+under the same license. The fonts that `kosmo-text` bundles keep their own
+license, OFL-1.1, as [the font assets](#the-font-assets) describes.

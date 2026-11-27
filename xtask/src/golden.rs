@@ -1,5 +1,7 @@
 //! Pixel goldens: the goldens step of `cargo xtask check` and the command
-//! `cargo xtask golden`, which writes them.
+//! `cargo xtask golden`, which writes them. The goldens step also compares
+//! the font assets of `kosmo-text` with their asset manifest, as
+//! [`crate::assets`] describes.
 //!
 //! The goldens of a crate are in its directory `tests/golden/`: one file
 //! `<name>.px` for each golden, holding a drawn buffer as its crate's tests
@@ -31,6 +33,7 @@ use std::str::FromStr;
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use sha2::{Digest, Sha256};
 
+use crate::assets::{self, Assets};
 use crate::check::{self, Cmd, Facts};
 use crate::repo::{self, Entry, Tree};
 
@@ -118,8 +121,9 @@ fn is_name(name: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-/// Whether `digest` is written as `MANIFEST` writes digests.
-fn is_digest(digest: &str) -> bool {
+/// Whether `digest` is written as `MANIFEST` writes digests: 64 lowercase
+/// hexadecimal digits.
+pub fn is_digest(digest: &str) -> bool {
     digest.len() == 64
         && digest
             .bytes()
@@ -131,7 +135,9 @@ fn is_digest(digest: &str) -> bool {
 pub struct Problems(BTreeSet<(String, usize, String)>);
 
 impl Problems {
-    fn add(&mut self, path: &str, line: usize, message: String) {
+    /// Adds the problem `message` at `line` of `path`; line 0 stands for the
+    /// whole file.
+    pub fn add(&mut self, path: &str, line: usize, message: String) {
         self.0.insert((path.to_string(), line, message));
     }
 
@@ -402,19 +408,33 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
     listed.len()
 }
 
-/// The goldens step on the tracked files.
+/// The goldens step on the tracked files: the pixel goldens and the font
+/// assets of `kosmo-text`.
 pub fn run(root: &Path, facts: &mut Facts) -> Result<(), String> {
-    report(&Tree::load(root)?, &SETS, facts)
+    report(&Tree::load(root)?, &SETS, &[assets::FONTS], facts)
 }
 
 /// The goldens step on `tree`: prints and records how many goldens the
-/// manifests list, and fails with every problem.
-fn report(tree: &Tree, sets: &[Goldens], facts: &mut Facts) -> Result<(), String> {
+/// manifests of `sets` list and how many fonts the asset manifests of
+/// `fonts` list, and fails with every problem of both.
+pub fn report(
+    tree: &Tree,
+    sets: &[Goldens],
+    fonts: &[Assets],
+    facts: &mut Facts,
+) -> Result<(), String> {
     let mut problems = Problems::default();
     let count = check(tree, sets, &mut problems);
     let dirs: Vec<String> = sets.iter().map(Goldens::golden_dir).collect();
     println!("goldens: {count} in {}", dirs.join(", "));
     facts.push(("goldens".to_string(), count.to_string()));
+    let count: usize = fonts
+        .iter()
+        .map(|assets| assets::check(tree, assets, &mut problems))
+        .sum();
+    let dirs: Vec<&str> = fonts.iter().map(|assets| assets.dir).collect();
+    println!("font assets: {count} fonts in {}", dirs.join(", "));
+    facts.push(("fonts".to_string(), count.to_string()));
     let lines = problems.lines();
     if lines.is_empty() {
         Ok(())

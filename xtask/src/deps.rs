@@ -50,6 +50,8 @@ mod metadata;
 #[cfg(test)]
 mod tests;
 
+pub use license::FONT_EXTENSIONS;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::Path;

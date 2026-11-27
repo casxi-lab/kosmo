@@ -13,7 +13,9 @@
 //! Both are unmodified OFL-1.1 files, without subsetting, and keep their own
 //! license. The asset manifest `assets/fonts/MANIFEST.toml` records the
 //! size, the SHA-256 digest, the source and the license of each font and
-//! the digest of its license file.
+//! the digest of its license file, and the goldens step of
+//! `cargo xtask check` checks that the directory holds exactly the files
+//! that it lists, unmodified.
 //!
 //! The crate will take the fonts only as bytes, which the framework obtains
 //! through the platform interface, and reads no files. Shaping and line
