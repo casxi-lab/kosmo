@@ -87,7 +87,10 @@ The rules:
 - A key line without a stamp carries the stamp of the latest focus line that
   entered the main surface, or, before one, the stamp of the surface's focus
   that the framework recorded: the focus that the headless backend gives a
-  new main surface.
+  new main surface, with the epoch `HEADLESS_EPOCH`, 1, and the focus
+  generation 1 on a new backend. So the example leaves that focus with
+  `stamp=1/1`, enters again with `stamp=1/2`, and its last key, with
+  `stamp=1/1`, is dropped.
 - Focus lines and the stamps of key lines, together with repeat and long
   press, are only for scripts run through the framework alone. A test that a
   key of an earlier focus generation never reaches the new view leaves
