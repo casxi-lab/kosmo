@@ -1825,6 +1825,9 @@ Besides the rules above:
   image encoding. The description takes 16 bytes: the width, the height, the
   stride and a format code, each a little-endian `u32`; the codes are 1 for
   `Rgba8Premul`, 2 for `Xrgb8888`, 3 for `Rgb565` and 4 for `Argb8888Premul`.
+  `kosmo-testkit` computes the digests of presented buffers in this encoding
+  with the `sha2` package, so the digest of a frame equals the digest that a
+  golden's manifest lists for the same frame.
 - **Pinning.** The toolchain and the chosen libraries are pinned exactly. Each
   upgrade is a pull request of its own, which updates the goldens by category,
   and the list of forbidden methods is generated again with a toolchain upgrade.
@@ -1837,8 +1840,8 @@ Besides the rules above:
 
 The libraries chosen above enter as these direct external dependencies, which
 the layout table lists for their crates; so far it lists those of
-`kosmo-render` and `kosmo-platform`, and the others are added with their
-crates:
+`kosmo-render`, `kosmo-platform` and `kosmo-testkit`, and the others are added
+with their crates:
 
 | Package | Version | Default features | Enabled features | Kept off | Crate |
 | --- | --- | --- | --- | --- | --- |
@@ -1847,6 +1850,7 @@ crates:
 | `skrifa` | `=0.49.0` | Off | `libm` | `std`, `autohint_shaping` | `kosmo-text` |
 | `accesskit` | `=0.25.2` | Off; it has none | None | `serde`, `schemars`, `pyo3`, `enumn` | `kosmo-platform` |
 | `libm` | `=0.2.16` | Off | None; `arch` and `default` after resolution, because other packages use `libm` with its default features | None | `kosmo-render` |
+| `sha2` | `=0.11.1` | Off | None | `alloc`, `oid`, `zeroize` | `kosmo-testkit` |
 
 - Each row is one direct dependency of one crate; a package that two crates
   depend on takes two rows.

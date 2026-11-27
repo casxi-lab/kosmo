@@ -203,6 +203,13 @@ pure-core = false
 publish = false
 same-layer = ["kosmo-platform"]
 
+[[crates.kosmo-testkit.external]]
+name = "sha2"
+version = "=0.11.1"
+default-features = false
+features = []
+resolved-features = []
+
 [crates.kosmo-math-kalyx]
 path = "framework/math-kalyx"
 layer = "F1"
