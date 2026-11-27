@@ -210,6 +210,41 @@ fn entries_are_evicted_by_the_frame_that_last_used_them_and_then_by_key() {
 }
 
 #[test]
+fn an_older_frame_goes_first_whatever_its_key() {
+    let mut set = font_set(2, MAX_GLYPH_BYTES);
+    let mut rasterizer = VelloRasterizer::new();
+    set.prepare(&frame(&[9]), &mut rasterizer).unwrap();
+    set.prepare(&frame(&[3]), &mut rasterizer).unwrap();
+    // Glyph 9, last used in the first frame, goes before glyph 3, of the
+    // second, although its key is greater.
+    let prepared = set.prepare(&frame(&[5]), &mut rasterizer).unwrap();
+    assert_eq!(prepared.evicted, 1);
+    assert!(!set.glyphs().contains(key(9, Step::Whole)));
+    assert!(set.glyphs().contains(key(3, Step::Whole)));
+    assert!(set.glyphs().contains(key(5, Step::Whole)));
+}
+
+#[test]
+fn the_order_matches_the_entries_after_clearing() {
+    let mut set = font_set(2, MAX_GLYPH_BYTES);
+    let mut rasterizer = VelloRasterizer::new();
+    set.prepare(&frame(&[3, 4]), &mut rasterizer).unwrap();
+    set.clear_glyphs();
+    set.prepare(&frame(&[5]), &mut rasterizer).unwrap();
+    let prepared = set.prepare(&frame(&[6, 7]), &mut rasterizer).unwrap();
+    assert_eq!(prepared.evicted, 1);
+    let cache = set.glyphs();
+    let order: Vec<(u64, GlyphKey)> = cache.order.iter().copied().collect();
+    let mut entries: Vec<(u64, GlyphKey)> = cache
+        .entries
+        .iter()
+        .map(|(key, entry)| (entry.used, *key))
+        .collect();
+    entries.sort();
+    assert_eq!(order, entries);
+}
+
+#[test]
 fn bytes_beyond_the_capacity_evict_too() {
     let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
     let mut rasterizer = VelloRasterizer::new();
@@ -225,6 +260,27 @@ fn bytes_beyond_the_capacity_evict_too() {
     assert!(!set.glyphs().contains(key(4, Step::Whole)));
     assert!(set.glyphs().bytes() <= both);
     assert_eq!(set.glyphs().bytes(), mask_bytes(set.glyphs()));
+}
+
+#[test]
+fn held_masks_count_towards_a_frame_beyond_the_bytes() {
+    let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
+    let mut rasterizer = Counting::new();
+    set.prepare(&frame(&[3, 4]), &mut rasterizer).unwrap();
+    let both = set.glyphs().bytes();
+    let mut set = font_set(MAX_GLYPH_ENTRIES, both);
+    set.prepare(&frame(&[3, 4]), &mut rasterizer).unwrap();
+    rasterizer.fills = 0;
+    let error = set
+        .prepare(&frame(&[3, 4, 5]), &mut rasterizer)
+        .unwrap_err();
+    let GlyphError::FrameTooLarge { entries, bytes } = error else {
+        panic!("{error:?}");
+    };
+    assert_eq!(entries, 3);
+    assert!(bytes > both);
+    assert_eq!(rasterizer.fills, 0);
+    assert_eq!((set.glyphs().bytes(), set.glyphs().frame()), (both, 1));
 }
 
 #[test]
