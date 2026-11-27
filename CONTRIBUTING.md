@@ -263,7 +263,9 @@ attribute of a library root, do not. It checks:
   included, no path, macro or type that the
   [platform boundary](docs/architecture.md#platform-boundary) forbids is
   used, unless one of the crate's categories allows it; the comments of
-  `layout.toml` list what each category allows. The step expands `use`
+  `layout.toml` list what each category allows: `standard-streams`,
+  `arguments`, `exit-code`, `real-clock`, `threads` and `files`, which
+  allows `std::fs` and `std::path` but not `std::io`. The step expands `use`
   trees with their renames and glob imports, follows `extern crate` renames,
   type aliases, paths from the crate root, paths that start with `self` or,
   in an `impl`, with `Self`, and qualified paths such as

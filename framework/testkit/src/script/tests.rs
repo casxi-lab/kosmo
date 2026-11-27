@@ -493,3 +493,27 @@ fn random_scripts_give_results_or_errors_and_never_panic() {
     }
     assert!(read > 0 && refused > 0, "{read} read, {refused} refused");
 }
+
+#[test]
+fn a_script_file_is_read_or_its_error_says_why_without_a_line() {
+    let directory = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest = Script::read(&directory.join("Cargo.toml")).unwrap_err();
+    assert_eq!((manifest.line, manifest.problem), (1, Problem::NoHeader));
+    let missing = directory.join("no-such-script");
+    let error = Script::read(&missing).unwrap_err();
+    assert_eq!(error.line, 0);
+    let Problem::Unreadable(reason) = &error.problem else {
+        panic!("{error:?}");
+    };
+    assert!(
+        reason.starts_with(&format!("{}: ", missing.display())),
+        "{reason}"
+    );
+    assert!(error.to_string().starts_with("the script cannot be read: "));
+    let error = Script::read(directory).unwrap_err();
+    assert!(matches!(error.problem, Problem::Unreadable(_)), "{error:?}");
+    assert_eq!(
+        Problem::TooLarge(MAX_SCRIPT_BYTES + 1).to_string(),
+        "the script has 16842753 bytes, more than 16842752"
+    );
+}

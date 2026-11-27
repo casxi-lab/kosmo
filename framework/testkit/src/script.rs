@@ -43,7 +43,9 @@
 //! than the time of the key line or time line before it.
 //!
 //! [`Script::parse`] checks all of this and returns the first problem
-//! with its line number, without panicking.
+//! with its line number, without panicking; [`Script::read`] reads a
+//! script file of at most [`MAX_SCRIPT_BYTES`] bytes first, and its
+//! errors of reading come back as text, with the line number 0.
 //!
 //! ```
 //! use kosmo_testkit::script::{Line, Problem, Script};
@@ -60,6 +62,7 @@
 //! ```
 
 use std::fmt;
+use std::path::Path;
 
 use kosmo_platform::{PixelSize, Stamp, SurfaceId};
 use kosmo_types::{
@@ -77,6 +80,13 @@ pub const MAX_LINES: usize = 65_536;
 
 /// The most bytes of one line of a script, its line feed not counted: 256.
 pub const MAX_LINE_BYTES: usize = 256;
+
+/// The most bytes of a script file: [`MAX_LINES`] lines of
+/// [`MAX_LINE_BYTES`] bytes and their line feeds, 16,842,752. A longer
+/// file breaks one of those bounds, so it is not read.
+pub const MAX_SCRIPT_BYTES: u64 = 65_536 * 257;
+
+const _: () = assert!(MAX_SCRIPT_BYTES == (MAX_LINES * (MAX_LINE_BYTES + 1)) as u64);
 
 /// The names of the named keys in scripts.
 const NAMED_KEYS: [(&str, NamedKey); 9] = [
@@ -206,6 +216,37 @@ impl Script {
         Ok(Script { header, lines })
     }
 
+    /// Reads the script file at `path`, as [`Script::parse`] reads its
+    /// bytes. Only the file's metadata is read when it has more than
+    /// [`MAX_SCRIPT_BYTES`] bytes.
+    ///
+    /// # Errors
+    ///
+    /// [`Problem::Unreadable`] or [`Problem::TooLarge`], with the line
+    /// number 0, or the first problem of the script.
+    pub fn read(path: &Path) -> Result<Script, ScriptError> {
+        let unreadable = |reason: String| ScriptError {
+            line: 0,
+            problem: Problem::Unreadable(format!("{}: {reason}", path.display())),
+        };
+        let too_large = |bytes| ScriptError {
+            line: 0,
+            problem: Problem::TooLarge(bytes),
+        };
+        let bytes = std::fs::metadata(path)
+            .map_err(|error| unreadable(error.to_string()))?
+            .len();
+        if bytes > MAX_SCRIPT_BYTES {
+            return Err(too_large(bytes));
+        }
+        let text = std::fs::read(path).map_err(|error| unreadable(error.to_string()))?;
+        let read = u64::try_from(text.len()).unwrap_or(u64::MAX);
+        if read > MAX_SCRIPT_BYTES {
+            return Err(too_large(read));
+        }
+        Script::parse(&text)
+    }
+
     /// The header.
     pub fn header(&self) -> Header {
         self.header
@@ -220,7 +261,7 @@ impl Script {
 /// A problem of a script, with the number of its line, counted from 1.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScriptError {
-    /// The line number.
+    /// The line number, or 0 for a problem of the whole file.
     pub line: usize,
     /// The problem.
     pub problem: Problem,
@@ -228,7 +269,11 @@ pub struct ScriptError {
 
 impl fmt::Display for ScriptError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "line {}: {}", self.line, self.problem)
+        if self.line == 0 {
+            write!(f, "{}", self.problem)
+        } else {
+            write!(f, "line {}: {}", self.line, self.problem)
+        }
     }
 }
 
@@ -238,6 +283,10 @@ impl std::error::Error for ScriptError {}
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Problem {
+    /// The file cannot be read: its path and why.
+    Unreadable(String),
+    /// The file has this many bytes, more than [`MAX_SCRIPT_BYTES`].
+    TooLarge(u64),
     /// The line comes after [`MAX_LINES`] lines.
     TooManyLines,
     /// The line has this many bytes, more than [`MAX_LINE_BYTES`].
@@ -284,6 +333,11 @@ pub enum Problem {
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Problem::Unreadable(reason) => write!(f, "the script cannot be read: {reason}"),
+            Problem::TooLarge(bytes) => write!(
+                f,
+                "the script has {bytes} bytes, more than {MAX_SCRIPT_BYTES}"
+            ),
             Problem::TooManyLines => write!(f, "the script has more than {MAX_LINES} lines"),
             Problem::TooLong(bytes) => {
                 write!(f, "the line has {bytes} bytes, more than {MAX_LINE_BYTES}")

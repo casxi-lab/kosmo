@@ -3025,17 +3025,17 @@ fn use_trees_renames_and_paths_from_the_root_are_expanded() {
     assert_render_uses(
         "use std::{fs, io::Read};\n",
         &[
-            (2, "std::fs", None),
+            (2, "std::fs", Some("files")),
             (2, "std::io", Some("standard-streams")),
         ],
     );
     assert_render_uses(
         "use std::fs as files;\npub fn f() {\n    let _ = files::read(\"x\");\n}\n",
-        &[(2, "std::fs", None), (4, "std::fs", None)],
+        &[(2, "std::fs", Some("files")), (4, "std::fs", Some("files"))],
     );
     assert_render_uses(
         "pub fn f() -> bool {\n    ::std::path::Path::new(\"x\").is_absolute()\n}\n",
-        &[(3, "std::path", None)],
+        &[(3, "std::path", Some("files"))],
     );
     assert_render_uses("use std::net::*;\n", &[(2, "std::net", None)]);
     assert_render_uses(
@@ -3131,7 +3131,7 @@ fn a_registered_crate_uses_only_what_its_categories_allow() {
             4,
             "the crate kosmo-jobs, registered for threads,",
             "std::fs",
-            None
+            Some("files")
         )]
     );
     let lib = "desktop/kosmo/src/lib.rs";
@@ -3156,6 +3156,34 @@ fn a_registered_crate_uses_only_what_its_categories_allow() {
             forbidden(lib, 2, who, "std::env", None),
             forbidden(lib, 3, who, "std::thread", Some("threads")),
         ]
+    );
+}
+
+#[test]
+fn the_files_category_allows_files_and_paths_but_not_input_and_output() {
+    let lib = "framework/jobs/src/lib.rs";
+    let found = problems_with(|files| {
+        edit(
+            files,
+            TABLE,
+            "platform = [\"threads\"]\n",
+            "platform = [\"threads\", \"files\"]\n",
+        );
+        append(
+            files,
+            lib,
+            "use std::path::Path;\npub fn f(path: &Path) -> Result<Vec<u8>, String> {\n    std::fs::read(path).map_err(|error| error.to_string())\n}\npub fn g() -> std::io::Result<()> {\n    Ok(())\n}\n",
+        );
+    });
+    assert_eq!(
+        found,
+        [forbidden(
+            lib,
+            6,
+            "the crate kosmo-jobs, registered for threads, files,",
+            "std::io",
+            Some("standard-streams")
+        )]
     );
 }
 
@@ -3223,7 +3251,7 @@ fn the_platform_column_names_known_categories_for_crates_that_are_not_pure_core(
     assert_problems(
         &unknown,
         &[
-            "layout.toml: crates.kosmo-jobs: platform lists the unknown category windows; the categories are standard-streams, arguments, exit-code, real-clock, threads",
+            "layout.toml: crates.kosmo-jobs: platform lists the unknown category windows; the categories are standard-streams, arguments, exit-code, real-clock, threads, files",
             "layout.toml: crates.kosmo-jobs: platform lists threads twice",
         ],
     );

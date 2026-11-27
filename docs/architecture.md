@@ -898,14 +898,15 @@ and their limits.
   the framework and rendering define. Surfaces, events and devices come
   through the platform interface and the ports.
 - First-release registration: `kosmo` is a boundary crate for standard
-  streams, arguments, exit code and the real clock, and `kosmo-jobs` for
-  threads; `kosmo-types`, `kosmo-math-model`, `kosmo-math-kalyx`,
-  `kosmo-render`, `kosmo-platform`, `kosmo-testkit`,
+  streams, arguments, exit code and the real clock, `kosmo-jobs` for
+  threads, and `kosmo-testkit` for files, which allows `std::fs` and
+  `std::path` but not `std::io`, so that the script runner reads script files
+  and converts the errors where it reads them; `kosmo-types`,
+  `kosmo-math-model`, `kosmo-math-kalyx`, `kosmo-render`, `kosmo-platform`,
   `kosmo-backend-headless`, `kosmo-scratchpad`, `kosmo-sdk` and `kosmo-ui`
   are core libraries. Other crates are registered by the change that creates
-  them; `kosmo-testkit` is expected to become a boundary crate for files when
-  it reads script files, and [host programs](#host-programs) lists the
-  boundary crates of the display stack with their categories.
+  them; [host programs](#host-programs) lists the boundary crates of the
+  display stack with their categories.
 - The layout step of `cargo xtask check` parses the Rust files under the
   `src/` of every library crate, unit tests included, expands `use` trees and
   reports every forbidden path, macro and type with file and line, and in a
@@ -1344,7 +1345,7 @@ methods are only for whoever builds them.
   resource, and `a11y_tree` returns the tree that the backend kept.
 - `kosmo-platform` and both backends read no files and are core libraries; they
   have `#![forbid(unsafe_code)]` and are not pure core. `kosmo-testkit` reads
-  script files and is expected to be a boundary crate.
+  script files and is a boundary crate for files.
 - Clipboard, text input, lifecycle and memory pressure are not part of the first
   release's interface. Adding a trait, a method or an event kind is a design
   change.
