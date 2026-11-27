@@ -1181,12 +1181,13 @@ build turns them on. kosmo uses no coverage tools, neither
   every member that has the feature and the `test-hooks` of
   `kosmo-backend-headless`, which its test of call relations needs, as
   `PROBE_PASSES` in `xtask/src/check.rs` lists; a test of `xtask` checks
-  that the list names the `call-probes` of exactly the members that have
-  one. The other commands of the step build no probe code. The pass builds
-  again the crates whose features it changes, `kosmo-testkit`, `kosmo-ui`
-  and the crates that depend on them, and runs every test of the
-  workspace again, so its time adds to the check; the receipt records it
-  as `framework_call-probes_ms` in both steps.
+  that the list names exactly the workspaces that have members with the
+  feature `call-probes` and, in each, the `call-probes` of exactly the
+  members that have one. The other commands of the step build no probe
+  code. The pass builds again the crates whose features it changes,
+  `kosmo-testkit`, `kosmo-ui` and the crates that depend on them, and runs
+  every test of the workspace again, so its time adds to the check; the
+  receipt records it as `framework_call-probes_ms` in both steps.
 
 The hosted check of `main` took these times, in milliseconds, as the
 receipts of its runs record them: the ten steps together, the test command

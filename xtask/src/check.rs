@@ -627,32 +627,52 @@ mod tests {
         }
     }
 
+    /// The features that the tracked manifests of the members of
+    /// `workspace` declare, as `<package>/<feature>`, and those of them that
+    /// are `call-probes`.
+    fn member_features(tree: &Tree, workspace: &str) -> (BTreeSet<String>, BTreeSet<String>) {
+        let mut declared: BTreeSet<String> = BTreeSet::new();
+        let mut probes: BTreeSet<String> = BTreeSet::new();
+        for (path, text) in tree.texts() {
+            if !path.starts_with(&format!("{workspace}/")) || !path.ends_with("/Cargo.toml") {
+                continue;
+            }
+            let manifest: toml::Table = text.parse().expect("the manifest parses");
+            let Some(name) = manifest
+                .get("package")
+                .and_then(|package| package.get("name"))
+                .and_then(toml::Value::as_str)
+            else {
+                continue;
+            };
+            let own = manifest.get("features").and_then(toml::Value::as_table);
+            for feature in own.into_iter().flatten().map(|(feature, _)| feature) {
+                declared.insert(format!("{name}/{feature}"));
+                if feature == "call-probes" {
+                    probes.insert(format!("{name}/{feature}"));
+                }
+            }
+        }
+        (declared, probes)
+    }
+
     #[test]
     fn the_probe_pass_turns_on_the_call_probes_of_every_member_that_has_them() {
         let tree = Tree::load(&crate::repo::root()).expect("the tracked files load");
+        // A pass for exactly the workspaces with members that have the
+        // feature, so a workspace whose first probe comes later gets one.
+        let with_probes: BTreeSet<&str> = WORKSPACES
+            .into_iter()
+            .filter(|workspace| !member_features(&tree, workspace).1.is_empty())
+            .collect();
+        let listed: BTreeSet<&str> = PROBE_PASSES
+            .iter()
+            .map(|(workspace, _)| *workspace)
+            .collect();
+        assert_eq!(listed, with_probes, "the workspaces with call probes");
+        assert_eq!(listed.len(), PROBE_PASSES.len(), "one pass per workspace");
         for (workspace, features) in PROBE_PASSES {
-            let mut declared: BTreeSet<String> = BTreeSet::new();
-            let mut probes: BTreeSet<String> = BTreeSet::new();
-            for (path, text) in tree.texts() {
-                if !path.starts_with(&format!("{workspace}/")) || !path.ends_with("/Cargo.toml") {
-                    continue;
-                }
-                let manifest: toml::Table = text.parse().expect("the manifest parses");
-                let Some(name) = manifest
-                    .get("package")
-                    .and_then(|package| package.get("name"))
-                    .and_then(toml::Value::as_str)
-                else {
-                    continue;
-                };
-                let own = manifest.get("features").and_then(toml::Value::as_table);
-                for feature in own.into_iter().flatten().map(|(feature, _)| feature) {
-                    declared.insert(format!("{name}/{feature}"));
-                    if feature == "call-probes" {
-                        probes.insert(format!("{name}/{feature}"));
-                    }
-                }
-            }
+            let (declared, probes) = member_features(&tree, workspace);
             let on: Vec<&str> = features.split(',').collect();
             for feature in &on {
                 assert!(declared.contains(*feature), "{workspace}: {feature}");
