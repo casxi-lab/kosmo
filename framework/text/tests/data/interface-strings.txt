@@ -1,0 +1,42 @@
+# The interface strings of kosmo, grouped by the bundled font that shows
+# them. The test `tests/coverage.rs` of `kosmo-text` fails when the
+# character map of a font lacks a character of a string of its group, and
+# lists every such character.
+#
+# A line that is empty or starts with `#` is a comment. `[<file>]` starts
+# the group of the font whose file in the asset manifest is `<file>`; each
+# font has one group. `<name> = <text>` is a string of the group above it,
+# with a name of lowercase ASCII letters, digits and `-` that no other
+# string of the group has. The text is everything after ` = `: `\\` is a
+# backslash, `\u{<hex>}` the character with that code point in
+# hexadecimal, and any other character stands for itself. A space at either
+# end of a text, any other whitespace and control characters are written
+# as escapes, and so are characters that cannot be seen, such as the soft
+# hyphen U+00AD.
+
+[firasans/FiraSans-Regular.ttf]
+
+# The characters of the interface, by Unicode block. Fira Sans has no
+# U+25A1, which no interface string contains.
+ascii = \u{20}!"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+latin-1 = \u{a0}¡¢£¤¥¦§¨©ª«¬\u{ad}®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ
+greek = ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρςστυφχψω
+operators-and-arrows = −∕√∞∑∫∂∆≈≠≤≥⋅←↑→↓
+
+# Strings that the interface shows: the kinds of errors that kalyx
+# reports, and the annotation of a stale result.
+error-kinds = Syntax UnknownSymbol DivisionByZero NonIntegerExponent NotPolynomial Unsupported Internal ResourceLimit Cancelled DeadlineExceeded
+stale-result = value (source 0, settings 0, stale): 1/2
+
+# The lifecycle states of an application and the entries of the shell,
+# planned with the shell, which fixes their wording.
+lifecycle = Starting Running Not responding Exited Stop Switch
+
+[firamono/FiraMono-Regular.ttf]
+
+# The characters of the interface, by Unicode block. Fira Mono has no
+# U+2206 and no U+22C5, which no monospaced interface string contains.
+ascii = \u{20}!"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+latin-1 = \u{a0}¡¢£¤¥¦§¨©ª«¬\u{ad}®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ
+greek = ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρςστυφχψω
+operators-and-arrows = −∕√∞∑∫∂≈≠≤≥←↑→↓
