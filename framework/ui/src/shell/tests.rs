@@ -562,6 +562,33 @@ fn glyph_runs_are_drawn_from_the_glyph_cache_of_the_fetched_fonts() {
 }
 
 #[test]
+fn an_empty_or_refused_presentation_leaves_the_glyph_cache_alone() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let mut shell = calculator(&log, 0);
+    shell.run_round(&mut fake, None).unwrap();
+    let cache = |shell: &Shell<TestApp>| {
+        let glyphs = shell.fonts.as_ref().unwrap().glyphs();
+        (glyphs.frame(), glyphs.entries())
+    };
+    // An empty damage region prepares nothing.
+    let list = glyph_run(SANS);
+    let empty = damage(&fake, &[]);
+    shell.present(&mut fake, SURFACE, &list, &empty).unwrap();
+    assert_eq!(cache(&shell), (0, 0));
+    // A buffer presented and not released refuses the next frame before
+    // its glyph runs are prepared.
+    let whole = damage(&fake, &[(0, 0, 4, 2)]);
+    shell.present(&mut fake, SURFACE, &list, &whole).unwrap();
+    assert_eq!(cache(&shell), (1, 1));
+    assert_eq!(
+        shell.present(&mut fake, SURFACE, &glyph_run(MONO), &whole),
+        Err(ShellError::Platform(PlatformError::Busy))
+    );
+    assert_eq!(cache(&shell), (1, 1));
+}
+
+#[test]
 fn a_frame_that_cannot_be_drawn_changes_nothing() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
