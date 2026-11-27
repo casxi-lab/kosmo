@@ -880,13 +880,16 @@ The fetch and deps steps have limits:
   `cargo xtask check` and `cargo xtask golden` fail first when it is set, as
   rule 8 of [golden images and determinism](#golden-images-and-determinism)
   states.
-  This guard reads only the environment of `cargo xtask`: Cargo
-  configuration outside the repository, such as an `[env]` table in a
-  `config.toml` of the Cargo home or of a directory above the checkout, can
-  set the variable for the build scripts alone, and the guard does not see
-  that. The build script of `libm` reads `ENSURE_NO_PANIC`, which only turns
-  on checks that its functions do not panic and changes no output, so the
-  guard leaves it.
+  This guard reads the environment of `cargo xtask`, which runs through
+  `cargo run`, so an `[env]` table of the Cargo configuration that it reads,
+  in a `config.toml` of the Cargo home or of a directory above the
+  checkout, sets the variable for it too, and the guard refuses that as
+  well. It does not see Cargo configuration that changes these packages
+  without the variable in that environment, such as `build.rustflags` that
+  set their `cfg` together with a compiler wrapper that gives the variable
+  to the compiler alone. The build script of `libm` reads
+  `ENSURE_NO_PANIC`, which only turns on checks that its functions do not
+  panic and changes no output, so the guard leaves it.
 - The build-script rules cover crates.io packages. Which members may have a
   build script is set per crate in `layout.toml`, as the layout step checks,
   and their build dependencies are allow entries there; review reads what
