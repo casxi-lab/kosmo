@@ -688,3 +688,98 @@ fn sizes_and_fonts_outside_the_set_are_refused() {
     assert_eq!(set.glyphs().frame(), 2);
     assert_eq!(rasterizer.fills, 2);
 }
+
+#[test]
+fn a_mask_that_fills_the_bytes_exactly_evicts_nothing() {
+    let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
+    let mut rasterizer = VelloRasterizer::new();
+    set.prepare(&frame(&[3, 4]), &mut rasterizer).unwrap();
+    let both = set.glyphs().bytes();
+    let mut set = font_set(MAX_GLYPH_ENTRIES, both);
+    set.prepare(&frame(&[3]), &mut rasterizer).unwrap();
+    // Glyph 4 brings the cache exactly to its bytes, so glyph 3 stays.
+    let prepared = set.prepare(&frame(&[4]), &mut rasterizer).unwrap();
+    assert_eq!((prepared.filled, prepared.evicted), (1, 0));
+    assert!(set.glyphs().contains(key(3, Step::Whole)));
+    assert_eq!(set.glyphs().bytes(), both);
+}
+
+#[test]
+fn an_error_of_a_key_comes_before_any_fill_and_before_the_bytes() {
+    let mut rasterizer = Counting::new();
+    let missing = key(60_000, Step::Whole);
+    for max_bytes in [MAX_GLYPH_BYTES, 1] {
+        let mut set = font_set(MAX_GLYPH_ENTRIES, max_bytes);
+        // Glyph 3 comes before glyph 60,000, which has no outline.
+        assert_eq!(
+            set.prepare(&frame(&[3, 60_000]), &mut rasterizer),
+            Err(GlyphError::NoOutline(missing))
+        );
+        assert_eq!(rasterizer.fills, 0);
+        assert_eq!((set.glyphs().entries(), set.glyphs().frame()), (0, 0));
+    }
+    // An origin moved out of the fixed point by its group, across or down.
+    let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
+    let rect = Rect::new(Point::default(), Size::new(px(40), px(40)).unwrap());
+    for offset in [Point::new(Fx::MAX, Fx::ZERO), Point::new(Fx::ZERO, Fx::MAX)] {
+        let mut builder = ListBuilder::new();
+        builder.push(Command::PushClip { rect, offset }).unwrap();
+        builder.push(frame(&[2, 3]).commands()[0].clone()).unwrap();
+        builder.push(Command::PopClip).unwrap();
+        let list = builder.finish().unwrap();
+        assert_eq!(
+            set.prepare(&list, &mut rasterizer),
+            Err(GlyphError::OutOfRange)
+        );
+    }
+    assert_eq!(rasterizer.fills, 0);
+}
+
+/// A rasterizer that fills `ok` masks and then fails.
+struct Failing {
+    inner: VelloRasterizer,
+    ok: usize,
+}
+
+impl Rasterizer for Failing {
+    fn render(
+        &mut self,
+        list: &DisplayList,
+        damage: &kosmo_types::Damage,
+        glyphs: &dyn GlyphCoverage,
+        images: &ImageStore,
+        target: &mut RenderTarget,
+    ) -> Result<kosmo_render::WorkCount, RenderError> {
+        self.inner.render(list, damage, glyphs, images, target)
+    }
+
+    fn fill_coverage(&mut self, outline: &Path, out: &mut CoverageMask) -> Result<(), RenderError> {
+        if self.ok == 0 {
+            return Err(RenderError::Unsupported);
+        }
+        self.ok -= 1;
+        self.inner.fill_coverage(outline, out)
+    }
+}
+
+#[test]
+fn a_mask_that_the_rasterizer_cannot_fill_leaves_the_cache_as_it_was() {
+    let mut set = font_set(MAX_GLYPH_ENTRIES, MAX_GLYPH_BYTES);
+    set.prepare(&frame(&[3]), &mut VelloRasterizer::new())
+        .unwrap();
+    let held = |set: &FontSet| {
+        let cache = set.glyphs();
+        (cache.entries(), cache.bytes(), cache.frame())
+    };
+    let before = held(&set);
+    let mut failing = Failing {
+        inner: VelloRasterizer::new(),
+        ok: 1,
+    };
+    assert_eq!(
+        set.prepare(&frame(&[3, 4, 5]), &mut failing),
+        Err(GlyphError::Render(RenderError::Unsupported))
+    );
+    assert_eq!(held(&set), before);
+    assert!(!set.glyphs().contains(key(4, Step::Whole)));
+}
