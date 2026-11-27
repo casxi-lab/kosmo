@@ -134,6 +134,33 @@ fn lines_of_one_time_run_no_round_between_them() {
 }
 
 #[test]
+fn a_checkpoint_comes_after_the_release_of_the_last_frame() {
+    // The release plan lets the job finish after the third key, so its
+    // report comes in a round whose wait returns `Idle`, and that round
+    // presents the new view. The framework is idle only after the rounds
+    // that take the frame's `Released`, so the backend holds no event.
+    let mut backend = backend();
+    let record = Script::parse(
+        b"kosmo-script 1 surface 64x8 xrgb8888\n\
+          at 1 press 7:1e char:1 mods=0000\n\
+          at 2 press 7:28 named:execute mods=0000\n\
+          time 3\n\
+          at 4 release 7:28 named:execute mods=0000\n\
+          checkpoint\n",
+    )
+    .unwrap()
+    .run(&mut backend, &mut driver(3))
+    .unwrap();
+    assert_eq!(
+        part(&record.checkpoints()[0], "view ")[4],
+        "job 1 Completed 3"
+    );
+    let mut events = Vec::new();
+    assert_eq!(backend.wait(None, &mut events).unwrap(), WaitEnd::Idle);
+    assert_eq!(events, []);
+}
+
+#[test]
 fn a_header_outside_the_capabilities_stops_the_run_at_line_1() {
     for header in [
         "kosmo-script 1 surface 65x8 xrgb8888",

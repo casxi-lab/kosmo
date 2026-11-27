@@ -325,13 +325,16 @@ and the tests of digests in the module `pixels::tests` of
    focus lines takes the stamp of the one that entered the surface. The
    framework is idle only after a round that starts quiet and waits `Idle`:
    65 keys of one time, more than one wait returns, are all handled before
-   the checkpoint, and rounds with a due deadline go on. The bound of 65,536
-   rounds holds for each line, and a line that is never idle stops after
-   exactly that many. Tests: `tests/runner.rs`:
+   the checkpoint, rounds with a due deadline go on, and a frame presented
+   in a round that took a job's report has been released before the
+   checkpoint. The bound of 65,536 rounds holds for each line, and a line
+   that is never idle stops after exactly that many. Tests:
+   `tests/runner.rs`:
    `lines_of_one_time_run_no_round_between_them`,
    `a_key_at_the_time_of_a_focus_line_takes_its_stamp`,
    `more_keys_than_one_wait_returns_are_all_handled_before_the_checkpoint`,
    `a_due_deadline_keeps_the_framework_running`,
+   `a_checkpoint_comes_after_the_release_of_the_last_frame`,
    `the_bound_of_rounds_holds_for_each_line`,
    `a_line_runs_at_most_max_rounds_per_line_rounds`.
 5. A header outside the capabilities, a focus line for another surface, an
