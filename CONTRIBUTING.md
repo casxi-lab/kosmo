@@ -616,10 +616,10 @@ compares it with the files of `source`. The step does not read the fonts
 themselves, neither their tables nor the characters that they cover; a test
 of `kosmo-text` checks the characters, as [the coverage of the interface
 strings](docs/features/framework/text.md#the-coverage-of-the-interface-strings)
-describes. It
-recognizes a font outside the asset directory only by the extensions above,
-so a font under another extension, such as `.otc` or `.bin`, or one
-embedded in another file is not reported; review covers these.
+describes. The step recognizes a font outside the asset directory only by
+the extensions above, so a font under another extension, such as `.otc` or
+`.bin`, or one embedded in another file is not reported; review covers
+these.
 
 `kosmo-text` is not published yet. Its asset directory lies inside the
 crate's directory, so a published package would carry the fonts, their
@@ -1104,15 +1104,18 @@ Versions that crates.io has yanked and informational advisories, such as a
 package that is no longer maintained, are reported as warnings and do not
 fail it. The job is not required for merging, and it changes neither the
 `cargo xtask check` job nor the branch rules of `main`; the check by hand
-before each tag stays.
+before each tag stays. GitHub disables the schedule of a public repository
+after 60 days without activity; a maintainer enables it again.
 
 The job has a limit: `cargo install --locked` compiles cargo-audit from the
 `Cargo.lock` of the cargo-audit package, which lists 363 packages for every
 platform and feature, and the job builds those that its target and features
-select. None of them is in an allowlist, the fetch and deps steps check
-neither their sources nor their licenses nor their build scripts, and their
-build scripts and procedural macros run on the runner of this job. They
-run only there: nothing that the job builds enters a build of kosmo.
+select. No allowlist covers that lock file: the fetch and deps steps never
+read it, so they check neither the sources nor the licenses nor the build
+scripts of its packages, even of those whose name and version an allowlist
+also lists, and their build scripts and procedural macros run on the runner
+of this job. They run only there: nothing that the job builds enters a
+build of kosmo.
 
 ## Commit messages
 

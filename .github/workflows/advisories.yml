@@ -40,6 +40,7 @@ jobs:
         run: |
           status=0
           database="${CARGO_HOME:-$HOME/.cargo}/advisory-db"
+          # A workspace added to layout.toml adds its directory here.
           for workspace in display framework desktop xtask; do
             echo "Auditing $workspace/Cargo.lock"
             cargo audit --file "$workspace/Cargo.lock" || status=1
