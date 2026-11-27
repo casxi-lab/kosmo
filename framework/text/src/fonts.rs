@@ -28,7 +28,9 @@ pub const MONO_FILE: &str = "firamono/FiraMono-Regular.ttf";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FontSetError {
     /// The bytes given for the font are not one TrueType font: they are not
-    /// a font file, hold a collection of fonts or have no TrueType outlines.
+    /// a font file, hold a collection of fonts, have no TrueType outlines or
+    /// are not registered as one font by fontique, which skips a font without
+    /// a `name` table.
     NotTrueType(FontId),
     /// Both fonts belong to the same family.
     SameFamily,
@@ -131,8 +133,22 @@ mod tests {
     const SANS_BYTES: &[u8] = include_bytes!("../assets/fonts/firasans/FiraSans-Regular.ttf");
     const MONO_BYTES: &[u8] = include_bytes!("../assets/fonts/firamono/FiraMono-Regular.ttf");
 
+    /// Fira Mono with the last letter of the tag of its table `tag` changed,
+    /// so that it has no table `tag`.
+    fn mono_without_table(tag: &[u8; 4]) -> Vec<u8> {
+        let mut renamed = MONO_BYTES.to_vec();
+        let tables = usize::from(u16::from_be_bytes([renamed[4], renamed[5]]));
+        let record = (0..tables)
+            .map(|index| 12 + 16 * index)
+            .find(|&at| &renamed[at..at + 4] == tag)
+            .unwrap();
+        renamed[record + 3] = b'x';
+        renamed
+    }
+
     #[test]
     fn the_font_set_has_only_the_two_bundled_families() {
+        assert_eq!((SANS.get(), MONO.get()), (0, 1));
         let mut set = FontSet::new(SANS_BYTES, MONO_BYTES).unwrap();
         let mut families: Vec<&str> = set.context.collection.family_names().collect();
         families.sort_unstable();
@@ -161,14 +177,24 @@ mod tests {
         );
         // Fira Mono with its `glyf` table renamed parses as a font without
         // TrueType outlines.
-        let mut renamed = MONO_BYTES.to_vec();
-        let tables = usize::from(u16::from_be_bytes([renamed[4], renamed[5]]));
-        let record = (0..tables)
-            .map(|index| 12 + 16 * index)
-            .find(|&at| &renamed[at..at + 4] == b"glyf")
-            .unwrap();
-        renamed[record + 3] = b'x';
+        let renamed = mono_without_table(b"glyf");
         assert!(FontRef::new(&renamed).is_ok());
+        assert_eq!(
+            FontSet::new(SANS_BYTES, &renamed).err(),
+            Some(FontSetError::NotTrueType(MONO))
+        );
+    }
+
+    #[test]
+    fn a_font_without_a_name_table_is_not_registered() {
+        // Fira Mono with its `name` table renamed parses as a font with
+        // TrueType outlines, but fontique skips a font without a `name`
+        // table and registers nothing.
+        let renamed = mono_without_table(b"name");
+        let parsed = FontRef::new(&renamed).unwrap();
+        for tag in [b"glyf", b"loca"] {
+            assert!(parsed.table_data(Tag::new(tag)).is_some());
+        }
         assert_eq!(
             FontSet::new(SANS_BYTES, &renamed).err(),
             Some(FontSetError::NotTrueType(MONO))
