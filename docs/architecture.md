@@ -15,8 +15,10 @@ the kalyx runner in `kosmo-math-kalyx`, the versions and the display model
 of exact results in `kosmo-math-model`, which `kosmo-math-kalyx` fills from
 kalyx's output lines, the Scratchpad in `kosmo-scratchpad`, with its
 history and reuse, the display lists, the renderer interface, the rasterizer on
-vello_cpu and the wrapper of transcendental functions in `kosmo-render`, the SDK
-facade `kosmo-sdk`, which re-exports these crates but `kosmo-render`, part of
+vello_cpu and the wrapper of transcendental functions in `kosmo-render`, the
+two bundled fonts with their asset manifest and the font set in
+`kosmo-text`, the SDK facade `kosmo-sdk`, which re-exports these crates but
+`kosmo-render` and `kosmo-text`, part of
 the shared types in `kosmo-types`: fixed-point geometry, logical time, the focus
 generation and epoch, the keyboard event records, pixel formats, buffer
 descriptions with the conversion of pixels between them, and damage regions, and
