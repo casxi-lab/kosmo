@@ -257,3 +257,53 @@ fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
     assert_eq!(read.bytes, expected);
     assert_eq!(read.damage, [DamageRect::new(0, 0, 2, 1).unwrap()]);
 }
+
+#[test]
+fn a_new_previous_frame_is_presented_whole_whatever_its_damage() {
+    let mut backend = backend();
+    let surface = backend
+        .create_surface(SurfaceRequest {
+            role: SurfaceRole::Main,
+            size: PixelSize::new(8, 4).unwrap(),
+            format: PixelFormat::Xrgb8888,
+        })
+        .unwrap();
+    let mut shell = Shell::new(Boxes, NoJobs, &[FONT]);
+    shell
+        .run_round(&mut backend, shell.next_deadline())
+        .unwrap();
+    // A red box at (2, 1) over transparent black, presented first with the
+    // damage of the top-left 2 by 1 pixels only.
+    let mut builder = ListBuilder::new();
+    builder
+        .push(Command::FillRect {
+            rect: pixels(2, 1, 4, 2),
+            color: RED,
+        })
+        .unwrap();
+    let list = builder.finish().unwrap();
+    let frame = BufferDesc::new(8, 4, 32, PixelFormat::Rgba8Premul).unwrap();
+    let mut corner = Damage::new(frame);
+    corner.add(0, 0, 2, 1);
+    let work = shell
+        .present(&mut backend, surface, &list, &corner)
+        .unwrap();
+    assert_eq!(work.pixels, 32);
+
+    // The whole list drawn into a frame of its own and converted whole.
+    let mut drawn = RenderTarget::new(frame).unwrap();
+    let whole = drawn.whole();
+    VelloRasterizer::new()
+        .render(&list, &whole, &NoGlyphs, &ImageStore::EMPTY, &mut drawn)
+        .unwrap();
+    let shown = BufferDesc::new(8, 4, 32, PixelFormat::Xrgb8888).unwrap();
+    let mut expected = vec![0; 128];
+    drawn.convert_into(&whole, shown, &mut expected).unwrap();
+    let read = backend.read_back(surface).unwrap().unwrap();
+    assert_eq!(read.bytes, expected);
+    assert_eq!(read.damage, whole.rects());
+    // B, G, R, X: black at (0, 0), red at (2, 1), and X 0xFF everywhere.
+    assert_eq!(&read.bytes[..4], &[0, 0, 0, 255]);
+    assert_eq!(&read.bytes[40..44], &[0, 0, 255, 255]);
+    assert!(read.bytes.chunks(4).all(|pixel| pixel[3] == 0xFF));
+}

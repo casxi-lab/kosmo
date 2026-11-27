@@ -402,6 +402,12 @@ fn presenting_converts_only_the_damage_of_the_frame_into_the_buffer() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 4, 2, PixelFormat::Xrgb8888);
     let mut shell = calculator(&log, 0);
+    // The first frame is presented whole, in blue.
+    let whole = damage(&fake, &[(0, 0, 4, 2)]);
+    let blue = fill(0, 0, 4, 2, Color::opaque(0, 0, 255));
+    shell.present(&mut fake, SURFACE, &blue, &whole).unwrap();
+    release(&mut shell, &mut fake);
+    taken(&log);
     let damage = damage(&fake, &[(1, 0, 2, 1), (3, 1, 1, 1)]);
     let work = shell
         .present(
@@ -417,8 +423,9 @@ fn presenting_converts_only_the_damage_of_the_frame_into_the_buffer() {
     );
     assert_eq!(work.pixels, 3);
     assert_eq!(taken(&log), ["buffer 1", "present 1 1,0 2x1 3,1 1x1"]);
-    // B, G, R, X at (1, 0), (2, 0) and (3, 1); every other byte as it was.
-    let mut expected = vec![0x11; 32];
+    // B, G, R, X at (1, 0), (2, 0) and (3, 1); every other pixel blue, as
+    // the first frame left it.
+    let mut expected = [255, 0, 0, 0xFF].repeat(8);
     for pixel in [1, 2, 7] {
         expected[pixel * 4..pixel * 4 + 4].copy_from_slice(&[50, 100, 200, 0xFF]);
     }

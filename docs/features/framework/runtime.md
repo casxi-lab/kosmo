@@ -465,8 +465,10 @@ of the surface's buffer, converts the rectangles of `damage` into the buffer
 that `Presenter::buffer` hands out with `RenderTarget::convert_into`, and
 presents them, and it returns the work count of the drawing. The first frame
 of a surface, and the first after a `Configure` of another size or a buffer
-of another size, starts as transparent black. An empty damage region
-presents nothing. For a surface whose buffer is presented and not released,
+of another size, starts as transparent black and is drawn, converted and
+presented whole, whatever the damage region holds, so that the buffer is the
+conversion of the frame, with X of `Xrgb8888` always `0xFF`. An empty
+damage region presents nothing. For a surface whose buffer is presented and not released,
 `present` returns `ShellError::Platform(PlatformError::Busy)` before
 anything changes; after an error of `buffer` or of the rasterizer, too, the
 frame and the buffer are as they were. Its other errors are `Render`, for an
@@ -605,7 +607,8 @@ no wall-clock time; review checks these, as the
   platform disconnects or fails; drivers of such a backend use
   `Shell::run_round`.
 - The previous frame is kept for repainting by buffer age, which no backend
-  does yet: each presentation converts only its own damage region.
+  does yet: each presentation converts only its own damage region, but the
+  first of a new previous frame, which converts the whole frame.
 - One region per surface, and the runtime has one control tree for all
   surfaces; focus does not move within a region, and there is no
   region-level focus generation.
@@ -820,7 +823,8 @@ wall clock.
     limits, and a `Configure` of another size, or a buffer of another
     width or height, gives a new previous frame, which has 4 bytes per
     pixel also for an RGB565 buffer; on the headless backend, what the
-    shell presents is what it reads back. Tests: `shell::tests::`
+    shell presents is what it reads back, and a new previous frame is
+    presented whole whatever its damage. Tests: `shell::tests::`
     `the_updates_and_frames_of_an_output_go_to_the_platform_in_order`,
     `a_frame_of_an_output_for_a_presented_buffer_stops_the_delivery_with_busy`,
     `presenting_converts_only_the_damage_of_the_frame_into_the_buffer`,
@@ -833,7 +837,8 @@ wall clock.
     `a_buffer_of_another_size_without_a_configure_gets_a_new_frame`,
     `an_rgb565_buffer_takes_the_conversion_of_a_frame_of_4_bytes_per_pixel`;
     `framework/backend-headless/tests/shell.rs`:
-    `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`.
+    `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`,
+    `a_new_previous_frame_is_presented_whole_whatever_its_damage`.
 19. `run` waits with the deadline that each round leaves, and when the
     platform disconnects it calls `shutdown` and returns
     `ExitReason::Disconnected`; when a resource is missing at start-up, by

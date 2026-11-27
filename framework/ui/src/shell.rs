@@ -324,8 +324,11 @@ impl<A: App> Shell<A> {
     /// `Presenter::buffer` hands out with
     /// [`RenderTarget::convert_into`], and presents them. The first frame
     /// of a surface, and the first after a `Configure` with a new size or a
-    /// buffer of another size, starts as transparent black. Until a wait
-    /// returns `Released` for the surface, it is not presented again.
+    /// buffer of another size, starts as transparent black and is drawn,
+    /// converted and presented whole, whatever `damage` holds, so that the
+    /// buffer is the conversion of the frame, with X of `Xrgb8888` always
+    /// `0xFF`. Until a wait returns `Released` for the surface, it is not
+    /// presented again.
     ///
     /// An empty `damage` presents nothing and returns no work. Glyph runs
     /// fail with a missing glyph: the glyph cache of `kosmo-text` is
@@ -360,15 +363,22 @@ impl<A: App> Shell<A> {
         let desc = buffer.desc;
         let known = self.surfaces.entry(surface).or_default();
         let mut fresh = None;
-        let frame = match known.frame.as_mut() {
+        // A new frame is drawn, converted and presented whole, so that the
+        // buffer holds the conversion of the frame everywhere.
+        let (frame, whole) = match known.frame.as_mut() {
             Some(frame)
                 if frame.desc().width() == desc.width()
                     && frame.desc().height() == desc.height() =>
             {
-                frame
+                (frame, None)
             }
-            _ => fresh.insert(new_frame(desc)?),
+            _ => {
+                let frame = fresh.insert(new_frame(desc)?);
+                let whole = frame.whole();
+                (frame, Some(whole))
+            }
         };
+        let damage = whole.as_ref().unwrap_or(damage);
         let work = self
             .rasterizer
             .render(list, damage, &NoGlyphs, &ImageStore::EMPTY, frame)?;
