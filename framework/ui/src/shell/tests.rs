@@ -25,8 +25,9 @@ type Log = Rc<RefCell<Vec<String>>>;
 /// and returns the event batches that the test gives it, one for each
 /// wait, then `Disconnected` once they are gone and `disconnect` is set.
 /// Its clock stays at `clock`, and it has one buffer for every surface. It
-/// keeps the accessibility updates that it takes, and refuses them with
-/// `Busy` while `refuse_updates` is set.
+/// keeps the accessibility updates that it takes; it refuses with `Busy`
+/// every update while `refuse_updates` is set, and the updates of
+/// `refuse_surface`.
 struct Fake {
     log: Log,
     batches: VecDeque<Vec<PlatformEvent>>,
@@ -38,6 +39,7 @@ struct Fake {
     in_flight: bool,
     updates: Vec<(SurfaceId, TreeUpdate)>,
     refuse_updates: bool,
+    refuse_surface: Option<SurfaceId>,
 }
 
 impl Fake {
@@ -60,6 +62,7 @@ impl Fake {
             in_flight: false,
             updates: Vec::new(),
             refuse_updates: false,
+            refuse_surface: None,
         }
     }
 
@@ -150,7 +153,7 @@ impl ResourceProvider for Fake {
 impl AccessibilitySink for Fake {
     fn update(&mut self, surface: SurfaceId, update: TreeUpdate) -> Result<(), PlatformError> {
         self.log(format!("update {}", surface.get()));
-        if self.refuse_updates {
+        if self.refuse_updates || self.refuse_surface == Some(surface) {
             return Err(PlatformError::Busy);
         }
         self.updates.push((surface, update));
@@ -750,6 +753,64 @@ fn a_push_that_fails_keeps_the_frames_and_the_next_push_is_whole() {
     assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
     assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
     assert!(shell.surfaces[&SURFACE].pending.is_none());
+}
+
+/// When the platform refuses the update of the second of three surfaces,
+/// the first keeps its tree, the second and the third get the whole tree
+/// in the next round, and the frames of all three wait in their pending
+/// regions.
+#[test]
+fn a_push_that_fails_resets_its_surface_and_those_after_it_and_keeps_every_frame() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    let second = SurfaceId::new(2);
+    let third = SurfaceId::new(3);
+    let size = PixelSize::new(32, 2).unwrap();
+    fake.batches.push_back(vec![
+        configure(32, 2),
+        PlatformEvent::Configure {
+            surface: second,
+            size,
+        },
+        PlatformEvent::Configure {
+            surface: third,
+            size,
+        },
+        focus_in(),
+    ]);
+    // The fake has one buffer, so the second frame fails to present.
+    let _ = shell.run_round(&mut fake, None);
+    let surfaces: Vec<SurfaceId> = fake.updates.iter().map(|(s, _)| *s).collect();
+    assert_eq!(surfaces, [SURFACE, second, third]);
+    fake.updates.clear();
+    fake.in_flight = false;
+    for surface in [SURFACE, second, third] {
+        let known = shell.surfaces.get_mut(&surface).unwrap();
+        known.presented = false;
+        known.pending = None;
+    }
+    taken(&log);
+    // The first tile handles MoveLeft, and the platform refuses the update
+    // of the second surface.
+    fake.refuse_surface = Some(second);
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    let surfaces: Vec<SurfaceId> = fake.updates.iter().map(|(s, _)| *s).collect();
+    assert_eq!(surfaces, [SURFACE]);
+    assert_eq!(presentations(&log), Vec::<String>::new());
+    for surface in [SURFACE, second, third] {
+        assert!(is_whole(&shell.surfaces[&surface].pending.unwrap(), 32));
+    }
+    fake.updates.clear();
+    fake.refuse_surface = None;
+    let _ = shell.run_round(&mut fake, None);
+    let surfaces: Vec<SurfaceId> = fake.updates.iter().map(|(s, _)| *s).collect();
+    assert_eq!(surfaces, [second, third]);
+    assert!(fake.updates.iter().all(|(_, update)| update.tree.is_some()));
 }
 
 /// A frame presented before the one that fails stays out of the pending
