@@ -9,9 +9,10 @@
 //!
 //! The driver runs the application in the shell of `kosmo-ui` on the
 //! headless backend. The single control is a leaf that takes the size of
-//! the main surface, and each round whose view changed draws it and
-//! presents the frame; the driver keeps the display list of the latest
-//! frame of the main surface.
+//! the main surface, and each round in which the view or a handler changed
+//! something draws it, and the shell presents the frame once the buffer is
+//! released; the driver keeps the display list of the latest frame of the
+//! main surface.
 
 #![allow(
     dead_code,
@@ -392,7 +393,7 @@ pub struct EditorDriver {
     /// The event handling record of every round so far.
     record: Vec<String>,
     /// The display list of the latest frame of the main surface.
-    presented: Option<DisplayList>,
+    latest: Option<DisplayList>,
 }
 
 impl EditorDriver {
@@ -404,7 +405,7 @@ impl EditorDriver {
             plan: release.into_iter().map(|step| (step, false)).collect(),
             keys: 0,
             record: Vec::new(),
-            presented: None,
+            latest: None,
         }
     }
 
@@ -428,7 +429,7 @@ impl Driver<HeadlessBackend> for EditorDriver {
         self.record.extend(lines.iter().cloned());
         for (surface, list, _) in &end.output.frames {
             if *surface == MAIN {
-                self.presented = Some(list.clone());
+                self.latest = Some(list.clone());
             }
         }
         let keys = self.keys;
@@ -460,7 +461,7 @@ impl Driver<HeadlessBackend> for EditorDriver {
 
     fn display(&self, surface: SurfaceId, out: &mut String) {
         if surface == MAIN
-            && let Some(list) = &self.presented
+            && let Some(list) = &self.latest
         {
             out.push_str(&list.text());
         }
