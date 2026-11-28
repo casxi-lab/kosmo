@@ -19,17 +19,17 @@ fn px(pixels: i32) -> Fx {
     Fx::from_pixels(pixels).unwrap()
 }
 
-/// A control of the board: a node of each kind. A scroll container scrolls
-/// down by 30 pixels on `MoveRight` and up by 10 on `MoveLeft`, from the
-/// request in its presentation state, and writes back the offset that the
-/// layout gives it.
+/// A control of the board: a node of each kind. A scroll container along
+/// its axis scrolls forward by 30 pixels on `MoveRight` and back by 10 on
+/// `MoveLeft`, from the request in its presentation state, and writes back
+/// the offset that the layout gives it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Piece {
     Row,
     Column,
     Text(&'static str),
     Fixed(i32, i32),
-    Scroll,
+    Scroll(Axis),
 }
 
 impl Control<Board> for Piece {
@@ -41,14 +41,14 @@ impl Control<Board> for Piece {
             Piece::Column => "column",
             Piece::Text(_) => "text",
             Piece::Fixed(..) => "fixed",
-            Piece::Scroll => "scroll",
+            Piece::Scroll(_) => "scroll",
         })
     }
 
     fn handle(&self, _: Phase, command: &Command, cx: &mut Context<'_, Board, Fx>) -> Handling {
         let step = match (self, command.id) {
-            (Piece::Scroll, MOVE_RIGHT) => px(30),
-            (Piece::Scroll, MOVE_LEFT) => px(-10),
+            (Piece::Scroll(_), MOVE_RIGHT) => px(30),
+            (Piece::Scroll(_), MOVE_LEFT) => px(-10),
             _ => return Handling::Unhandled,
         };
         let request = cx.state().checked_add(step).unwrap();
@@ -62,7 +62,7 @@ impl Control<Board> for Piece {
             Piece::Column => Node::Column(Column::new()),
             Piece::Text(text) => Node::Text(Text::new(text, Font::Sans, FontSize::Body)),
             Piece::Fixed(width, height) => Node::Fixed(Size::new(px(*width), px(*height)).unwrap()),
-            Piece::Scroll => Node::Scroll(Scroll::new(Axis::Y, *request)),
+            Piece::Scroll(axis) => Node::Scroll(Scroll::new(*axis, *request)),
         }
     }
 
@@ -358,7 +358,7 @@ fn scrolled_view() -> View<Piece> {
     for (key, line) in (0..).zip(lines) {
         column.push(text(key, line));
     }
-    piece(0, Piece::Scroll).focused().child(column)
+    piece(0, Piece::Scroll(Axis::Y)).focused().child(column)
 }
 
 /// The input that lays out two surfaces, each with its size, with `fonts`.
@@ -492,6 +492,49 @@ fn the_round_writes_offsets_back_so_that_requests_beyond_the_range_do_not_add_up
     for surface in surfaces {
         assert_whole_on(&runtime, &mut fonts, surface);
     }
+}
+
+#[test]
+fn a_horizontal_scroll_container_writes_its_offset_back_along_x() {
+    // A focused horizontal scroll container, 100 pixels wide, with a row
+    // of five leaves 30 pixels wide as its content.
+    let mut row = piece(0, Piece::Row);
+    for index in 0..5 {
+        row.push(piece(index, Piece::Fixed(30, 10)));
+    }
+    let view = piece(0, Piece::Scroll(Axis::X)).focused().child(row);
+    let (mut runtime, mut app, mut fonts) = board(view);
+    let surface = size(100, 20);
+    laid_out(
+        &mut runtime,
+        &mut app,
+        vec![focus_in()],
+        on(&mut fonts, surface),
+    );
+    let boxes = runtime.layout(SURFACE).unwrap().boxes();
+    let range = boxes[1]
+        .size
+        .width()
+        .checked_sub(boxes[0].size.width())
+        .unwrap();
+    assert!(range > px(30) && range < px(150));
+    let scroll = runtime.tree().root().unwrap();
+    for _ in 0..5 {
+        laid_out(
+            &mut runtime,
+            &mut app,
+            vec![key(NamedKey::RIGHT)],
+            on(&mut fonts, surface),
+        );
+    }
+    // Five steps of 30 pixels went beyond the range along `x`: the request
+    // written back is the end of the range, and the offset lies along `x`.
+    assert_eq!(runtime.tree().state(scroll), Some(&range));
+    assert_eq!(
+        runtime.layout(SURFACE).unwrap().boxes()[0].scroll,
+        Point::new(range, Fx::ZERO)
+    );
+    assert_whole(&runtime, &mut fonts, surface);
 }
 
 #[test]
