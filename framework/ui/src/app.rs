@@ -346,9 +346,10 @@ pub trait Control<A: App>: Clone {
     }
 
     /// The control's accessibility node, from its value and its
-    /// presentation state `state`. The accessibility pass of a round calls
-    /// it once for each control, with `node` filled from the control's
-    /// layout node: a text leaf is a `Role::Label` named by its text, a
+    /// presentation state `state`. The accessibility pass of a round in
+    /// which at least one surface has a layout calls it once for each
+    /// control, with `node` filled from the control's layout node: a text
+    /// leaf is a `Role::Label` named by its text, a
     /// scroll container a `Role::ScrollView`, and any other control a
     /// `Role::GenericContainer` without a name. The control may change the
     /// role, the name (`label`), the value, the description and the state
