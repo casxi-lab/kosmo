@@ -859,12 +859,16 @@ fn check_tree(
         let origin = base
             .translated(boxed.rect.origin().x, boxed.rect.origin().y)
             .ok_or("overflow")?;
-        let pixels = |value: Fx| f64::from(value.units()) / 64.0;
+        // Whole numbers of 1/64 pixel, added as integers and converted
+        // once, exactly.
+        let pixels = |units: i64| units as f64 / 64.0;
+        let (x, y) = (i64::from(origin.x.units()), i64::from(origin.y.units()));
+        let size = boxed.rect.size();
         let bounds = Rect {
-            x0: pixels(origin.x),
-            y0: pixels(origin.y),
-            x1: pixels(origin.x) + pixels(boxed.rect.size().width()),
-            y1: pixels(origin.y) + pixels(boxed.rect.size().height()),
+            x0: pixels(x),
+            y0: pixels(y),
+            x1: pixels(x + i64::from(size.width().units())),
+            y1: pixels(y + i64::from(size.height().units())),
         };
         let node = tree
             .node(node_id(laid.widget))

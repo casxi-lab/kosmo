@@ -409,12 +409,14 @@ fn a_scroll_container_gives_its_offset_and_range_and_moves_its_content() {
     assert_eq!(content.scroll_y(), None);
     assert_eq!(content.role(), Role::GenericContainer);
     assert_eq!(content.label(), None);
-    for (index, &line) in lines.iter().enumerate() {
+    // The six lines, 20 pixels each, start 30 pixels above the viewport.
+    let tops = [-30.0, -10.0, 10.0, 30.0, 50.0, 70.0];
+    let bottoms = [-10.0, 10.0, 30.0, 50.0, 70.0, 90.0];
+    for ((&line, top), bottom) in lines.iter().zip(tops).zip(bottoms) {
         assert_eq!(node_of(&first[0], line).role(), Role::GenericContainer);
         assert_eq!(node_of(&first[0], line).label(), None);
-        let top = -30.0 + 20.0 * index as f64;
         let bounds = node_of(&first[0], line).bounds();
-        assert_eq!(bounds, Some(rect(0.0, top, 100.0, top + 20.0)));
+        assert_eq!(bounds, Some(rect(0.0, top, 100.0, bottom)));
     }
     // A request of 500 pixels is brought to the end of the range, which
     // moves the column and its six lines 40 pixels up.
@@ -428,10 +430,11 @@ fn a_scroll_container_gives_its_offset_and_range_and_moves_its_content() {
     assert_eq!(node_of(second, scroller).scroll_y_max(), Some(70.0));
     let content = node_of(second, column);
     assert_eq!(content.bounds(), Some(rect(0.0, -70.0, 100.0, 50.0)));
-    for (index, &line) in lines.iter().enumerate() {
-        let top = -70.0 + 20.0 * index as f64;
+    let tops = [-70.0, -50.0, -30.0, -10.0, 10.0, 30.0];
+    let bottoms = [-50.0, -30.0, -10.0, 10.0, 30.0, 50.0];
+    for ((&line, top), bottom) in lines.iter().zip(tops).zip(bottoms) {
         let bounds = node_of(second, line).bounds();
-        assert_eq!(bounds, Some(rect(0.0, top, 100.0, top + 20.0)));
+        assert_eq!(bounds, Some(rect(0.0, top, 100.0, bottom)));
     }
 }
 
