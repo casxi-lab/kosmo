@@ -292,8 +292,10 @@ against it:
 
 The result is that of `layout` byte for byte. Then each scroll container's
 control learns its offset through `Control::scrolled`, and the drawing pass
-draws each surface whose layout tree or controls changed since its latest
-frame. [Rounds](runtime.md#rounds) describes the pass, its records and its
+draws each surface whose layout tree changed since its latest frame, and
+every surface after a view rebuilt the tree or a handler of a control took
+its presentation state through `Context::state_mut`.
+[Rounds](runtime.md#rounds) describes the pass, its records and its
 errors.
 
 ## Limits
@@ -328,7 +330,10 @@ errors.
   [rounds](runtime.md#rounds) state.
 - The update region of a surface is the whole surface or nothing: rounds
   do not work out which part of a surface changed, so a change of one
-  control draws the whole surface again.
+  control draws the whole surface again. A presentation state counts as
+  changed only when a handler takes it through `Context::state_mut`, and
+  what `Control::scrolled` writes back only through the layout tree, as
+  [rounds](runtime.md#rounds) state.
 - The layout pass takes the layout node of every control in every round to
   find the dirty ones; only the laying out is limited to dirty subtrees.
 - Text is laid out from left to right in the two bundled fonts, without

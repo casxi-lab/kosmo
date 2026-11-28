@@ -156,6 +156,10 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-backend-headle
   commands, `focus` for focus changes of the region's root and `timer` for
   its due timers, get a `Context`: the control's `WidgetId`, its
   presentation state, and messages, effects and timer requests to output.
+  A handler reads its presentation state with `Context::state` and
+  changes it through `Context::state_mut`; only taking it through
+  `state_mut` counts as a change for the drawing pass of
+  [rounds](#rounds).
   None of them reaches the model, the execution port or the platform.
   `Control::layout` gives the control's layout node from its value and
   presentation state, and `Control::scrolled` tells a scroll container the
@@ -323,14 +327,24 @@ update region is the whole surface:
 
 - on the surface's first frame;
 - when its layout tree differs from the one of its latest frame, which a
-  new size or a change of the layout always gives;
-- when a view rebuilt the tree or a handler of a control ran since the
-  drawing pass before: a control's value or presentation state may have
-  changed, and controls are not compared.
+  new size, a change of the layout or a changed scroll offset always
+  gives, so what `Control::scrolled` writes back counts through the layout
+  tree;
+- when a view rebuilt the tree since the drawing pass before, which may
+  have changed the value of any control;
+- when a handler of a control, `handle`, `focus` or `timer`, took its
+  presentation state through `Context::state_mut` since the drawing pass
+  before, also when it left the value as it was.
 
 Otherwise it is empty, and a surface whose update and pending regions are
-both empty has no frame. The controls draw through `paint`, with the text
-of each text leaf that the layout pass laid out with the round's font set.
+both empty has no frame. Controls and their presentation states are not
+compared, so a handler that only reads its state with `Context::state`,
+or declines a command without taking it, changes nothing: on a surface
+that has a frame, keeps its size and has no pending region, a round with
+only a key that no control handles, which rebuilds no view and leaves the
+layout tree as it was, gives no frame. The controls draw through `paint`,
+with the text of each text leaf that the layout pass laid out with the
+round's font set.
 A drawing pass that fails gives the surface no frame, never a panic: the
 record names the error and `Output::paint_errors` holds the surface with
 its `PaintError`, and the surface's next frame is whole. A surface whose
@@ -754,10 +768,16 @@ no wall-clock time; review checks these, as the
   [rounds](#rounds) state; the drawing pass leaves out no group.
 - The update region of a surface is the whole surface or nothing: rounds
   do not work out which part of a surface changed. Every view that a round
-  rebuilds and every handler of a control that runs counts as a change of
-  what the controls show, since controls and their presentation states are
-  not compared, and so does every change of the layout tree, while what
-  `Control::scrolled` writes counts only through the layout tree.
+  rebuilds and every handler of a control that takes its presentation
+  state through `Context::state_mut` counts as a change of what the
+  controls show, also when nothing changed, since controls and their
+  presentation states are not compared, and so does every change of the
+  layout tree, while what `Control::scrolled` writes counts only through
+  the layout tree.
+- A control that changes its presentation state through interior
+  mutability, such as a `Cell` in its value or its state, without taking
+  the state through `Context::state_mut` gives no frame: the change shows
+  only when something else draws its surfaces again.
 - The shell creates and destroys no surface: the application's assembly or
   the driver creates them through `SurfacePort` before the first round. A
   driver of `Shell::run_round` destroys them before it calls `shutdown`;
@@ -1101,9 +1121,11 @@ wall clock.
     its controls draw from the layout of their surface, the text leaf with
     the paragraph that the layout pass laid out with the round's font set;
     a round in which nothing changed draws nothing; after a handler of a
-    control ran, or a view was rebuilt, each surface is drawn whole; a new
-    size draws only the surface that has it, whole; a pending region alone
-    draws only that region; a surface without a layout is not drawn. A
+    control took its presentation state through `Context::state_mut`, or
+    a view was rebuilt, each surface is drawn whole, also where only a
+    control's value changed and its layout stayed; a new size draws only
+    the surface that has it, whole; a pending region alone draws only that
+    region; a surface without a layout is not drawn. A
     drawing pass that fails, for a colour outside the tokens or for a
     surface whose frame would exceed the buffer limits, gives no frame,
     names the error in the record and in `Output::paint_errors`, and the
