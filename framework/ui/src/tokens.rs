@@ -1,7 +1,7 @@
 //! The design tokens: the named spacings, font sizes and colours that
 //! controls take their values from.
 
-use kosmo_render::Color;
+use kosmo_render::{Color, Command};
 use kosmo_types::Fx;
 
 /// A spacing token: the gap between the children of a row or column, or
@@ -136,6 +136,35 @@ impl Tokens {
             ColorToken::TextSecondary => self.text_secondary,
             ColorToken::Accent => self.accent,
             ColorToken::Error => self.error,
+        }
+    }
+
+    /// Whether every colour of `command` is the value of a colour token
+    /// and the size of a glyph run the value of a font size token. Groups
+    /// have neither; a kind of command that a later version adds is not
+    /// admitted until this check knows it. Only values are compared, so a
+    /// literal equal to a token's value is admitted.
+    pub(crate) fn admits(&self, command: &Command) -> bool {
+        let color = |color: &Color| {
+            [
+                self.background,
+                self.text,
+                self.text_secondary,
+                self.accent,
+                self.error,
+            ]
+            .contains(color)
+        };
+        match command {
+            Command::FillRect { color: c, .. }
+            | Command::FillRoundedRect { color: c, .. }
+            | Command::FillPath { color: c, .. }
+            | Command::StrokePath { color: c, .. } => color(c),
+            Command::Glyphs { size, color: c, .. } => {
+                color(c) && [self.font_small, self.font_body, self.font_large].contains(size)
+            }
+            Command::PushClip { .. } | Command::PopClip => true,
+            _ => false,
         }
     }
 }

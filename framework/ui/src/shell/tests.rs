@@ -12,11 +12,11 @@ use kosmo_text::{GlyphError, MONO, SANS};
 use kosmo_types::{DamageRect, Fx, KeyAction, KeyMeaning, NamedKey, Point, Rect, Size, convert};
 
 use super::*;
-use crate::app::{Control, DrawContext, Message, Out};
+use crate::app::{Context, Control, DrawContext, Handling, Message, Out, Phase};
 use crate::command::{EVALUATE_SELECTION, MOVE_LEFT};
-use crate::layout::{self, Column, Constraint, Font, Text};
+use crate::layout::{self, Column, Constraint, Font, Row, Text};
 use crate::testing::{SURFACE, TestApp, TestPort, Widget, key_event, node, stamp};
-use crate::tokens::FontSize;
+use crate::tokens::{ColorToken, FontSize};
 use crate::tree::{Key, View};
 
 type Log = Rc<RefCell<Vec<String>>>;
@@ -201,10 +201,23 @@ fn focus_in() -> PlatformEvent {
 }
 
 fn execute_key() -> PlatformEvent {
+    key(NamedKey::EXECUTE)
+}
+
+/// A press of the key `named` on the surface.
+fn key(named: NamedKey) -> PlatformEvent {
     PlatformEvent::Key {
         surface: SURFACE,
         stamp: stamp(1, 1),
-        event: key_event(KeyMeaning::Named(NamedKey::EXECUTE), KeyAction::Press),
+        event: key_event(KeyMeaning::Named(named), KeyAction::Press),
+    }
+}
+
+/// A `Configure` of the surface to `width` by `height` pixels.
+fn configure(width: u32, height: u32) -> PlatformEvent {
+    PlatformEvent::Configure {
+        surface: SURFACE,
+        size: PixelSize::new(width, height).unwrap(),
     }
 }
 
@@ -234,12 +247,12 @@ fn damage(fake: &Fake, rects: &[(u32, u32, u32, u32)]) -> Damage {
 }
 
 /// Returns the release of the surface's buffer through a round, so that the
-/// shell presents on it again.
-fn release(shell: &mut Shell<TestApp>, fake: &mut Fake) {
+/// shell presents on it again, and returns how that round ended.
+fn release<A: App>(shell: &mut Shell<A>, fake: &mut Fake) -> RoundEnd {
     fake.in_flight = false;
     fake.batches
         .push_back(vec![PlatformEvent::Released { surface: SURFACE }]);
-    shell.run_round(fake, None).unwrap();
+    shell.run_round(fake, None).unwrap()
 }
 
 #[test]
@@ -407,25 +420,366 @@ fn the_updates_and_frames_of_an_output_go_to_the_platform_in_order() {
     assert_eq!(&fake.bytes[..4], &[1, 2, 3, 255]);
 }
 
+/// The calls of `log` that ask for a buffer or present one.
+fn presentations(log: &Log) -> Vec<String> {
+    taken(log)
+        .into_iter()
+        .filter(|call| call.starts_with("buffer") || call.starts_with("present"))
+        .collect()
+}
+
 #[test]
-fn a_frame_of_an_output_for_a_presented_buffer_stops_the_delivery_with_busy() {
+fn a_frame_for_a_presented_buffer_is_drawn_again_after_the_release() {
     let log = Log::default();
-    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
     let mut shell = calculator(&log, 0);
-    let mut output = shell.run_round(&mut fake, None).unwrap().output;
-    let whole = damage(&fake, &[(0, 0, 4, 2)]);
-    output
-        .frames
-        .push((SURFACE, fill(0, 0, 4, 2, Color::opaque(1, 2, 3)), whole));
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    // The first frame of the configured surface is presented whole.
+    let first = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(first.output.frames.len(), 1);
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+
+    // While the buffer is presented, the frames of an output are not
+    // presented: their regions join the pending region, whose 17th
+    // rectangle merges all of them into their bounding rectangle.
+    let mut output = first.output.clone();
+    output.frames.clear();
+    for x in 0..17 {
+        let list = DisplayList::default();
+        output
+            .frames
+            .push((SURFACE, list, damage(&fake, &[(x, 0, 1, 1)])));
+    }
     shell.deliver(&mut fake, &output).unwrap();
+    assert!(presentations(&log).is_empty());
+    let pending = shell.surfaces[&SURFACE].pending.unwrap();
+    assert_eq!(pending.rects(), [DamageRect::new(0, 0, 17, 1).unwrap()]);
+
+    // The round after the release, in which nothing changed, draws the
+    // pending region and presents it.
+    release(&mut shell, &mut fake);
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 17x1"]);
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
+
+    // A round whose view changes while the buffer is presented gives a
+    // whole frame, which waits: the round returns no error.
+    fake.batches.push_back(vec![execute_key()]);
+    let busy = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(busy.output.frames.len(), 1);
+    assert!(presentations(&log).is_empty());
+    // A driver that presents directly is still refused.
+    let list = DisplayList::default();
+    let whole = damage(&fake, &[(0, 0, 32, 2)]);
+    assert_eq!(
+        shell.present(&mut fake, SURFACE, &list, &whole),
+        Err(ShellError::Platform(PlatformError::Busy))
+    );
+    release(&mut shell, &mut fake);
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+    // Then nothing is pending, and nothing is presented.
+    release(&mut shell, &mut fake);
+    assert!(presentations(&log).is_empty());
+}
+
+/// A control of the tiles: a row, or a leaf of 8 by 2 pixels that counts
+/// the `MoveLeft` commands it handles in its presentation state and fills
+/// its box in the accent before the first and in the colour of errors
+/// after it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Tile {
+    Row,
+    Leaf,
+}
+
+impl Control<Tiles> for Tile {
+    type State = u32;
+
+    fn kind(&self) -> crate::tree::Kind {
+        crate::tree::Kind::new(match self {
+            Tile::Row => "row",
+            Tile::Leaf => "tile",
+        })
+    }
+
+    fn handle(
+        &self,
+        _: Phase,
+        command: &crate::command::Command,
+        cx: &mut Context<'_, Tiles, u32>,
+    ) -> Handling {
+        if *self == Tile::Leaf && command.id == MOVE_LEFT {
+            *cx.state_mut() += 1;
+            Handling::Handled
+        } else {
+            Handling::Unhandled
+        }
+    }
+
+    fn layout(&self, _: &u32) -> layout::Node<'_> {
+        let px = |pixels| Fx::from_pixels(pixels).unwrap();
+        match self {
+            Tile::Row => layout::Node::Row(Row::new()),
+            Tile::Leaf => layout::Node::Fixed(Size::new(px(8), px(2)).unwrap()),
+        }
+    }
+
+    fn draw(&self, cx: &mut DrawContext<'_, u32>) {
+        if *self == Tile::Leaf {
+            let token = match cx.state() {
+                0 => ColorToken::Accent,
+                _ => ColorToken::Error,
+            };
+            let color = cx.color(token);
+            cx.draw(Command::FillRect {
+                rect: Rect::new(Point::default(), cx.size()),
+                color,
+            });
+        }
+    }
+}
+
+/// An application whose view is a row of four tiles, the first of them
+/// focused, which fill a surface of 32 by 2 pixels.
+struct Tiles;
+
+impl App for Tiles {
+    type Message = ();
+    type Control = Tile;
+    type Port = TestPort;
+
+    fn update(&mut self, _: Message<Self>, _: &mut Out<Self>) {}
+
+    fn view(&self) -> View<Tile> {
+        let mut row = View::new(Key::new(0), Tile::Row)
+            .region()
+            .child(View::new(Key::new(1), Tile::Leaf).focused());
+        for key in 2..5 {
+            row = row.child(View::new(Key::new(key), Tile::Leaf));
+        }
+        row
+    }
+}
+
+/// The bytes of a pixel in the colour of `token` in an `Rgba8Premul`
+/// buffer.
+fn tile(token: ColorToken) -> [u8; 4] {
+    TOKENS.color(token).to_bytes()
+}
+
+/// Whether `damage` holds rectangles, each the whole surface of `width`
+/// by 2 pixels.
+fn is_whole(damage: &Damage, width: u32) -> bool {
+    let whole = DamageRect::new(0, 0, width, 2).unwrap();
+    !damage.is_empty() && damage.rects().iter().all(|rect| *rect == whole)
+}
+
+/// A `Configure` while the buffer is presented, and a second one to the
+/// size of the buffer again, make the whole surface the pending region, so
+/// that the frame after the release, a new previous frame, draws every
+/// tile and not only those inside the region of the smaller size.
+#[test]
+fn a_second_size_while_the_buffer_is_presented_draws_the_next_frame_whole() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    // The third tile, at x = 20.
+    assert_eq!(&fake.bytes[80..84], &tile(ColorToken::Accent));
+    // Smaller, then the size of the buffer again, while presented.
+    fake.batches.push_back(vec![configure(16, 2)]);
+    let small = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(small.output.frames.len(), 1);
+    fake.batches.push_back(vec![configure(32, 2)]);
+    let back = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(back.output.frames.len(), 1);
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    let after = release(&mut shell, &mut fake);
+    assert!(is_whole(&after.output.frames[0].2, 32));
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Accent));
+    assert_eq!(&fake.bytes[80..84], &tile(ColorToken::Accent));
+}
+
+/// A `Configure` to another size and back to the old one in one batch,
+/// while the buffer is presented, keeps the change that waits for the
+/// release: the layout is as before, and the round after the release
+/// still draws the first tile in the colour of its new state.
+#[test]
+fn a_size_and_back_while_the_buffer_is_presented_draws_the_change() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Accent));
+    // The first tile handles MoveLeft while the buffer is presented, so
+    // its whole frame waits.
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    let changed = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(changed.output.frames.len(), 1);
+    assert!(shell.surfaces[&SURFACE].pending.is_some());
+    fake.batches
+        .push_back(vec![configure(16, 2), configure(32, 2)]);
+    let resized = shell.run_round(&mut fake, None).unwrap();
+    assert!(resized.output.frames.is_empty());
+    assert!(shell.surfaces[&SURFACE].pending.is_some());
+    let after = release(&mut shell, &mut fake);
+    assert_eq!(after.output.frames.len(), 1);
+    let first = shell.runtime().tree().focused().unwrap();
+    assert_eq!(shell.runtime().tree().state(first), Some(&1));
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
+}
+
+/// A frame that fails to present, here because the platform still holds a
+/// buffer that the shell saw released, waits in the pending region of its
+/// surface, and the next round, in which nothing else changed, draws it
+/// again and presents it; the frames after it in the output wait in the
+/// pending regions of their surfaces too.
+#[test]
+fn frames_that_fail_to_present_are_drawn_again_by_the_next_round() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    release(&mut shell, &mut fake);
     taken(&log);
-    // The buffer is presented and not released, so the same output's frame
-    // is refused, and the delivery returns the error.
+    // The first tile handles MoveLeft, and the platform refuses the buffer.
+    fake.in_flight = true;
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    assert_eq!(presentations(&log), ["buffer 1"]);
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.in_flight = false;
+    let next = shell.run_round(&mut fake, None).unwrap();
+    assert!(is_whole(&next.output.frames[0].2, 32));
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
+
+    // The frame of the second surface comes after the one that fails.
+    release(&mut shell, &mut fake);
+    fake.in_flight = true;
+    let second = SurfaceId::new(2);
+    let mut output = next.output.clone();
+    output.frames = vec![
+        (
+            SURFACE,
+            DisplayList::default(),
+            damage(&fake, &[(0, 0, 1, 1)]),
+        ),
+        (
+            second,
+            DisplayList::default(),
+            damage(&fake, &[(2, 0, 3, 1)]),
+        ),
+    ];
+    taken(&log);
     assert_eq!(
         shell.deliver(&mut fake, &output),
         Err(ShellError::Platform(PlatformError::Busy))
     );
-    assert!(taken(&log).is_empty());
+    assert_eq!(presentations(&log), ["buffer 1"]);
+    let pending = |surface| shell.surfaces[&surface].pending.unwrap();
+    assert_eq!(
+        pending(SURFACE).rects(),
+        [DamageRect::new(0, 0, 1, 1).unwrap()]
+    );
+    assert_eq!(
+        pending(second).rects(),
+        [DamageRect::new(2, 0, 3, 1).unwrap()]
+    );
+}
+
+/// A frame presented before the one that fails stays out of the pending
+/// regions: the fake has one buffer, so once the first frame is presented,
+/// the second surface asks for the buffer while it is in flight.
+#[test]
+fn a_frame_presented_before_one_that_fails_is_not_pending() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    let first = shell.run_round(&mut fake, None).unwrap();
+    release(&mut shell, &mut fake);
+    let second = SurfaceId::new(2);
+    let mut output = first.output.clone();
+    output.frames = vec![
+        (
+            SURFACE,
+            DisplayList::default(),
+            damage(&fake, &[(0, 0, 1, 1)]),
+        ),
+        (
+            second,
+            DisplayList::default(),
+            damage(&fake, &[(2, 0, 3, 1)]),
+        ),
+    ];
+    taken(&log);
+    assert_eq!(
+        shell.deliver(&mut fake, &output),
+        Err(ShellError::Platform(PlatformError::Busy))
+    );
+    assert_eq!(
+        presentations(&log),
+        ["buffer 1", "present 1 0,0 1x1", "buffer 2"]
+    );
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
+    assert_eq!(
+        shell.surfaces[&second].pending.unwrap().rects(),
+        [DamageRect::new(2, 0, 3, 1).unwrap()]
+    );
+}
+
+/// A frame for a presented buffer that comes after the frame that fails
+/// joins the pending region of its surface too, so that the first round
+/// after its release draws it again.
+#[test]
+fn a_frame_for_a_presented_buffer_after_one_that_fails_is_pending() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    let first = shell.run_round(&mut fake, None).unwrap();
+    release(&mut shell, &mut fake);
+    // The platform refuses the buffer, and the buffer of a third surface is
+    // presented and not released.
+    fake.in_flight = true;
+    let third = SurfaceId::new(3);
+    shell.surfaces.entry(third).or_default().presented = true;
+    let mut output = first.output.clone();
+    output.frames = vec![
+        (
+            SURFACE,
+            DisplayList::default(),
+            damage(&fake, &[(0, 0, 1, 1)]),
+        ),
+        (
+            third,
+            DisplayList::default(),
+            damage(&fake, &[(2, 0, 3, 1)]),
+        ),
+    ];
+    taken(&log);
+    assert_eq!(
+        shell.deliver(&mut fake, &output),
+        Err(ShellError::Platform(PlatformError::Busy))
+    );
+    assert_eq!(presentations(&log), ["buffer 1"]);
+    assert_eq!(
+        shell.surfaces[&SURFACE].pending.unwrap().rects(),
+        [DamageRect::new(0, 0, 1, 1).unwrap()]
+    );
+    assert_eq!(
+        shell.surfaces[&third]
+            .pending
+            .map(|pending| pending.rects().to_vec()),
+        Some(vec![DamageRect::new(2, 0, 3, 1).unwrap()])
+    );
 }
 
 #[test]
@@ -655,10 +1009,6 @@ fn a_configure_with_a_new_size_drops_the_previous_frame() {
     let whole = damage(&fake, &[(0, 0, 4, 2)]);
     let red = fill(0, 0, 4, 2, Color::opaque(255, 0, 0));
     shell.present(&mut fake, SURFACE, &red, &whole).unwrap();
-    let configure = |width, height| PlatformEvent::Configure {
-        surface: SURFACE,
-        size: PixelSize::new(width, height).unwrap(),
-    };
     let frame = |shell: &Shell<TestApp>| {
         shell.surfaces[&SURFACE]
             .frame

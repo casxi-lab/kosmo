@@ -588,10 +588,10 @@ nothing pending or due. The runner advances the clock only through
 `advance_to` of the test hooks and reads no other clock, and the headless
 backend never advances its clock itself. A line
 that does not let the framework become idle within `MAX_ROUNDS_PER_LINE`
-rounds, 65,536, fails. The shell's rounds do not run the drawing pass yet, so
-a driver draws the frames itself: it lays its controls out, builds the
-display list with the drawing pass `paint` of `kosmo-ui` and presents it with
-`Shell::present`.
+rounds, 65,536, fails. The shell's rounds lay the controls out, draw them
+and present the frames, so a driver only runs rounds and reads what they
+give, such as the display list of a surface's latest frame for the
+records.
 
 A section has the three records of a checkpoint in this order:
 

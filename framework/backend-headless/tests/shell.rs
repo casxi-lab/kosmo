@@ -1,10 +1,10 @@
 //! The shell of the framework core on the headless backend: `run` returns
 //! distinct exit statuses when the platform disconnects, when a font is
 //! missing at start-up and when another error stops it, shutting the
-//! backend down in each case; a frame that the shell presents is what the
-//! backend reads back; and text that the shell draws with the fonts that it
-//! fetched from the backend's resources is the pixel golden of
-//! `kosmo-text`.
+//! backend down in each case; the frame that a round draws is what the
+//! backend reads back; and text that a round lays out and draws with the
+//! fonts that the shell fetched from the backend's resources has the
+//! coverage of the pixel golden of `kosmo-text`.
 
 // These tests need the test hooks: the check builds this package once
 // more with them, and a build without them compiles this file empty.
@@ -21,11 +21,11 @@ use kosmo_render::{
     Color, Command, ImageStore, ListBuilder, NoGlyphs, Rasterizer, RenderTarget, VelloRasterizer,
 };
 use kosmo_testkit::pixels::PixelDigest;
-use kosmo_text::{FontSet, MONO_FILE, SANS, SANS_FILE, TextStyle};
+use kosmo_text::{MONO_FILE, SANS_FILE};
 use kosmo_types::{BufferDesc, Damage, DamageRect, Fx, PixelFormat, Point, Rect, Size};
 use kosmo_ui::{
-    App, Control, DrawContext, ExitReason, JobPort, Key, Kind, LayoutBox, LayoutResult, Message,
-    Out, Shell, ShellError, View, paint, run,
+    App, ColorToken, Column, Control, DrawContext, ExitReason, Font, FontSize, JobPort, Key, Kind,
+    Message, Node, Out, Row, Shell, ShellError, Space, TOKENS, Text, View, run,
 };
 
 /// The two fonts as resources, named by their files in the asset manifest
@@ -48,40 +48,111 @@ fn fonts() -> BTreeMap<ResourceId, Vec<u8>> {
     ])
 }
 
-const BLUE: Color = Color::opaque(0, 0, 255);
-const RED: Color = Color::opaque(255, 0, 0);
-
-/// An application of two controls, a root and its child, each of which
-/// fills its box with its color.
+/// An application of a row of two boxes of 4 by 4 pixels, which fill
+/// themselves with the colour of their tokens: the accent and the colour
+/// of errors.
 struct Boxes;
 
 #[derive(Clone, Debug, PartialEq)]
-struct Fill(Color);
+enum Part {
+    Row,
+    Fill(ColorToken),
+}
 
-impl Control<Boxes> for Fill {
+impl Control<Boxes> for Part {
     type State = ();
 
     fn kind(&self) -> Kind {
-        Kind::new("fill")
+        Kind::new(match self {
+            Part::Row => "row",
+            Part::Fill(_) => "fill",
+        })
+    }
+
+    fn layout(&self, _: &()) -> Node<'_> {
+        match self {
+            Part::Row => Node::Row(Row::new()),
+            Part::Fill(_) => Node::Fixed(Size::new(SIDE, SIDE).unwrap_or(Size::ZERO)),
+        }
     }
 
     fn draw(&self, cx: &mut DrawContext<'_, ()>) {
-        cx.draw(Command::FillRect {
-            rect: Rect::new(Point::default(), cx.size()),
-            color: self.0,
-        });
+        if let Part::Fill(token) = self {
+            cx.draw(Command::FillRect {
+                rect: Rect::new(Point::default(), cx.size()),
+                color: cx.color(*token),
+            });
+        }
     }
 }
 
+/// The side of the boxes: 4 pixels.
+const SIDE: Fx = Fx::from_units(4 * 64);
+
 impl App for Boxes {
     type Message = ();
-    type Control = Fill;
+    type Control = Part;
     type Port = NoJobs;
 
     fn update(&mut self, _: Message<Self>, _: &mut Out<Self>) {}
 
-    fn view(&self) -> View<Fill> {
-        View::new(Key::new(0), Fill(BLUE)).child(View::new(Key::new(1), Fill(RED)))
+    fn view(&self) -> View<Part> {
+        View::new(Key::new(0), Part::Row)
+            .child(View::new(Key::new(1), Part::Fill(ColorToken::Accent)))
+            .child(View::new(Key::new(2), Part::Fill(ColorToken::Error)))
+    }
+}
+
+/// The string of the pixel golden of `kosmo-text`.
+const FOX: &str = "The quick brown fox jumps over the lazy dog.";
+
+/// An application of a column with a padding of 2 pixels, which holds the
+/// text leaf of the string of the golden of `kosmo-text` in Fira Sans at
+/// 16 pixels per em; the text leaf draws the text that the layout laid
+/// out.
+struct Words;
+
+#[derive(Clone, Debug, PartialEq)]
+enum Word {
+    Column,
+    Text,
+}
+
+impl Control<Words> for Word {
+    type State = ();
+
+    fn kind(&self) -> Kind {
+        Kind::new(match self {
+            Word::Column => "column",
+            Word::Text => "text",
+        })
+    }
+
+    fn layout(&self, _: &()) -> Node<'_> {
+        match self {
+            Word::Column => Node::Column(Column::new().padding(Space::Xs)),
+            Word::Text => Node::Text(Text::new(FOX, Font::Sans, FontSize::Body)),
+        }
+    }
+
+    fn draw(&self, cx: &mut DrawContext<'_, ()>) {
+        if let Some(text) = cx.text()
+            && let Ok(run) = text.paragraph.run(Point::default(), cx.color(text.color))
+        {
+            cx.draw(run);
+        }
+    }
+}
+
+impl App for Words {
+    type Message = ();
+    type Control = Word;
+    type Port = NoJobs;
+
+    fn update(&mut self, _: Message<Self>, _: &mut Out<Self>) {}
+
+    fn view(&self) -> View<Word> {
+        View::new(Key::new(0), Word::Column).child(View::new(Key::new(1), Word::Text))
     }
 }
 
@@ -200,7 +271,7 @@ fn run_stops_at_any_other_error_with_a_failure_and_shuts_down() {
 }
 
 #[test]
-fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
+fn the_frame_that_a_round_draws_is_what_the_backend_reads_back() {
     let mut backend = backend();
     let size = PixelSize::new(8, 4).unwrap();
     let surface = backend
@@ -211,44 +282,25 @@ fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
         })
         .unwrap();
     let mut shell = Shell::new(Boxes, NoJobs);
-    // The first round takes the backend's Configure and FocusIn and builds
-    // the view.
+    // The first round takes the backend's Configure and FocusIn, builds the
+    // view, lays it out over the surface, draws it whole and presents the
+    // frame.
     let first = shell
         .run_round(&mut backend, shell.next_deadline())
         .unwrap();
     assert_eq!(first.wait, WaitEnd::Events);
     assert_eq!(shell.size(surface), Some(size));
-
-    // The layout result that the layout pass will give: the root covers
-    // the surface, and its child is a 4 by 2 box at (2, 1).
-    let tree = shell.runtime().tree();
-    let root = tree.root().unwrap();
-    let mut layout = LayoutResult::new();
-    for (widget, parent, rect) in [
-        (root, None, pixels(0, 0, 8, 4)),
-        (tree.children(root)[0], Some(0), pixels(2, 1, 4, 2)),
-    ] {
-        layout
-            .push(LayoutBox {
-                widget,
-                parent,
-                rect,
-                scroll: Point::default(),
-                draws: true,
-            })
-            .unwrap();
-    }
     let frame = BufferDesc::new(8, 4, 32, PixelFormat::Rgba8Premul).unwrap();
     let mut whole = Damage::new(frame);
     whole.add(0, 0, 8, 4);
-    let list = paint(tree, &layout, &whole).unwrap();
-    let work = shell.present(&mut backend, surface, &list, &whole).unwrap();
-    assert_eq!(work.pixels, 32);
+    assert_eq!(first.output.frames.len(), 1);
+    let (drawn_on, list, damage) = &first.output.frames[0];
+    assert_eq!((*drawn_on, *damage), (surface, whole));
 
     // The same list drawn into a frame of its own and converted.
     let mut drawn = RenderTarget::new(frame).unwrap();
     VelloRasterizer::new()
-        .render(&list, &whole, &NoGlyphs, &ImageStore::EMPTY, &mut drawn)
+        .render(list, &whole, &NoGlyphs, &ImageStore::EMPTY, &mut drawn)
         .unwrap();
     let shown = BufferDesc::new(8, 4, 32, PixelFormat::Xrgb8888).unwrap();
     let mut expected = vec![0; 128];
@@ -257,19 +309,22 @@ fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
     assert_eq!(read.desc, shown);
     assert_eq!(read.bytes, expected);
     assert_eq!(read.damage, whole.rects());
-    // B, G, R, X: blue at (0, 0), red at (2, 1).
-    assert_eq!(&read.bytes[..4], &[255, 0, 0, 255]);
-    assert_eq!(&read.bytes[40..44], &[0, 0, 255, 255]);
+    // B, G, R, X: the accent at (0, 0), the colour of errors at (4, 1).
+    assert_eq!(&read.bytes[..4], &[0xBF, 0x5F, 0x1F, 0xFF]);
+    assert_eq!(&read.bytes[48..52], &[0x1E, 0x26, 0xB3, 0xFF]);
 
-    // Until a wait returns the release, the surface is not presented again.
+    // Until a wait returns the release, a driver does not present the
+    // surface again; the round that takes the release, in which nothing
+    // changed, draws no frame.
     assert_eq!(
-        shell.present(&mut backend, surface, &list, &whole),
+        shell.present(&mut backend, surface, list, &whole),
         Err(ShellError::Platform(PlatformError::Busy))
     );
     let released = shell
         .run_round(&mut backend, shell.next_deadline())
         .unwrap();
     assert_eq!(released.wait, WaitEnd::Events);
+    assert!(released.output.frames.is_empty());
 
     // A frame of the top-left 2 by 1 pixels in green changes only them.
     let mut builder = ListBuilder::new();
@@ -296,6 +351,12 @@ fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
 #[test]
 fn a_new_previous_frame_is_presented_whole_whatever_its_damage() {
     let mut backend = backend();
+    let mut shell = Shell::new(Boxes, NoJobs);
+    // The first round fetches the fonts. The surface comes after it, so no
+    // round has drawn it and the shell keeps no frame of it.
+    shell
+        .run_round(&mut backend, shell.next_deadline())
+        .unwrap();
     let surface = backend
         .create_surface(SurfaceRequest {
             role: SurfaceRole::Main,
@@ -303,17 +364,13 @@ fn a_new_previous_frame_is_presented_whole_whatever_its_damage() {
             format: PixelFormat::Xrgb8888,
         })
         .unwrap();
-    let mut shell = Shell::new(Boxes, NoJobs);
-    shell
-        .run_round(&mut backend, shell.next_deadline())
-        .unwrap();
     // A red box at (2, 1) over transparent black, presented first with the
     // damage of the top-left 2 by 1 pixels only.
     let mut builder = ListBuilder::new();
     builder
         .push(Command::FillRect {
             rect: pixels(2, 1, 4, 2),
-            color: RED,
+            color: Color::opaque(255, 0, 0),
         })
         .unwrap();
     let list = builder.finish().unwrap();
@@ -344,7 +401,7 @@ fn a_new_previous_frame_is_presented_whole_whatever_its_damage() {
 }
 
 #[test]
-fn text_that_the_shell_presents_is_the_golden_of_kosmo_text() {
+fn text_that_a_round_draws_has_the_coverage_of_the_golden_of_kosmo_text() {
     // A surface of the golden's canvas, whose width and height its
     // description gives.
     let field = |at: usize| u32::from_le_bytes(TEXT_ASCII[at..at + 4].try_into().unwrap());
@@ -359,42 +416,38 @@ fn text_that_the_shell_presents_is_the_golden_of_kosmo_text() {
             format: PixelFormat::Rgba8Premul,
         })
         .unwrap();
-    // The first round fetches the fonts from the resource table.
-    let mut shell = Shell::new(Boxes, NoJobs);
-    shell
+    // The first round fetches the fonts from the resource table, lays the
+    // string out with them at 16 pixels per em, 2 pixels from the edges,
+    // inside the golden's margin, and draws it in the colour of text.
+    let mut shell = Shell::new(Words, NoJobs);
+    let first = shell
         .run_round(&mut backend, shell.next_deadline())
         .unwrap();
+    assert_eq!(first.output.frames.len(), 1);
 
-    // The string of the golden at 16 pixels per em, with its origin at
-    // (2, 2) pixels, inside the golden's margin, in opaque black.
-    let mut set = FontSet::new(SANS_BYTES, MONO_BYTES).unwrap();
-    let style = TextStyle::new(SANS, Fx::from_pixels(16).unwrap()).unwrap();
-    let text = "The quick brown fox jumps over the lazy dog.";
-    let paragraph = set.layout(text, style, None).unwrap();
-    let origin = Point::new(Fx::from_pixels(2).unwrap(), Fx::from_pixels(2).unwrap());
-    let mut builder = ListBuilder::new();
-    builder
-        .push(paragraph.run(origin, Color::opaque(0, 0, 0)).unwrap())
-        .unwrap();
-    let list = builder.finish().unwrap();
+    // The golden is drawn in opaque black, so its alpha is the coverage of
+    // the glyphs, and its digest is the one that its manifest lists.
     let frame = BufferDesc::new(width, height, width * 4, PixelFormat::Rgba8Premul).unwrap();
-    let mut whole = Damage::new(frame);
-    whole.add(0, 0, width, height);
-    shell.present(&mut backend, surface, &list, &whole).unwrap();
-
-    // The buffer read back, encoded as the goldens are, is the golden byte
-    // for byte, and its digest is the one that the golden's manifest lists.
-    let read = backend.read_back(surface).unwrap().unwrap();
-    let mut encoded = Vec::new();
-    for field in [width, height, width * 4, 1] {
-        encoded.extend_from_slice(&field.to_le_bytes());
-    }
-    encoded.extend_from_slice(read.bytes);
-    assert_eq!(read.desc, frame);
-    assert!(encoded == TEXT_ASCII, "the text differs from its golden");
-    let digest = PixelDigest::of(read.desc, read.bytes).unwrap().hex();
+    let golden = &TEXT_ASCII[16..];
+    let digest = PixelDigest::of(frame, golden).unwrap().hex();
     assert!(
         MANIFEST.contains(&format!("{digest}  text-ascii\n")),
         "{digest}"
     );
+    // The buffer read back has that coverage byte for byte, in the opaque
+    // colour of text: transparent black where the golden is, that colour
+    // where the golden is opaque black.
+    let read = backend.read_back(surface).unwrap().unwrap();
+    assert_eq!(read.desc, frame);
+    let alpha = |bytes: &[u8]| bytes.chunks(4).map(|pixel| pixel[3]).collect::<Vec<u8>>();
+    assert!(alpha(read.bytes) == alpha(golden), "the coverage differs");
+    let text = TOKENS.color(ColorToken::Text).to_bytes();
+    for (pixel, golden) in read.bytes.chunks(4).zip(golden.chunks(4)) {
+        match golden[3] {
+            0 => assert_eq!(pixel, [0, 0, 0, 0]),
+            255 => assert_eq!(pixel, text),
+            _ => {}
+        }
+    }
+    assert!(alpha(golden).contains(&255));
 }

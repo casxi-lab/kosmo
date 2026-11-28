@@ -19,12 +19,15 @@
 //! [`Input`] (its time, receipts, platform events and job reports) and runs
 //! the event and update passes, and [`Round::finish`] runs the view pass
 //! and gives the next deadline and the event handling [`Record`] of the
-//! round. [`Round::finish_with`] runs the layout pass after the view pass,
-//! with the font set, the table of design tokens and the surface sizes of
-//! its [`LayoutInput`]: it lays out each surface under its size against the
-//! layout that the runtime kept from the round before, laying out again
-//! only dirty subtrees, and [`Runtime::layout`] gives each surface's
-//! [`LayoutTree`]. Between the two steps, whoever drives the rounds hands
+//! round. [`Round::finish_with`] runs the layout and drawing passes after
+//! the view pass, with the font set, the table of design tokens and the
+//! surface sizes of its [`LayoutInput`]: it lays out each surface under its
+//! size against the layout that the runtime kept from the round before,
+//! laying out again only dirty subtrees, and [`Runtime::layout`] gives each
+//! surface's [`LayoutTree`]; then it draws each surface whose layout or
+//! controls changed since its latest frame, or that has a pending region,
+//! and the [`Output`] holds the frames, each a display list with its
+//! damage region. Between the two steps, whoever drives the rounds hands
 //! the effects to the execution port, a [`JobPort`], for example with
 //! [`execute`], and passes the receipts to the next round.
 //!
@@ -113,11 +116,12 @@
 //! platform events, reads the clock, takes job reports, runs both steps
 //! with the execution port between them, handing its font set, the table
 //! of design tokens and the size of each configured surface to the layout
-//! pass, and pushes the round's accessibility updates and presents its
-//! frames; [`Shell::present`]
-//! prepares the coverage masks of a display list's glyph runs in the glyph
-//! cache of the font set, draws the list into a surface's previous frame
-//! and presents its damage.
+//! and drawing passes, and pushes the round's accessibility updates and
+//! presents its frames, keeping the region of a frame for a surface whose
+//! buffer is still presented for the round after its release;
+//! [`Shell::present`] prepares the coverage masks of a display list's glyph
+//! runs in the glyph cache of the font set, draws the list into a surface's
+//! previous frame and presents its damage.
 //! [`run`] runs rounds until the platform disconnects and returns an
 //! [`ExitStatus`]. With the feature `call-probes`, off by default and
 //! turned on only from the command line, the single-round entry records
@@ -129,8 +133,9 @@
 //! the round reports a [`RebuildError`]. The timer table holds at most
 //! [`TIMER_CAPACITY`] timers. [`hit_test`] finds the control at a point of
 //! a [`LayoutResult`], [`paint`] builds the display list of a damage region
-//! from one, which rounds do not do yet, and [`ResultSlot`] holds the
-//! current result of a region against the versions of `kosmo-math-model`.
+//! from one, as each round does from the layout of each surface, and
+//! [`ResultSlot`] holds the current result of a region against the
+//! versions of `kosmo-math-model`.
 //!
 //! [`layout()`] lays a control tree out under the [`Constraint`] of its
 //! root into a [`LayoutTree`], a pure function of the controls with their
@@ -160,7 +165,10 @@
 //! colour as a [`ColorToken`], so a length in pixels does not compile in
 //! their place. [`TOKENS`], a [`Tokens`] table, holds the value of each:
 //! spacings of 2, 4, 8 and 16 pixels, font sizes of 12, 16 and 24 pixels
-//! and five opaque colours.
+//! and five opaque colours. Controls draw with the colours that
+//! [`DrawContext::color`] gives for colour tokens, and the drawing pass
+//! refuses a colour or a glyph size that is not the value of a token with
+//! [`PaintError::Untokened`].
 
 #![forbid(unsafe_code)]
 

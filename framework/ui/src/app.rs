@@ -1,13 +1,15 @@
 //! The application and control interfaces: what `update`, `view`, the
 //! event handlers of controls and the drawing entry receive.
 
-use kosmo_render::{ListBuilder, ListError};
+use kosmo_render::{Color, ListBuilder, ListError};
 use kosmo_types::{Fx, MonoTime, Rect, Size};
 
 use crate::command::{Binding, Command};
-use crate::layout::Node;
+use crate::layout::{LaidText, Node};
+use crate::paint::PaintError;
 use crate::port::{Effect, JobPort};
 use crate::timer::{Requester, TimerLabel, TimerRequest};
+use crate::tokens::{ColorToken, Tokens};
 use crate::tree::{Kind, View, WidgetId};
 
 /// The request type of an application's execution port.
@@ -344,7 +346,9 @@ pub trait Control<A: App>: Clone {
 
     /// The drawing entry. The drawing pass calls it in preorder; its
     /// context holds only the control's identity and presentation state,
-    /// the size of its box and the display list that it draws into.
+    /// the size of its box, the text that the layout pass laid out for a
+    /// text leaf, the colours of the design tokens and the display list
+    /// that it draws into.
     fn draw(&self, cx: &mut DrawContext<'_, Self::State>);
 }
 
@@ -462,28 +466,32 @@ impl<A: App, S> Context<'_, A, S> {
 }
 
 /// What the drawing entry of a control reaches: the control's identity and
-/// its presentation state, which it can only read, the size of its box, and
-/// the display list of the drawing pass, to which it appends commands.
+/// its presentation state, which it can only read, the size of its box, the
+/// text that the layout laid out for it, the colours of the design tokens,
+/// and the display list of the drawing pass, to which it appends commands.
 pub struct DrawContext<'a, S> {
     id: WidgetId,
     state: &'a S,
     size: Size,
+    text: Option<&'a LaidText>,
     canvas: Canvas<'a>,
 }
 
 impl<'a, S> DrawContext<'a, S> {
     /// The context for drawing the control `id` with `state` into `canvas`,
-    /// with a box of `size`.
+    /// with a box of `size` and the laid-out `text` of a text leaf.
     pub(crate) fn new(
         id: WidgetId,
         state: &'a S,
         size: Size,
+        text: Option<&'a LaidText>,
         canvas: Canvas<'a>,
     ) -> DrawContext<'a, S> {
         DrawContext {
             id,
             state,
             size,
+            text,
             canvas,
         }
     }
@@ -503,12 +511,31 @@ impl<'a, S> DrawContext<'a, S> {
         self.size
     }
 
+    /// The text of the control's text leaf as the layout pass of a round
+    /// laid it out, in the coordinates of its box, with its colour token.
+    /// It is `None` for any other control, and for every control that
+    /// [`paint`](crate::paint()) draws from a layout result, which holds no
+    /// text.
+    pub fn text(&self) -> Option<&'a LaidText> {
+        self.text
+    }
+
+    /// The colour of the colour token `token` in the table of design
+    /// tokens that the drawing pass checks the commands against.
+    pub fn color(&self, token: ColorToken) -> Color {
+        self.canvas.tokens.color(token)
+    }
+
     /// Appends `command` to the display list, relative to the control's box:
     /// (0, 0) is the box's top-left corner, and drawing is clipped to the
     /// box. A [`PopClip`](kosmo_render::Command::PopClip) ends only a group that the control
-    /// started, and the control ends each group that it starts. A command
-    /// that the list refuses, or a group left open, makes the drawing pass
-    /// return the error, and the control's later commands are dropped.
+    /// started, and the control ends each group that it starts. Its colours
+    /// are values of the table of design tokens, which
+    /// [`DrawContext::color`] gives, and the size of a glyph run is the
+    /// value of a font size token. A command with another colour or size,
+    /// a command that the list refuses, or a group left open, makes the
+    /// drawing pass return the error, and the control's later commands are
+    /// dropped.
     pub fn draw(&mut self, command: kosmo_render::Command) {
         self.canvas.push(command);
     }
@@ -524,22 +551,33 @@ impl<'a, S> DrawContext<'a, S> {
 /// them to the box's position, started with the control's first command.
 pub(crate) struct Canvas<'a> {
     list: &'a mut ListBuilder,
+    /// The table of design tokens that the commands are checked against.
+    tokens: &'a Tokens,
+    /// The control.
+    id: WidgetId,
     /// The control's box, in the coordinates of the group around it.
     rect: Rect,
     /// Whether the group of the box is started.
     started: bool,
     /// The groups that the control started and has not ended.
     depth: usize,
-    /// The first command that the list refused.
-    error: Option<ListError>,
+    /// The first command that the check or the list refused.
+    error: Option<PaintError>,
 }
 
 impl<'a> Canvas<'a> {
-    /// The canvas of a control whose box is `rect` in the coordinates of the
-    /// group around it.
-    pub(crate) fn new(list: &'a mut ListBuilder, rect: Rect) -> Canvas<'a> {
+    /// The canvas of the control `id` whose box is `rect` in the
+    /// coordinates of the group around it, checked against `tokens`.
+    pub(crate) fn new(
+        list: &'a mut ListBuilder,
+        tokens: &'a Tokens,
+        id: WidgetId,
+        rect: Rect,
+    ) -> Canvas<'a> {
         Canvas {
             list,
+            tokens,
+            id,
             rect,
             started: false,
             depth: 0,
@@ -551,8 +589,12 @@ impl<'a> Canvas<'a> {
         if self.error.is_some() {
             return;
         }
+        if !self.tokens.admits(&command) {
+            self.error = Some(PaintError::Untokened(self.id));
+            return;
+        }
         if let Err(error) = self.append(command) {
-            self.error = Some(error);
+            self.error = Some(PaintError::List(error));
         }
     }
 
@@ -579,12 +621,12 @@ impl<'a> Canvas<'a> {
 
     /// Ends the control's drawing: the first error, a group that the
     /// control left open, or the end of the group of its box.
-    pub(crate) fn finish(self) -> Result<(), ListError> {
+    pub(crate) fn finish(self) -> Result<(), PaintError> {
         if let Some(error) = self.error {
             return Err(error);
         }
         if self.depth > 0 {
-            return Err(ListError::UnclosedClip);
+            return Err(ListError::UnclosedClip.into());
         }
         if self.started {
             self.list.push(kosmo_render::Command::PopClip)?;

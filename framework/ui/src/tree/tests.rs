@@ -539,10 +539,13 @@ fn the_drawing_entry_gets_the_identity_and_presentation_state() {
     let root = rounds.id(&[]);
     let state = rounds.tree.state(root).copied().unwrap();
     let mut list = kosmo_render::ListBuilder::new();
-    let canvas = crate::app::Canvas::new(&mut list, kosmo_types::Rect::default());
-    let cx = crate::app::DrawContext::new(root, &state, kosmo_types::Size::ZERO, canvas);
+    let tokens = crate::tokens::TOKENS;
+    let canvas = crate::app::Canvas::new(&mut list, &tokens, root, kosmo_types::Rect::default());
+    let cx = crate::app::DrawContext::new(root, &state, kosmo_types::Size::ZERO, None, canvas);
     assert_eq!(
         (cx.id(), *cx.state(), cx.size()),
         (root, 0, kosmo_types::Size::ZERO)
     );
+    let accent = cx.color(crate::tokens::ColorToken::Accent);
+    assert_eq!(accent, tokens.accent);
 }

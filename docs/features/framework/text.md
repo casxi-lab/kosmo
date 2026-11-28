@@ -284,9 +284,10 @@ the text form of their display lists, and the 9 cases of line breaking of
 `tests/line_breaking.rs` are pinned as the text of their lines, without
 goldens.
 
-These commands, from the repository root, write the goldens of
-`kosmo-render` and `kosmo-text` and their manifests again, and draw them
-again into `framework/target/golden/<package>/` and compare each digest with
+These commands, from the repository root, write the goldens of every
+crate with goldens, `kosmo-render`, `kosmo-text` and `kosmo-ui`, and their
+manifests again, and draw them again into
+`framework/target/golden/<package>/` and compare each digest with
 `MANIFEST`, changing no tracked file:
 
 ```sh
@@ -339,10 +340,10 @@ which covers the hash containers inside the text stack.
   horizontally four steps.
 - parley's hit testing and caret geometry are not offered yet; they come
   with the controls that use them.
-- Rounds lay text out with the shell's font set, but do not draw yet: a
-  driver that presents text draws it from a surface's layout, or lays it out
-  with a font set of its own, which matches the shell's glyph cache only
-  when it holds the same two fonts in the same places, as the
+- Rounds lay text out and draw it with the shell's font set. A frame that
+  a driver hands straight to the shell's presentation, with text laid out
+  by a font set of its own, matches the shell's glyph cache only when that
+  font set holds the same two fonts in the same places, as the
   [limits](runtime.md#limits) of the framework runtime state.
 - Each font set holds a copy of both fonts, 631,592 bytes, besides its glyph
   cache; the time of layout and of filling masks has not been measured.

@@ -6,6 +6,8 @@ use kosmo_types::{Damage, DamageRect, Fx, Point, Rect, Size};
 
 use crate::app::{App, Canvas, Control, DrawContext};
 use crate::hit::{LayoutError, LayoutResult, Placed, negate};
+use crate::layout::LayoutTree;
+use crate::tokens::Tokens;
 use crate::tree::{Tree, WidgetId};
 
 /// Why the drawing pass gave no display list.
@@ -15,10 +17,15 @@ pub enum PaintError {
     /// The display list refused a command, or a control left a group open.
     List(ListError),
     /// A box is out of preorder, or a position does not fit the numeric
-    /// representation.
+    /// representation, or, in a round, the frame of a surface would exceed
+    /// the buffer limits (`LayoutError::InputOutOfRange`).
     Layout(LayoutError),
     /// A box names a control that the tree does not hold.
     MissingControl(WidgetId),
+    /// This control drew a command with a colour that is not the value of
+    /// a colour token, or a glyph run at a size that is not the value of a
+    /// font size token.
+    Untokened(WidgetId),
 }
 
 impl From<ListError> for PaintError {
@@ -41,7 +48,8 @@ struct Open {
 }
 
 /// The display list of the controls of `layout`, the layout result that hit
-/// testing reads, for the region `damage` of their surface.
+/// testing reads, for the region `damage` of their surface, with the
+/// colours and font sizes of `tokens`.
 ///
 /// The boxes are visited in preorder, which is the drawing order. A box
 /// that is visible inside no rectangle of `damage`, moved by the scroll
@@ -61,14 +69,47 @@ struct Open {
 /// display list, and a frame beyond them makes the pass return
 /// [`PaintError::List`].
 ///
+/// Controls take their colours from `tokens` through
+/// [`DrawContext::color`]. Each command that a control draws is checked
+/// against `tokens`: a colour that is not the value of a colour token, or a
+/// glyph run at a size that is not the value of a font size token, makes
+/// the pass return [`PaintError::Untokened`]. The check compares values,
+/// not where they come from, so a literal equal to a token's value passes.
+///
 /// The pass reads only its input. It returns an error, and no list, when a
 /// visible box is out of preorder, when a position does not fit, when a box
-/// names no control of `tree`, and when the list refuses a command or a
-/// control leaves a group open.
+/// names no control of `tree`, when a control draws a value outside
+/// `tokens`, and when the list refuses a command or a control leaves a
+/// group open.
 pub fn paint<A: App>(
     tree: &Tree<A>,
     layout: &LayoutResult,
     damage: &Damage,
+    tokens: &Tokens,
+) -> Result<DisplayList, PaintError> {
+    draw(tree, layout, None, damage, tokens)
+}
+
+/// The drawing pass of a round: [`paint`] over the layout result of
+/// `laid`, in which the control of each text leaf gets the text that the
+/// layout laid out through [`DrawContext::text`].
+pub(crate) fn paint_tree<A: App>(
+    tree: &Tree<A>,
+    laid: &LayoutTree,
+    damage: &Damage,
+    tokens: &Tokens,
+) -> Result<DisplayList, PaintError> {
+    draw(tree, &laid.result()?, Some(laid), damage, tokens)
+}
+
+/// [`paint`], with the boxes of `laid`, when there is one, for the text of
+/// each box of `layout` at the same index.
+fn draw<A: App>(
+    tree: &Tree<A>,
+    layout: &LayoutResult,
+    laid: Option<&LayoutTree>,
+    damage: &Damage,
+    tokens: &Tokens,
 ) -> Result<DisplayList, PaintError> {
     let damage = damage
         .rects()
@@ -135,8 +176,11 @@ pub fn paint<A: App>(
             let (Some(control), Some(state)) = (tree.control(id), tree.state(id)) else {
                 return Err(PaintError::MissingControl(id));
             };
-            let canvas = Canvas::new(&mut list, layout_box.rect);
-            let mut cx = DrawContext::new(id, state, layout_box.rect.size(), canvas);
+            let canvas = Canvas::new(&mut list, tokens, id, layout_box.rect);
+            let text = laid
+                .and_then(|laid| laid.boxes().get(index))
+                .and_then(|laid| laid.text.as_ref());
+            let mut cx = DrawContext::new(id, state, layout_box.rect.size(), text, canvas);
             control.draw(&mut cx);
             cx.into_canvas().finish()?;
         }

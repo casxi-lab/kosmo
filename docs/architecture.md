@@ -22,8 +22,10 @@ which re-exports these crates but `kosmo-render` and `kosmo-text`, part of
 the shared types in `kosmo-types`: fixed-point geometry, logical time, the focus
 generation and epoch, the keyboard event records, pixel formats, buffer
 descriptions with the conversion of pixels between them, and damage regions, and
-part of the framework core in `kosmo-ui`: the control tree, the event, update
-and view passes of a round, the drawing pass, which rounds do not run yet,
+part of the framework core in `kosmo-ui`: the control tree, the event,
+update, view, layout and drawing passes of a round, the layout of rows,
+columns and scroll containers with baseline alignment, the table of design
+tokens from which controls take their spacings, font sizes and colours,
 result slots, timers, dispatch with the focus check, the minimal key map, hit
 testing and the shell, which fetches the two fonts before its first round and
 draws text from the glyph cache;
@@ -1006,7 +1008,10 @@ against the new version instead of being shown as current and at once as stale.
   container's.
 - Spacing and padding are spacing tokens and the size of text a font size
   token, so a control cannot give a length in pixels in their place; one table
-  of design tokens holds their values.
+  of design tokens holds their values. Controls draw with the colours of
+  colour tokens, and the drawing pass refuses a command whose colour or glyph
+  size is not the value of a token of its table. The shell lays out and draws
+  every round with that one table; there are no themes.
 - The layout pass runs in each round after the view pass, for each surface
   that has a size, with the size of the surface's latest configuration as the
   tight constraint of the root, the table of design tokens and the shell's own
@@ -1044,7 +1049,8 @@ against the new version instead of being shown as current and at once as stale.
   the text layout that does not fit makes the whole layout return a distinct
   error.
 - The first release has rows, columns and scrolling, written in kosmo without a
-  general layout library.
+  general layout library. [Layout](features/framework/layout.md) describes
+  them, the design tokens and their tests.
 
 ### Control tree
 
@@ -4214,7 +4220,7 @@ A component is a unit with its own role, contract and level.
 | SDK facade (re-exports only) | `kosmo-sdk` | Facade | A0 | [The SDK facade](features/desktop/line-mode-terminal.md#the-sdk-facade); the example of the crate documentation in `framework/sdk/src/lib.rs`, the layout and deps steps of `cargo xtask check`, and review for holding only re-exports |
 | Shared types (geometry and the 26.6 fixed-point type, logical time, focus generation and epoch, event records, pixel formats, buffer descriptions and their conversion, damage regions) | `kosmo-types` | Shared types | A0 | [Rendering](features/framework/rendering.md#pixel-formats-buffers-and-damage-regions) for pixel formats, buffer descriptions, conversion and damage regions, and [Framework runtime](features/framework/runtime.md) for the other types; tests in `display/types/src/` and `display/types/tests/` |
 | Framework runtime (control tree and passes, event loop and clock, effects and the execution port, result slot, timers, dispatch, focus checks and key bindings) | `kosmo-ui` | Framework core | A0 | [Framework runtime](features/framework/runtime.md); tests in `framework/ui/src/`, `framework/ui/tests/` and, for the shell on the headless backend, `framework/backend-headless/tests/shell.rs` |
-| Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
+| Layout (rows, columns and scrolling; hit testing; design tokens) | `kosmo-ui` | Framework core | A0 | [Layout](features/framework/layout.md); tests in `framework/ui/src/layout/`, `framework/ui/src/tokens.rs`, `framework/ui/src/hit/`, `framework/ui/src/paint/`, `framework/ui/src/round/tests/layout.rs`, `framework/ui/tests/golden.rs` and `framework/ui/tests/scroll.rs` |
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
 | Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | [Rendering](features/framework/rendering.md); tests in `framework/render/src/` and `framework/render/tests/` |
 | Text (shaping and line breaking with parley, glyph outlines and coverage cache, the two bundled fonts and their asset manifest) | `kosmo-text` | Presentation | A0 | [Text](features/framework/text.md); tests in `framework/text/src/` and `framework/text/tests/` |

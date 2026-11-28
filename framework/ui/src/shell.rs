@@ -37,8 +37,9 @@ const FONTS_ID: u64 = 0;
 /// The shell of an application: its [`Runtime`], the application and its
 /// execution port, the receipts that wait for the next round, the font set
 /// of `kosmo-text`, which it builds before its first round and hands to the
-/// layout pass of each round, and the size and the previous frame of each
-/// surface, which it keeps for layout and presentation.
+/// layout pass of each round, and the size, the previous frame and the
+/// pending region of each surface, which it keeps for layout, drawing and
+/// presentation.
 ///
 /// [`Shell::run_round`], the single-round entry, runs one round through a
 /// platform, and [`run`] runs rounds until the platform disconnects. The
@@ -67,6 +68,11 @@ struct Surface {
     frame: Option<RenderTarget>,
     /// Its buffer is presented and not released yet.
     presented: bool,
+    /// The region of the frames that it could not present, because its
+    /// buffer was presented or the presentation failed, and the whole
+    /// surface after a new size or a dropped frame, which the next round
+    /// in which its buffer is not presented draws again.
+    pending: Option<Damage>,
 }
 
 /// How a round of [`Shell::run_round`] ended.
@@ -231,25 +237,36 @@ impl<A: App> Shell<A> {
     /// 4. runs the first step of the round, with the receipts of the last
     ///    round, the events and the reports: `Key`, `FocusIn` and
     ///    `FocusOut` become the round's [`Event`]s in their order, while
-    ///    the shell handles `Configure`, which sets the surface's size and
-    ///    drops a previous frame of another size, and `Released`, which
-    ///    makes the surface's buffer available again; kinds of events that
-    ///    later versions add are ignored;
+    ///    the shell handles `Configure`, which sets the surface's size,
+    ///    drops a previous frame of another size and, when the size
+    ///    changes or it drops the frame, makes the whole surface its
+    ///    pending region, and
+    ///    `Released`, which makes the surface's buffer available again;
+    ///    kinds of events that later versions add are ignored;
     /// 5. hands the effects to the execution port, which keeps the
     ///    receipts for the next round;
-    /// 6. runs the second step with the layout pass, to which it hands its
-    ///    own font set, the table [`TOKENS`](crate::TOKENS) and the size of
-    ///    each surface whose `Configure` it took, so that each such surface
-    ///    is laid out under its size; the round builds no font set of its
-    ///    own, and [`Runtime::layout`] gives the layouts;
+    /// 6. runs the second step with the layout and drawing passes, to
+    ///    which it hands its own font set, the table
+    ///    [`TOKENS`](crate::TOKENS), the size of each surface whose
+    ///    `Configure` it took, so that each such surface is laid out under
+    ///    its size and drawn, and the pending region of each such surface
+    ///    whose buffer is not presented; the round builds no font set of
+    ///    its own, and [`Runtime::layout`] gives the layouts;
     /// 7. pushes the output's accessibility updates through
     ///    `AccessibilitySink`, in their order;
-    /// 8. presents each frame of the output with [`Shell::present`].
+    /// 8. presents each frame of the output with [`Shell::present`], in
+    ///    their order, except a frame for a surface whose buffer is
+    ///    presented and not released: its damage region joins the pending
+    ///    region of the surface, at most 16 rectangles and beyond them
+    ///    their bounding rectangle, and the first round after the release
+    ///    draws that region together with its own update region and
+    ///    presents it. A presented frame ends the pending region. A frame
+    ///    that fails to present, and the frames after it, join the pending
+    ///    regions of their surfaces, so that the next round draws them
+    ///    again.
     ///
-    /// Rounds have no accessibility pass and do not run the drawing pass
-    /// yet, so their outputs hold no accessibility updates and no frames;
-    /// a driver presents the frames that it draws itself with
-    /// [`Shell::present`].
+    /// Rounds have no accessibility pass yet, so their outputs hold no
+    /// accessibility updates.
     ///
     /// With the feature `call-probes`, which only the command line turns
     /// on, each call records the call probe `kosmo-ui::run_round` of
@@ -258,9 +275,11 @@ impl<A: App> Shell<A> {
     /// # Errors
     ///
     /// A port's error, [`PlatformError::Disconnected`] among them, and the
-    /// errors of presentation, as [`ShellError`] states. A frame of the
-    /// output for a surface whose buffer is presented and not released
-    /// gives [`PlatformError::Busy`] after both steps.
+    /// errors of presentation, as [`ShellError`] states; an error of
+    /// presentation comes after both steps, and the frames that it leaves
+    /// unpresented wait in the pending regions of their surfaces. A frame
+    /// for a surface whose buffer is presented and not released gives no
+    /// error.
     pub fn run_round<P: Platform>(
         &mut self,
         platform: &mut P,
@@ -294,13 +313,21 @@ impl<A: App> Shell<A> {
                 }
                 PlatformEvent::Configure { surface, size } => {
                     let known = self.surfaces.entry(surface).or_default();
+                    let resized = known.size.is_some_and(|old| old != size);
                     known.size = Some(size);
                     let other = |frame: &RenderTarget| {
                         (frame.desc().width(), frame.desc().height())
                             != (size.width(), size.height())
                     };
-                    if known.frame.as_ref().is_some_and(other) {
+                    let dropped = known.frame.as_ref().is_some_and(other);
+                    if dropped {
                         known.frame = None;
+                    }
+                    // A region of another size is clipped wrongly, and a
+                    // dropped one is drawn by no round: the next frame
+                    // after a new size is whole.
+                    if resized || dropped {
+                        known.pending = whole(size);
                     }
                 }
                 PlatformEvent::Released { surface } => {
@@ -318,6 +345,9 @@ impl<A: App> Shell<A> {
                 for (&surface, known) in &self.surfaces {
                     if let Some(size) = known.size {
                         layout = layout.surface(surface, size);
+                        if let (Some(pending), false) = (known.pending, known.presented) {
+                            layout.pending.insert(surface, pending);
+                        }
                     }
                 }
                 round.finish_with(&self.app, layout)
@@ -350,7 +380,13 @@ impl<A: App> Shell<A> {
         Ok(())
     }
 
-    /// Pushes the accessibility updates of `output` and presents its frames.
+    /// Pushes the accessibility updates of `output` and presents its
+    /// frames. A frame for a surface whose buffer is presented and not
+    /// released is not presented: its damage joins the surface's pending
+    /// region, which the next round after the release draws again. When a
+    /// frame fails to present, its damage and that of the frames after it
+    /// join the pending regions of their surfaces before the error
+    /// returns, so that the next round draws them again.
     fn deliver<P: Platform>(
         &mut self,
         platform: &mut P,
@@ -359,10 +395,41 @@ impl<A: App> Shell<A> {
         for (surface, update) in &output.accessibility {
             platform.update(*surface, update.clone())?;
         }
-        for (surface, list, damage) in &output.frames {
-            self.present(platform, *surface, list, damage)?;
+        for (index, (surface, list, damage)) in output.frames.iter().enumerate() {
+            if self
+                .surfaces
+                .get(surface)
+                .is_some_and(|known| known.presented)
+            {
+                self.defer(*surface, damage);
+                continue;
+            }
+            if let Err(error) = self.present(platform, *surface, list, damage) {
+                for (surface, _, damage) in output.frames.get(index..).unwrap_or(&[]) {
+                    self.defer(*surface, damage);
+                }
+                return Err(error);
+            }
+            // The frame drew the pending region too.
+            if let Some(known) = self.surfaces.get_mut(surface) {
+                known.pending = None;
+            }
         }
         Ok(())
+    }
+
+    /// Joins `damage` to the pending region of `surface`, at most 16
+    /// rectangles and beyond them their bounding rectangle.
+    fn defer(&mut self, surface: SurfaceId, damage: &Damage) {
+        let known = self.surfaces.entry(surface).or_default();
+        match &mut known.pending {
+            Some(pending) => {
+                for rect in damage.rects() {
+                    pending.add(rect.x(), rect.y(), rect.width(), rect.height());
+                }
+            }
+            None => known.pending = Some(*damage),
+        }
     }
 
     /// Presents `list` on `surface` inside `damage`, and returns the work
@@ -385,8 +452,12 @@ impl<A: App> Shell<A> {
     /// of the glyph runs of `list` in the glyph cache of its font set, as
     /// one frame of the cache, and the rasterizer draws the glyphs from the
     /// cache. Before a round has fetched the fonts, the shell has no font
-    /// set, and glyph runs fail with a missing glyph. An empty `damage`
-    /// presents nothing, prepares nothing and returns no work.
+    /// set, and glyph runs fail with a missing glyph. The frames of rounds
+    /// lay their text out with the shell's font set; a frame that a driver
+    /// builds from text laid out with a font set of its own matches the
+    /// glyph cache only when that font set holds the same two fonts in the
+    /// same places. An empty `damage` presents nothing, prepares nothing
+    /// and returns no work.
     ///
     /// # Errors
     ///
@@ -455,6 +526,22 @@ impl<A: App> Shell<A> {
         known.presented = true;
         Ok(work)
     }
+}
+
+/// The whole of a surface of `size` as a damage region of a frame of 4
+/// bytes per pixel; `None` beyond the buffer limits.
+fn whole(size: PixelSize) -> Option<Damage> {
+    let stride = size.width().checked_mul(4)?;
+    let desc = BufferDesc::new(
+        size.width(),
+        size.height(),
+        stride,
+        PixelFormat::Rgba8Premul,
+    )
+    .ok()?;
+    let mut damage = Damage::new(desc);
+    damage.add(0, 0, size.width(), size.height());
+    Some(damage)
 }
 
 /// A new previous frame for a buffer of `desc`: transparent black, tightly

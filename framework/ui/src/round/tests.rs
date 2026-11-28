@@ -6,6 +6,7 @@ use crate::port::execute;
 use crate::testing::{Logged, Note, Reply, SURFACE, TestApp, TestPort, Widget, node, press, stamp};
 use crate::tree::{Key, View};
 
+mod draw;
 mod layout;
 
 /// A view of a root, which is the region's root, and one focused control
