@@ -686,7 +686,9 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
         }
         left.extend(before.iter().filter(|id| !after.contains(id)));
         let mut dropped = None;
-        let built = whole_trees(&runtime, &kept);
+        let Ok(built) = catch_unwind(AssertUnwindSafe(|| whole_trees(&runtime, &kept))) else {
+            panic!("{}", fail(round, "building the whole trees panicked"));
+        };
         for (surface, update) in &output.accessibility {
             let index = SURFACES.iter().position(|s| s == surface).unwrap();
             let expected = built[index].as_ref().unwrap_or_else(|| {
