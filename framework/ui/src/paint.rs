@@ -17,7 +17,8 @@ pub enum PaintError {
     /// The display list refused a command, or a control left a group open.
     List(ListError),
     /// A box is out of preorder, or a position does not fit the numeric
-    /// representation.
+    /// representation, or, in a round, the frame of a surface would exceed
+    /// the buffer limits (`LayoutError::InputOutOfRange`).
     Layout(LayoutError),
     /// A box names a control that the tree does not hold.
     MissingControl(WidgetId),

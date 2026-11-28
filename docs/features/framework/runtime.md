@@ -1001,11 +1001,11 @@ wall clock.
     does not take the frame, refuses a previous frame beyond the buffer
     limits, and a `Configure` of another size, or a buffer of another
     width or height, gives a new previous frame, which has 4 bytes per
-    pixel also for an RGB565 buffer; on the headless backend, what the
-    shell presents is what it reads back, and a new previous frame is
-    presented whole whatever its damage. Glyph runs are drawn from the
-    glyph cache of the fetched fonts, a run of a font outside the font set
-    is refused before the buffer is asked for. Tests: `shell::tests::`
+    pixel also for an RGB565 buffer; on the headless backend, a new
+    previous frame is presented whole whatever its damage. Glyph runs are
+    drawn from the glyph cache of the fetched fonts, and a run of a font
+    outside the font set is refused before the buffer is asked for. Tests:
+    `shell::tests::`
     `the_updates_and_frames_of_an_output_go_to_the_platform_in_order`,
     `presenting_converts_only_the_damage_of_the_frame_into_the_buffer`,
     `a_presented_buffer_is_not_presented_again_until_it_is_released`,
