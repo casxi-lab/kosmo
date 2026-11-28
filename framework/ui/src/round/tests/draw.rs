@@ -295,12 +295,14 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
     assert_eq!(regions(&output), [(SECOND, vec![rect(1, 2, 3, 4)])]);
 
     // A view that the round rebuilds may change any control's value, so
-    // each surface is drawn whole; a surface that the input leaves out has
-    // no layout and is not drawn.
-    app.view = app
-        .view
-        .clone()
-        .child(View::new(Key::new(3), Part::Label("x")));
+    // each surface is drawn whole, also when only the swatch's value
+    // changes and its layout stays; a surface that the input leaves out
+    // has no layout and is not drawn.
+    app.view = View::new(Key::new(0), Part::Row)
+        .region()
+        .child(View::new(Key::new(1), Part::Swatch(ColorToken::Error)).focused())
+        .child(View::new(Key::new(2), Part::Label("Ag")));
+    let before = runtime.layout(SECOND).unwrap().clone();
     let mut input = Input::new(MonoTime::ZERO);
     input.receipts = vec![Receipt::Accepted(1)];
     let output = runtime.round(&mut app, input).finish_with(
@@ -308,7 +310,12 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
         LayoutInput::new(&mut fonts, 0, TOKENS).surface(SECOND, second),
     );
     assert_eq!(output.view, ViewPass::Rebuilt);
+    assert_eq!(runtime.layout(SECOND), Some(&before));
     assert_eq!(regions(&output), [(SECOND, vec![rect(0, 0, 30, 20)])]);
+    assert!(commands(&output, 0).contains(&Command::FillRect {
+        rect: Rect::new(Point::default(), Size::new(px(4), px(4)).unwrap()),
+        color: TOKENS.error,
+    }));
 }
 
 #[test]
