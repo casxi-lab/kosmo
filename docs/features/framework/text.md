@@ -284,9 +284,10 @@ the text form of their display lists, and the 9 cases of line breaking of
 `tests/line_breaking.rs` are pinned as the text of their lines, without
 goldens.
 
-These commands, from the repository root, write the goldens of
-`kosmo-render` and `kosmo-text` and their manifests again, and draw them
-again into `framework/target/golden/<package>/` and compare each digest with
+These commands, from the repository root, write the goldens of every
+crate with goldens, `kosmo-render`, `kosmo-text` and `kosmo-ui`, and their
+manifests again, and draw them again into
+`framework/target/golden/<package>/` and compare each digest with
 `MANIFEST`, changing no tracked file:
 
 ```sh
