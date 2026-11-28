@@ -32,11 +32,11 @@ fn px(pixels: i32) -> Fx {
 /// fixed-size leaf of 4 by 4 pixels that fills its box with the colour
 /// of a token, handles `MoveLeft` by counting it in its presentation
 /// state, `MoveRight` by reading the count only, `DeleteBackward` by
-/// taking the count mutably and leaving it as it was, declines the
-/// character `d` after taking its count mutably, and `InsertText`
+/// taking the count mutably and leaving it as it was, and `InsertText`
 /// by requesting a timer due at time zero, labelled 2 for the character
-/// `t` and 1 for any other, and counts a due timer labelled 2 while it
-/// only reads the count for one labelled 1; a text leaf that draws the
+/// `t` and 1 for any other but `d`, which it declines after taking its
+/// count mutably, and counts a due timer labelled 2 while it only reads
+/// the count for one labelled 1; a text leaf that draws the
 /// text that the layout laid out; a fixed-size leaf that fills its box
 /// with a colour given as a value; or a fixed-size leaf of 1 by 1 pixel
 /// that fills its box a number of times.
