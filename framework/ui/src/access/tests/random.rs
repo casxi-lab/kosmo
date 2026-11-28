@@ -5,32 +5,35 @@
 //! another kind or other values, names and scroll requests, reordered, and
 //! focused and made the region's root or not; now and then the view is too
 //! deep to be built. A bound command flips the state flags of the focused
-//! control or an ancestor. The entries of the rows and columns write what
-//! the pass sets or clears, which it replaces. Each group lays out one or
-//! two surfaces, whose sizes change, and now and then leaves a surface
-//! without a size. The updates of each round are applied in order to an
-//! `AccessibilityTree` of their surface, as the headless backend keeps it,
-//! except in one group of `DROP_EVERY`, where one update of one surface is
-//! dropped and the runtime is told so; a later round of that group lays the
-//! surface out again, and its update holds the whole tree.
+//! control or an ancestor. The entries of the rows, columns and scroll
+//! containers write what the pass sets or clears, which it replaces. Each
+//! group lays out one or two surfaces, whose sizes change, and now and then
+//! leaves a surface without a size. The updates of each round are applied
+//! in order to an `AccessibilityTree` of their surface, as the headless
+//! backend keeps it, except in one group of `DROP_EVERY`, where one update
+//! of one surface is dropped and the runtime is told so; a later round of
+//! that group lays the surface out again, and its update holds the whole
+//! tree.
 //!
 //! After every round nothing has panicked, every update was taken, and the
 //! tree of each surface with a layout has a node for each control and no
 //! other, the control tree's root as its root and no identifier of a
 //! control that left the tree in the group; each node's children are those
 //! of its control, in order; the tree equals the whole tree that the pass
-//! builds for the control tree, the layouts and the focus; its focus is
-//! the focused control or the root; each bounding box is the control's box
-//! in the coordinates of the surface, no node has a transform, actions or
-//! a tree identifier, each scroll container has the request brought into
-//! its range as its offset, and no other node scrolls or clips its
-//! children; and the round's update held every node and the tree
-//! information when it was the first, came after a dropped one or had
-//! another root, was left out when no node and not the focus changed, and
-//! otherwise held exactly the nodes that changed. A rejected view leaves
-//! the control tree as it was and, when nothing else changes, gives no
-//! update. Each group runs twice and gives the same updates, in their debug
-//! form, byte for byte. A failure names the seed, the group and the round.
+//! builds for the control tree, the layouts and the focus; its focus is the
+//! focused control or the root; each bounding box is the control's box in
+//! the coordinates of the surface, each row and column is an unnamed
+//! generic container, no node has a transform, actions or a tree
+//! identifier, each scroll container has the request brought into its range
+//! as its offset and does not scroll across its axis, and no other node
+//! scrolls or clips its children; and the round's update held every node
+//! and the tree information when it was the first, came after a dropped one
+//! or had another root, was left out when no node and not the focus
+//! changed, and otherwise held exactly the nodes that changed. A rejected
+//! view leaves the control tree as it was and, when nothing else changes,
+//! gives no update. Each group runs twice and gives the same updates, in
+//! their debug form, byte for byte. A failure names the seed, the group and
+//! the round.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -218,7 +221,16 @@ impl Control<Model> for Part {
                 node.set_role(Role::ListItem);
                 node.set_selected(on(SELECTED));
             }
-            Sort::Scroller => node.set_label(self.name),
+            Sort::Scroller => {
+                node.set_label(self.name);
+                // What the pass sets or clears, whatever the entry writes.
+                node.set_scroll_x(1.0);
+                node.set_scroll_x_min(1.0);
+                node.set_scroll_x_max(1.0);
+                node.set_scroll_y(1.0);
+                node.set_scroll_y_min(1.0);
+                node.set_scroll_y_max(1.0);
+            }
             Sort::Result => {
                 node.set_role(Role::Status);
                 node.set_label("Result");
@@ -248,8 +260,12 @@ impl Control<Model> for Part {
                     y1: 1.0,
                 });
                 node.set_transform(Affine::scale(2.0));
-                node.set_scroll_y(1.0);
+                node.set_scroll_x(1.0);
+                node.set_scroll_x_min(1.0);
                 node.set_scroll_x_max(1.0);
+                node.set_scroll_y(1.0);
+                node.set_scroll_y_min(1.0);
+                node.set_scroll_y_max(1.0);
                 node.set_clips_children();
                 node.add_action(Action::Click);
                 node.add_child_action(Action::Focus);
@@ -615,7 +631,9 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
         };
         app.too_deep = forced.is_none() && !dropped_last && rng.below(TOO_DEEP_EVERY) == 0;
         // Half the rejected rounds change nothing else; the others give the
-        // surfaces new sizes.
+        // surfaces new sizes. A rejected round keeps which surfaces have a
+        // size, so that one that changes nothing else lays out the same
+        // surfaces at the same sizes.
         let pure = !app.too_deep || rng.below(2) == 0;
         if app.too_deep {
             app.next = None;
@@ -667,6 +685,14 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
         };
         app.too_deep = false;
         let _ = writeln!(log, "{:?}", output.accessibility);
+        assert!(
+            output
+                .accessibility
+                .windows(2)
+                .all(|pair| pair[0].0 < pair[1].0),
+            "{}",
+            fail(round, "the updates are not in the order of the surfaces")
+        );
         let after = runtime.tree().preorder();
         if matches!(output.view, ViewPass::Rejected(_)) {
             let kept_states: Vec<Option<u8>> = after
@@ -894,6 +920,14 @@ fn check_tree(
                 laid.widget
             ));
         }
+        if matches!(part.sort, Sort::Row | Sort::Column)
+            && (node.role() != Role::GenericContainer || node.label().is_some())
+        {
+            return Err(format!(
+                "{} is not an unnamed generic container",
+                laid.widget
+            ));
+        }
         if part.sort != Sort::Scroller {
             if node.scroll_x().is_some()
                 || node.scroll_x_min().is_some()
@@ -922,6 +956,13 @@ fn check_tree(
             Axis::X => (node.scroll_x(), node.scroll_x_min(), node.scroll_x_max()),
             Axis::Y => (node.scroll_y(), node.scroll_y_min(), node.scroll_y_max()),
         };
+        let across = match part.axis {
+            Axis::X => (node.scroll_y(), node.scroll_y_min(), node.scroll_y_max()),
+            Axis::Y => (node.scroll_x(), node.scroll_x_min(), node.scroll_x_max()),
+        };
+        if across != (None, None, None) {
+            return Err(format!("{} scrolls across its axis", laid.widget));
+        }
         let units = |value: i32| Some(f64::from(value) / 64.0);
         if (scroll, min, max) != (units(offset), Some(0.0), units(range)) || !node.clips_children()
         {
