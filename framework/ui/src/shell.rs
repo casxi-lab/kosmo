@@ -245,8 +245,8 @@ impl<A: App> Shell<A> {
     ///    kinds of events that later versions add are ignored;
     /// 5. hands the effects to the execution port, which keeps the
     ///    receipts for the next round;
-    /// 6. runs the second step with the layout and drawing passes, to
-    ///    which it hands its own font set, the table
+    /// 6. runs the second step with the layout, drawing and accessibility
+    ///    passes, handing its own font set, the table
     ///    [`TOKENS`](crate::TOKENS), the size of each surface whose
     ///    `Configure` it took, so that each such surface is laid out under
     ///    its size and drawn, and the pending region of each such surface
