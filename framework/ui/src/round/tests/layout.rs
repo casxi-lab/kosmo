@@ -30,6 +30,9 @@ enum Piece {
     Text(&'static str),
     Fixed(i32, i32),
     Scroll(Axis),
+    /// A scroll container along its axis whose control does not write
+    /// the offset back.
+    Still(Axis),
 }
 
 impl Control<Board> for Piece {
@@ -41,7 +44,7 @@ impl Control<Board> for Piece {
             Piece::Column => "column",
             Piece::Text(_) => "text",
             Piece::Fixed(..) => "fixed",
-            Piece::Scroll(_) => "scroll",
+            Piece::Scroll(_) | Piece::Still(_) => "scroll",
         })
     }
 
@@ -62,12 +65,14 @@ impl Control<Board> for Piece {
             Piece::Column => Node::Column(Column::new()),
             Piece::Text(text) => Node::Text(Text::new(text, Font::Sans, FontSize::Body)),
             Piece::Fixed(width, height) => Node::Fixed(Size::new(px(*width), px(*height)).unwrap()),
-            Piece::Scroll(axis) => Node::Scroll(Scroll::new(*axis, *request)),
+            Piece::Scroll(axis) | Piece::Still(axis) => Node::Scroll(Scroll::new(*axis, *request)),
         }
     }
 
     fn scrolled(&self, offset: Fx, request: &mut Fx) {
-        *request = offset;
+        if let Piece::Scroll(_) = self {
+            *request = offset;
+        }
     }
 
     fn draw(&self, _: &mut DrawContext<'_, Fx>) {}
@@ -491,6 +496,73 @@ fn the_round_writes_offsets_back_so_that_requests_beyond_the_range_do_not_add_up
     assert_eq!(runtime.tree().state(scroll), Some(&back));
     for surface in surfaces {
         assert_whole_on(&runtime, &mut fonts, surface);
+    }
+}
+
+#[test]
+fn every_scroll_container_on_every_surface_follows_the_requests_written_back() {
+    // A vertical container at the root holds a column with a horizontal
+    // container that writes its offset back and has a second child, one
+    // that does not write it back, and one without content that does not.
+    let row = || {
+        let mut row = piece(0, Piece::Row);
+        for index in 0..5 {
+            row.push(piece(index, Piece::Fixed(60, 20)));
+        }
+        row
+    };
+    let column = piece(0, Piece::Column)
+        .child(piece(0, Piece::Fixed(80, 40)))
+        .child(
+            piece(1, Piece::Scroll(Axis::X))
+                .child(row())
+                .child(piece(1, Piece::Fixed(10, 10))),
+        )
+        .child(piece(2, Piece::Still(Axis::X)).child(row()))
+        .child(piece(3, Piece::Still(Axis::Y)))
+        .child(piece(4, Piece::Fixed(80, 120)));
+    let (mut runtime, mut app, mut fonts) = board(piece(0, Piece::Scroll(Axis::Y)).child(column));
+    // The ranges on surface 2 are the smaller ones, so the layout of
+    // surface 3, which comes after it, follows the requests written back.
+    let surfaces = [
+        (SurfaceId::new(2), size(150, 80)),
+        (SurfaceId::new(3), size(100, 50)),
+    ];
+    laid_out(
+        &mut runtime,
+        &mut app,
+        Vec::new(),
+        two(&mut fonts, surfaces[0], surfaces[1]),
+    );
+    let root = runtime.tree().root().unwrap();
+    let column = runtime.tree().children(root)[0];
+    let containers = [
+        root,
+        runtime.tree().children(column)[1],
+        runtime.tree().children(column)[2],
+        runtime.tree().children(column)[3],
+    ];
+    for (requests, written) in [
+        ([px(1000); 4], [px(120), px(166), px(1000), px(1000)]),
+        (
+            [Fx::from_units(-1), px(-50), px(-50), px(-50)],
+            [Fx::ZERO, Fx::ZERO, px(-50), px(-50)],
+        ),
+    ] {
+        for (&container, request) in containers.iter().zip(requests) {
+            runtime.tree.node_mut(container).unwrap().state = request;
+        }
+        laid_out(
+            &mut runtime,
+            &mut app,
+            Vec::new(),
+            two(&mut fonts, surfaces[0], surfaces[1]),
+        );
+        let states = containers.map(|container| *runtime.tree().state(container).unwrap());
+        assert_eq!(states, written);
+        for surface in surfaces {
+            assert_whole_on(&runtime, &mut fonts, surface);
+        }
     }
 }
 

@@ -338,6 +338,24 @@ fn columns_align_their_children_at_the_start_centre_or_end() {
 }
 
 #[test]
+fn children_align_in_a_box_larger_than_they_are() {
+    // Under the tight constraint the column is 100 pixels wide, wider than
+    // its child: the child aligns in the column less its padding of 4
+    // pixels on each side.
+    for (align, x) in [(Align::Start, 4), (Align::Center, 40), (Align::End, 76)] {
+        let case = Case {
+            constraint: constraint(100, 50, 100, 50),
+            spec: column(
+                Column::new().padding(Space::S).align(align),
+                vec![fixed(20, 10)],
+            ),
+        };
+        let tree = lay_out(&case, &mut fonts());
+        assert_eq!(tree.boxes()[1].position.x, px(x));
+    }
+}
+
+#[test]
 fn text_in_a_column_breaks_at_the_columns_width() {
     let mut fonts = fonts();
     let source = "The result is 1/3 and the error is 0";
