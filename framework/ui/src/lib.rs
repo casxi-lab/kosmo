@@ -151,8 +151,9 @@
 //! [`LayoutTree::result`] gives the [`LayoutResult`] of the tree, and
 //! [`LayoutTree::text`] writes the tree as text, one line for each box.
 //! After the layout pass of a round, the control of each scroll container
-//! learns its offset through [`Control::scrolled`], to write it back into
-//! its request.
+//! learns its offset through [`Control::scrolled`]; a control that keeps
+//! its request in its presentation state writes the offset back there,
+//! and by default a control writes nothing.
 //!
 //! Rows and columns take their spacing and padding only as [`Space`]
 //! tokens, and text leaves their size as a [`FontSize`] token and their

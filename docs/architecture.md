@@ -1025,9 +1025,12 @@ against the new version instead of being shown as current and at once as stale.
   another table of tokens or another font set lays the whole tree out again,
   and the result is that of a whole layout byte for byte.
 - Scrolling changes only the offset: a change of a scroll container's request
-  alone lays nothing out. After the layout pass the round writes each
-  container's offset, its request brought into range, back into its
-  presentation state, so that requests beyond the range do not add up.
+  alone lays nothing out. After the layout pass the round tells each
+  container's control its offset, its request brought into range and, when
+  several surfaces lay it out, the smallest of theirs, through
+  `Control::scrolled`; a control that keeps its request in its presentation
+  state writes the offset back there, so that requests beyond the range do
+  not add up. The default writes nothing.
 - Overflow is marked in the layout result, along each axis where a box's
   natural size exceeds its maximum size, never clipped silently; the box then
   takes its maximum size, and its children keep theirs.
