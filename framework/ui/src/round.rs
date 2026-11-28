@@ -239,8 +239,9 @@ impl<A: App> Round<'_, A> {
     /// The second step without a layout pass: calls `view` if the round
     /// handled a message, or if the tree has not been built yet, and
     /// rebuilds the tree from it; then gives the next deadline and the
-    /// round's record. The layouts of the surfaces stay as they were, and
-    /// nothing is drawn.
+    /// round's record. The layouts of the surfaces stay as they were,
+    /// nothing is drawn, and no accessibility update is given: the tree of
+    /// each surface's latest update stays as it was.
     pub fn finish(self, app: &A) -> Output {
         self.end(app, None)
     }

@@ -1,7 +1,8 @@
 //! The accessibility pass of a round, for eight kinds of control: the
 //! first update holds the whole tree, in which the control's node has its
 //! role, name and state; after a second round changes that state, or the
-//! view, the update holds only the nodes that changed and the focus.
+//! view, the update holds only the nodes that changed and the focus. A
+//! round without a layout pass gives no update.
 
 use kosmo_platform::PixelSize;
 use kosmo_platform::accesskit::{Node, NodeId, Rect, Role, TreeUpdate};
@@ -505,4 +506,39 @@ fn a_button_is_named_and_becomes_disabled_without_actions() {
     };
     assert_eq!(ids(second), [node_id(button)]);
     assert!(node_of(second, button).is_disabled());
+}
+
+/// A round without a layout pass runs no accessibility pass: it gives no
+/// update and leaves the tree of the latest update as it was, so the next
+/// round with a layout pass gives only what changed since that update.
+#[test]
+fn a_round_without_a_layout_pass_gives_no_update_and_keeps_the_pushed_tree() {
+    let mut app = Views {
+        view: window(node(1, Part::Label("1+2")).focused()),
+        next: None,
+    };
+    let mut fonts = font_set();
+    let mut runtime = Runtime::new();
+    let focus_in = Event::FocusIn {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+    };
+    let first = round(&mut runtime, &mut app, &mut fonts, focus_in, 200, 100);
+    assert!(first[0].tree.is_some());
+    let mut input = Input::new(MonoTime::ZERO);
+    input.events.push(turn_on());
+    let output = runtime.round(&mut app, input).finish(&app);
+    assert_eq!(output.accessibility, []);
+    let label = control(&runtime, &[0]);
+    let again = Event::FocusIn {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+    };
+    let third = round(&mut runtime, &mut app, &mut fonts, again, 200, 100);
+    let [third] = third.as_slice() else {
+        panic!("not one update: {third:?}");
+    };
+    assert_eq!(third.tree, None);
+    assert_eq!(ids(third), [node_id(label)]);
+    assert!(node_of(third, label).is_disabled());
 }
