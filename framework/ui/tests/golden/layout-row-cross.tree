@@ -1,0 +1,11 @@
+layout-tree 1
+0 parent - kind "column" key 0 min 0 0 max 19200 12800 at 0 0 size 2560 6272 baseline - scroll 0 0 overflow none draws no
+1 parent 0 kind "row" key 0 min 0 0 max 19200 16777216 at 0 0 size 2560 1920 baseline - scroll 0 0 overflow none draws no
+2 parent 1 kind "fixed" key 0 min 0 0 max 16777216 16777216 at 0 0 size 1280 640 baseline - scroll 0 0 overflow none draws yes
+3 parent 1 kind "fixed" key 1 min 0 0 max 16777216 16777216 at 1280 0 size 1280 1920 baseline - scroll 0 0 overflow none draws yes
+4 parent 0 kind "row" key 1 min 0 0 max 19200 16777216 at 0 2176 size 2560 1920 baseline - scroll 0 0 overflow none draws no
+5 parent 4 kind "fixed" key 0 min 0 0 max 16777216 16777216 at 0 640 size 1280 640 baseline - scroll 0 0 overflow none draws yes
+6 parent 4 kind "fixed" key 1 min 0 0 max 16777216 16777216 at 1280 0 size 1280 1920 baseline - scroll 0 0 overflow none draws yes
+7 parent 0 kind "row" key 2 min 0 0 max 19200 16777216 at 0 4352 size 2560 1920 baseline - scroll 0 0 overflow none draws no
+8 parent 7 kind "fixed" key 0 min 0 0 max 16777216 16777216 at 0 1280 size 1280 640 baseline - scroll 0 0 overflow none draws yes
+9 parent 7 kind "fixed" key 1 min 0 0 max 16777216 16777216 at 1280 0 size 1280 1920 baseline - scroll 0 0 overflow none draws yes

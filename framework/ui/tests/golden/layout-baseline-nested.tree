@@ -1,0 +1,6 @@
+layout-tree 1
+0 parent - kind "row" key 0 min 0 0 max 25600 12800 at 0 0 size 2961 3065 baseline 1436 scroll 0 0 overflow none draws no
+1 parent 0 kind "column" key 0 min 0 0 max 16777216 12800 at 0 479 size 507 2586 baseline 957 scroll 0 0 overflow none draws no
+2 parent 1 kind "text" key 0 min 0 0 max 16777216 16777216 at 0 0 size 443 1229 baseline 957 scroll 0 0 overflow none draws yes
+3 parent 1 kind "text" key 1 min 0 0 max 16777216 16777216 at 0 1357 size 507 1229 baseline 957 scroll 0 0 overflow none draws yes
+4 parent 0 kind "text" key 1 min 0 0 max 16777216 12800 at 1019 0 size 1942 1843 baseline 1436 scroll 0 0 overflow none draws yes

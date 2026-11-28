@@ -51,7 +51,7 @@ pub struct Goldens {
 }
 
 /// The crates with goldens. A golden directory elsewhere fails the step.
-pub const SETS: [Goldens; 2] = [
+pub const SETS: [Goldens; 3] = [
     Goldens {
         workspace: "framework",
         package: "kosmo-render",
@@ -61,6 +61,11 @@ pub const SETS: [Goldens; 2] = [
         workspace: "framework",
         package: "kosmo-text",
         dir: "framework/text",
+    },
+    Goldens {
+        workspace: "framework",
+        package: "kosmo-ui",
+        dir: "framework/ui",
     },
 ];
 

@@ -1,0 +1,4 @@
+layout-tree 1
+0 parent - kind "column" key 0 min 0 0 max 6400 6400 at 0 0 size 640 6400 baseline - scroll 0 0 overflow y draws no
+1 parent 0 kind "fixed" key 0 min 0 0 max 6400 16777216 at 0 0 size 640 5120 baseline - scroll 0 0 overflow none draws yes
+2 parent 0 kind "fixed" key 1 min 0 0 max 6400 16777216 at 0 5120 size 640 5120 baseline - scroll 0 0 overflow none draws yes

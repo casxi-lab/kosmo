@@ -31,7 +31,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         name: "golden",
-        about: "Write the pixel goldens and their MANIFEST; with --verify, draw them again into the build directory and compare each digest with MANIFEST",
+        about: "Write the pixel and layout tree goldens and their MANIFEST; with --verify, write them again into the build directory and compare each digest with MANIFEST",
     },
     Command {
         name: "help",

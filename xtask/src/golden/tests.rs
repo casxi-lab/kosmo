@@ -354,20 +354,23 @@ fn other_files_and_golden_directories_elsewhere_are_reported() {
         tree.insert(&format!("{DIR}/{path}"), entry);
     }
     tree.insert(
-        "framework/ui/tests/golden/button.px",
+        "framework/platform/tests/golden/button.px",
         Entry::File(Vec::new()),
     );
     tree.insert("tests/golden/MANIFEST", Entry::File(Vec::new()));
     // Not in a golden directory.
-    tree.insert("framework/ui/tests/golden.rs", Entry::File(Vec::new()));
+    tree.insert(
+        "framework/platform/tests/golden.rs",
+        Entry::File(Vec::new()),
+    );
     assert_eq!(
         problems(&tree).0,
         [
+            "framework/platform/tests/golden/button.px: is in a golden directory that `cargo xtask golden` does not write".to_string(),
             format!("{DIR}/Fill.px: {NOT_A_GOLDEN}"),
             format!("{DIR}/README.md: {NOT_A_GOLDEN}"),
             format!("{DIR}/link.px: {NOT_A_GOLDEN}"),
             format!("{DIR}/sub/fill-rect.px: {NOT_A_GOLDEN}"),
-            "framework/ui/tests/golden/button.px: is in a golden directory that `cargo xtask golden` does not write".to_string(),
             "tests/golden/MANIFEST: is in a golden directory that `cargo xtask golden` does not write".to_string(),
         ]
     );
@@ -428,12 +431,11 @@ fn the_goldens_of_this_repository_pass() {
 #[test]
 fn a_crate_with_goldens_without_its_test_file_is_reported() {
     // The fixtures hold the goldens of kosmo-render alone, so with every
-    // crate of `SETS` the test file of kosmo-text is missing.
+    // crate of `SETS` the test files of kosmo-text and kosmo-ui are
+    // missing.
     let mut problems = Problems::default();
     assert_eq!(check(&valid(), &SETS, &mut problems), 2);
-    let tests = "framework/text/tests/golden.rs";
-    assert_eq!(
-        problems.lines(),
+    let missing = |tests: &str| {
         [
             format!(
                 "{tests}: has no ignored test `redraw_goldens`, which `cargo xtask golden` runs"
@@ -442,6 +444,14 @@ fn a_crate_with_goldens_without_its_test_file_is_reported() {
                 "{tests}: has no ignored test `write_goldens`, which `cargo xtask golden` runs"
             ),
         ]
+    };
+    assert_eq!(
+        problems.lines(),
+        [
+            missing("framework/text/tests/golden.rs"),
+            missing("framework/ui/tests/golden.rs"),
+        ]
+        .concat()
     );
 }
 
@@ -504,7 +514,8 @@ fn the_command_runs_the_ignored_writers_of_each_crate() {
         crates,
         [
             ("kosmo-render", "framework/render"),
-            ("kosmo-text", "framework/text")
+            ("kosmo-text", "framework/text"),
+            ("kosmo-ui", "framework/ui"),
         ]
     );
     for set in SETS {
@@ -851,18 +862,18 @@ fn other_files_beside_layout_tree_goldens_are_reported() {
         tree.insert(&format!("{DIR}/{path}"), entry);
     }
     tree.insert(
-        "framework/ui/tests/golden/layout-row.tree",
+        "framework/platform/tests/golden/layout-row.tree",
         Entry::File(Vec::new()),
     );
     assert_eq!(
         problems(&tree).0,
         [
+            "framework/platform/tests/golden/layout-row.tree: is in a golden directory that `cargo xtask golden` does not write".to_string(),
             format!("{DIR}/.tree: {NOT_A_GOLDEN}"),
             format!("{DIR}/Layout-Row.tree: {NOT_A_GOLDEN}"),
             format!("{DIR}/layout-row.tree.orig: {NOT_A_GOLDEN}"),
             format!("{DIR}/link.tree: {NOT_A_GOLDEN}"),
             format!("{DIR}/sub/layout-row.tree: {NOT_A_GOLDEN}"),
-            "framework/ui/tests/golden/layout-row.tree: is in a golden directory that `cargo xtask golden` does not write".to_string(),
         ]
     );
 }
