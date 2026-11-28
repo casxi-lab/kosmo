@@ -13,9 +13,12 @@ use kosmo_types::{BufferDesc, DamageRect, Fx, MonoTime, NamedKey, PixelFormat, P
 
 use super::super::*;
 use crate::app::{Context, DrawContext, Handling, Message, Out, Phase};
-use crate::command::{Command as KeyCommand, DELETE_BACKWARD, MOVE_LEFT, MOVE_RIGHT};
+use crate::command::{
+    CANCEL_JOB, Command as KeyCommand, DELETE_BACKWARD, INSERT_TEXT, MOVE_LEFT, MOVE_RIGHT,
+};
 use crate::layout::{Column, Font, Node, Row, Text};
-use crate::testing::{SURFACE, TestPort, font_set, press, stamp};
+use crate::testing::{SURFACE, TestPort, font_set, key_event, press, stamp};
+use crate::timer::TimerLabel;
 use crate::tokens::{ColorToken, FontSize, TOKENS};
 use crate::tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, View};
 
@@ -54,20 +57,36 @@ impl Control<Scene> for Part {
     }
 
     fn handle(&self, _: Phase, command: &KeyCommand, cx: &mut Context<'_, Scene, u32>) -> Handling {
-        if !matches!(self, Part::Swatch(_)) {
-            return Handling::Unhandled;
-        }
-        match command.id {
-            MOVE_LEFT => *cx.state_mut() += 1,
-            MOVE_RIGHT => {
+        match (self, command.id) {
+            (Part::Swatch(_), MOVE_LEFT) => *cx.state_mut() += 1,
+            (Part::Swatch(_), MOVE_RIGHT) => {
                 let _count: u32 = *cx.state();
             }
-            DELETE_BACKWARD => {
+            (Part::Swatch(_), DELETE_BACKWARD) => {
                 let _count: &mut u32 = cx.state_mut();
             }
+            (Part::Swatch(_), INSERT_TEXT) => {
+                let label = if command.text == Some('t') { 2 } else { 1 };
+                cx.timer(MonoTime::ZERO, TimerLabel::new(label));
+            }
+            (Part::Row, CANCEL_JOB) => *cx.state_mut() += 1,
             _ => return Handling::Unhandled,
         }
         Handling::Handled
+    }
+
+    fn focus(&self, _: bool, cx: &mut Context<'_, Scene, u32>) {
+        if matches!(self, Part::Column) {
+            *cx.state_mut() += 1;
+        }
+    }
+
+    fn timer(&self, label: TimerLabel, cx: &mut Context<'_, Scene, u32>) {
+        if label.get() == 2 {
+            *cx.state_mut() += 1;
+        } else {
+            let _count: u32 = *cx.state();
+        }
     }
 
     fn layout(&self, _: &u32) -> Node<'_> {
@@ -418,6 +437,7 @@ fn only_a_handler_that_takes_its_state_mutably_draws_the_surface_again() {
     assert!(keys(&output)[0].ends_with(&format!(" handled kosmo.MoveRight by control {swatch}")));
     assert_eq!(output.view, ViewPass::Skipped);
     assert!(output.frames.is_empty());
+    assert!(output.paint_errors.is_empty());
 
     let events = vec![press(NamedKey::DELETE, stamp(1, 1))];
     let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
@@ -428,6 +448,87 @@ fn only_a_handler_that_takes_its_state_mutably_draws_the_surface_again() {
     assert_eq!(output.view, ViewPass::Skipped);
     assert_eq!(runtime.tree().state(swatch), Some(&0));
     assert_eq!(regions(&output), [(SURFACE, vec![rect(0, 0, 40, 20)])]);
+}
+
+/// A key press of the character `c` on the test surface.
+fn typed(c: char) -> Event {
+    Event::Key {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+        event: key_event(KeyMeaning::Char(c), KeyAction::Press),
+    }
+}
+
+/// Every kind of handler follows the rule: a handler that takes its state
+/// before one that only reads it in the same round, a control's on a
+/// command that bubbles to it, a control's due timer and a region's root
+/// on a focus change.
+#[test]
+fn every_kind_of_handler_that_takes_its_state_draws_the_surface_again() {
+    let mut fonts = font_set();
+    let mut app = Scene {
+        view: swatch_and_label(),
+    };
+    let mut runtime = Runtime::new();
+    let whole = size(40, 20);
+    let mut run = |runtime: &mut Runtime<Scene>, app: &mut Scene, events: Vec<Event>| {
+        let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+        drawn(runtime, app, events, input)
+    };
+    let all = [(SURFACE, vec![rect(0, 0, 40, 20)])];
+    let focus_in = Event::FocusIn {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+    };
+    assert_eq!(regions(&run(&mut runtime, &mut app, vec![focus_in])), all);
+
+    // A handler that takes its state, then one that only reads it.
+    let output = run(
+        &mut runtime,
+        &mut app,
+        vec![
+            press(NamedKey::DELETE, stamp(1, 1)),
+            press(NamedKey::RIGHT, stamp(1, 1)),
+        ],
+    );
+    assert_eq!(keys(&output).len(), 2);
+    assert_eq!(regions(&output), all);
+
+    // The swatch declines `CancelJob`, and the row takes its state on it.
+    let row = runtime.tree().region().unwrap();
+    let output = run(
+        &mut runtime,
+        &mut app,
+        vec![press(NamedKey::CANCEL, stamp(1, 1))],
+    );
+    assert!(keys(&output)[0].ends_with(&format!(" handled kosmo.CancelJob by control {row}")));
+    assert_eq!(regions(&output), all);
+
+    // A due timer whose handler only reads its state gives no frame; one
+    // whose handler takes it draws the surface whole.
+    for (c, expected) in [('r', vec![]), ('t', all.to_vec())] {
+        let output = run(&mut runtime, &mut app, vec![typed(c)]);
+        assert!(output.frames.is_empty());
+        let output = run(&mut runtime, &mut app, Vec::new());
+        assert!(
+            output.record.text().contains("timer due"),
+            "{}",
+            output.record.text()
+        );
+        assert_eq!(regions(&output), expected);
+    }
+
+    // A region's root that takes its state on a focus change.
+    let mut app = Scene {
+        view: View::new(Key::new(0), Part::Column)
+            .region()
+            .child(View::new(Key::new(1), Part::Swatch(ColorToken::Accent)).focused()),
+    };
+    let mut runtime = Runtime::new();
+    assert_eq!(regions(&run(&mut runtime, &mut app, Vec::new())), all);
+    let output = run(&mut runtime, &mut app, vec![focus_in]);
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(regions(&output), all);
 }
 
 #[test]
