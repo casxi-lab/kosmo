@@ -1149,9 +1149,8 @@ impl<A: App> Pass<'_, '_, A> {
             })?;
             let natural = add(content, both)?;
             let taken = cross(constraint.clamp(size(axis, natural_main, natural)?)?, axis);
-            // The children align in the box less its padding, or in their
-            // own extent where the box is smaller.
-            let extent = less(taken, both).max(content);
+            // The children align in the box less its padding.
+            let extent = less(taken, both);
             for &child in laid {
                 let free = sub(extent, cross(self.child(child)?.size, axis))?;
                 let offset = match lane.align {
