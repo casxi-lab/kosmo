@@ -568,7 +568,8 @@ and lays out are those of `MANIFEST`. A change to a golden is a change of
 its file that `cargo xtask golden` writes, which review reads beside the
 change of code that caused it; for a layout tree golden the difference is
 readable line by line. `.gitattributes` keeps every checkout from
-converting the files of the goldens and Git from merging them as text.
+converting the files of the goldens and Git from merging them as text,
+which a test of xtask checks with `git check-attr`.
 
 ### The font assets
 

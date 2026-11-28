@@ -432,27 +432,48 @@ fn the_goldens_of_this_repository_pass() {
 fn the_git_attributes_keep_the_files_of_every_kind_of_golden_as_they_are() {
     // A checkout that converted the line ends of a golden's file would
     // give it another digest than MANIFEST lists, and so would a merge
-    // of two changes of its text.
-    let attributes = fs::read_to_string(repo::root().join(".gitattributes")).unwrap();
-    let rule = |pattern: &str| -> Vec<String> {
-        attributes
-            .lines()
-            .map(|line| line.split_whitespace().collect::<Vec<_>>())
-            .find(|words| words.first() == Some(&pattern))
-            .map_or_else(Vec::new, |words| {
-                words[1..].iter().map(|word| word.to_string()).collect()
-            })
-    };
-    assert_eq!(rule("**/tests/golden/MANIFEST"), ["text", "eol=lf"]);
-    for extension in EXTENSIONS {
-        let pattern = format!("**/tests/golden/*{extension}");
-        let attributes = rule(&pattern);
-        let unset = |attribute: &str| {
-            attributes
+    // of two changes of its text. Git takes the attributes of a path from
+    // every `.gitattributes` on its way, a later line over an earlier one,
+    // so Git itself is asked, for MANIFEST and a file of each kind in each
+    // golden directory, whether such a file exists yet or not.
+    let mut paths = Vec::new();
+    for set in SETS {
+        let dir = set.golden_dir();
+        paths.push(format!("{dir}/MANIFEST"));
+        paths.extend(
+            EXTENSIONS
                 .iter()
-                .any(|word| word == "binary" || *word == format!("-{attribute}"))
+                .map(|extension| format!("{dir}/name{extension}")),
+        );
+    }
+    let mut git = std::process::Command::new("git");
+    for variable in repo::REDIRECTS {
+        git.env_remove(variable);
+    }
+    let output = git
+        .args(["check-attr", "text", "eol", "merge", "--"])
+        .args(&paths)
+        .current_dir(repo::root())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    for path in &paths {
+        let value = |attribute: &str| {
+            let prefix = format!("{path}: {attribute}: ");
+            text.lines()
+                .find_map(|line| line.strip_prefix(prefix.as_str()))
+                .unwrap_or_default()
+                .to_string()
         };
-        assert!(unset("text") && unset("merge"), "{pattern}: {attributes:?}");
+        let expected = if path.ends_with("/MANIFEST") {
+            [("text", "set"), ("eol", "lf")]
+        } else {
+            [("text", "unset"), ("merge", "unset")]
+        };
+        for (attribute, wanted) in expected {
+            assert_eq!(value(attribute), wanted, "{path}: {attribute}");
+        }
     }
 }
 
