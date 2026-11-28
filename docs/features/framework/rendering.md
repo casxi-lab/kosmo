@@ -330,9 +330,10 @@ that turns on `std` or `multithreading` fails until those entries record it.
   source over, and the image store holds no images.
 - Glyph coverage comes from the caller: in the shell it is the glyph cache of
   `kosmo-text`, and `NoGlyphs` serves lists without glyphs.
-- Rounds do not draw yet: the drawing pass of `kosmo-ui` builds display
-  lists that rounds do not call it for, and the shell presents only the
-  frames that its driver draws.
+- A display list holds at most 16,384 commands; the drawing pass of
+  `kosmo-ui` counts its groups toward them, and a round whose frame of a
+  surface would hold more gives no frame for it, as the
+  [limits](runtime.md#limits) of the framework runtime state.
 - The reference rasterizer draws only the commands of its fixed scenes.
 - Goldens are drawn and compared on the AArch64 target platforms; on another
   architecture the SIMD level is that target's baseline.
