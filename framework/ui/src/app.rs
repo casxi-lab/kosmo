@@ -2,9 +2,10 @@
 //! event handlers of controls and the drawing entry receive.
 
 use kosmo_render::{ListBuilder, ListError};
-use kosmo_types::{MonoTime, Rect, Size};
+use kosmo_types::{Fx, MonoTime, Rect, Size};
 
 use crate::command::{Binding, Command};
+use crate::layout::Node;
 use crate::port::{Effect, JobPort};
 use crate::timer::{Requester, TimerLabel, TimerRequest};
 use crate::tree::{Kind, View, WidgetId};
@@ -317,6 +318,28 @@ pub trait Control<A: App>: Clone {
     /// nothing by default.
     fn timer(&self, label: TimerLabel, cx: &mut Context<'_, A, Self::State>) {
         let _ = (label, cx);
+    }
+
+    /// The control's layout node, from its value and its presentation
+    /// state `state`: a row, a column or a scroll container, which lays
+    /// out the control's children, or a leaf. [`layout`](crate::layout())
+    /// calls it once for each control it lays out. By default the control
+    /// is [`Node::Empty`], a leaf of size zero without a baseline, which
+    /// draws nothing.
+    fn layout(&self, state: &Self::State) -> Node<'_> {
+        let _ = state;
+        Node::Empty
+    }
+
+    /// Learns the offset that the layout pass of a round gave the
+    /// control's scroll container along its axis: the request of its node
+    /// brought into the range of its content. A control that keeps its
+    /// request in its presentation state writes the offset there, so that
+    /// requests beyond the range do not add up. When several surfaces lay
+    /// the container out, the offset is the smallest of theirs, which is
+    /// within the range of each. Does nothing by default.
+    fn scrolled(&self, offset: Fx, state: &mut Self::State) {
+        let _ = (offset, state);
     }
 
     /// The drawing entry. The drawing pass calls it in preorder; its

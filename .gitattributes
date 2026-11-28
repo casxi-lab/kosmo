@@ -1,7 +1,10 @@
 # The goldens are compared byte for byte, so MANIFEST keeps LF line ends in
-# every checkout and the goldens are never converted or merged as text.
+# every checkout, the pixel goldens are never converted or merged, and the
+# layout tree goldens are never converted or merged as text, while their
+# differences stay readable line by line.
 **/tests/golden/MANIFEST text eol=lf
 **/tests/golden/*.px binary
+**/tests/golden/*.tree -text -merge
 # The fonts of kosmo-text are compared with their asset manifest by SHA-256,
 # so the fonts and their license files are never converted or merged as
 # text, and the manifest keeps LF line ends in every checkout.

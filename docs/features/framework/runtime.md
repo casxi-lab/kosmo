@@ -7,21 +7,26 @@ caller passes in, holds the current result of a region in a versioned result
 slot, keeps one-shot timers, checks the focus stamps of key events,
 dispatches commands from the focused control to its ancestors and the
 application, resolves keys with binding tables and the minimal key map,
-finds the control at a point of a layout result, builds the display list
-of a damage region from a layout result with its drawing pass, and drives
-rounds through the platform interface with its shell, which presents frames.
+lays out the control tree of each surface in each round, laying out again
+only what changed, finds the control at a point of a layout result, builds
+the display list of a damage region from a layout result with its drawing
+pass, and drives rounds through the platform interface with its shell,
+which presents frames.
 
-The round function covers the event, update and view passes. The drawing
-pass is a function of its own, which rounds do not call yet: its layout
-results will come from the layout pass. The [shell](#the-shell) waits for
-platform events, reads the clock, takes job reports, runs both steps of a
-round and presents frames through the platform interface `kosmo-platform`;
+The round function covers the event, update, view and layout passes. The
+drawing pass is a function of its own, which rounds do not call yet; it
+draws from the layout that the layout pass keeps for each surface. The
+[shell](#the-shell) waits for platform events, reads the clock, takes job
+reports, runs both steps of a round with its own font set for the layout
+pass and presents frames through the platform interface `kosmo-platform`;
 the headless backend `kosmo-backend-headless` is one platform it runs on.
-Layout and accessibility are planned; until they exist, tests and other
-drivers build the layout results in code and present the frames that they
-draw. `kosmo-ui` depends on `kosmo-types` for geometry, logical time, focus
-generations, epochs, key events and damage regions, on the versions of
-`kosmo-math-model`, on `kosmo-platform` for the platform interface, and on
+Accessibility is planned; until rounds draw, tests and other drivers draw
+the frames that they present from a surface's layout, or from a layout
+result that they build in code. `kosmo-ui` depends on `kosmo-types` for
+geometry, logical time, focus generations, epochs, key events and damage
+regions, on the versions of
+`kosmo-math-model`, on `kosmo-platform` for the platform interface, on
+`kosmo-text` for the font set that lays text out, and on
 `kosmo-render` for display lists and rasterization, and with the feature
 `call-probes` only, on `kosmo-testkit` for its call probe; it depends on
 neither the job layer nor kalyx. The design rules that it follows are in the
@@ -30,6 +35,7 @@ neither the job layer nor kalyx. The design rules that it follows are in the
 [effects and the result slot](../../architecture.md#effects-and-the-result-slot),
 [event loop and clock](../../architecture.md#event-loop-and-clock),
 [dispatch and hit testing](../../architecture.md#dispatch-and-hit-testing),
+[layout pass](../../architecture.md#layout-pass),
 [focus](../../architecture.md#focus) and
 [commands and key bindings](../../architecture.md#commands-and-key-bindings)
 sections of the architecture.
@@ -151,6 +157,9 @@ cargo test --locked --manifest-path framework/Cargo.toml -p kosmo-backend-headle
   its due timers, get a `Context`: the control's `WidgetId`, its
   presentation state, and messages, effects and timer requests to output.
   None of them reaches the model, the execution port or the platform.
+  `Control::layout` gives the control's layout node from its value and
+  presentation state, and `Control::scrolled` tells a scroll container the
+  offset that the layout pass gave it.
 - Messages of the framework are `Message::Own` for the application's own
   messages, `Accepted` and `Rejected` for receipts, `Report` for job reports
   and `Timer` for the application's due timers.
@@ -242,7 +251,61 @@ holds receipts of the round's effects runs the next round at once, without
 waiting for the deadline. Its `accessibility` and `frames`, the tree updates
 and the display lists with their damage regions of each surface, which the
 [shell](#the-shell) hands to the platform, are empty until rounds run the
-accessibility and drawing passes.
+accessibility and drawing passes. `Round::finish` runs no layout pass,
+and the layouts that the runtime keeps stay as they were, also when its
+view pass rebuilt the tree.
+
+`Round::finish_with(app, input)` runs the view pass of `Round::finish` and
+then the layout pass, before the deadline. Its `LayoutInput` holds the font
+set that lays text out, `fonts`, the number `fonts_id` that names that font
+set, the table of design tokens, `tokens`, and the surfaces to lay out,
+`sizes`, each with its size; `LayoutInput::new(fonts, fonts_id, tokens)`
+builds it without surfaces, and `surface(surface, size)` adds one. The pass
+lays out the one control tree for each surface of `sizes`, in the order of
+the surfaces, with the surface's size as the tight constraint of the root,
+as the [layout pass](../../architecture.md#layout-pass) describes. The
+runtime keeps each surface's layout, and `Runtime::layout(surface)` gives
+its `LayoutTree`, whose `LayoutTree::result` is what [hit
+testing](#hit-testing) and the [drawing pass](#the-drawing-pass) read. The
+next layout pass lays out only dirty subtrees against it:
+
+- a control is dirty when it is new, when the layout node that
+  `Control::layout` gives from its value and presentation state differs
+  from the round before other than in a scroll request, or when its
+  children differ;
+- a subtree without a dirty control whose root gets the constraint of the
+  round before keeps its layout whole;
+- a box whose control is not dirty keeps its size and its children's
+  positions while its children come out with the sizes and baselines of the
+  round before, and is laid out again otherwise, so the work goes up from a
+  dirty control only while sizes or baselines change; it stops at the latest
+  at a box under a tight constraint, a layout boundary, whose size depends
+  only on that constraint, unless its baseline changed;
+- a scroll container's offset always follows its current request, so a
+  change of the request alone moves only the container's content and lays
+  nothing out;
+- another size of the surface, another table of tokens or another
+  `fonts_id` lays the surface out whole.
+
+The result is that of the pure function `layout` byte for byte. After the
+pass, each scroll container learns its offset through `Control::scrolled`:
+the request of its node brought into the range of its content, along its
+axis, and when several surfaces lay it out, the smallest of their offsets,
+which is within the range of each. A control that keeps its request in its
+presentation state writes the offset back there, so that requests beyond
+the range do not add up. The default does nothing. Then each layout that
+the runtime keeps takes the offset of each scroll container from the
+request that the container's node gives after the write-back, brought into
+the range of its content, without laying anything out and without counting
+it in the record. So a surface on which the offset was larger than the one
+written back follows the written one at once, and each kept layout is that
+of `layout` for the tree as the round leaves it, unless `scrolled` changes
+a node in more than its request or to a request whose absolute value
+exceeds `MAX_LAYOUT_INPUT`. A surface that `sizes` does not list loses its
+layout, and so does a surface whose layout fails; the record names the
+error, `LayoutError::InputOutOfRange` for an input beyond its range and
+`Overflow` for a sum of lengths, or a position that the text layout gives,
+that does not fit.
 
 ## Effects and the execution port
 
@@ -370,8 +433,11 @@ but not its right and bottom edges. Of overlapping boxes the last in
 drawing order is hit, and a control that draws nothing is never hit.
 Coordinates are `Fx` values; a position that does not fit gives
 `LayoutError::Overflow`, a box out of preorder `Order`, and a layout result
-holds at most `MAX_WIDGETS` boxes. The function only reads its input; so
-far only tests build layout results, and the layout pass will produce them.
+holds at most `MAX_WIDGETS` boxes. The function only reads its input. The
+layout pass of a round produces the layout results:
+`Runtime::layout(surface)` gives a surface's layout tree, and its
+`LayoutTree::result` is the layout result; tests also build layout results
+in code.
 
 ## The drawing entry
 
@@ -447,7 +513,11 @@ fonts again. Then each round:
    kinds of events that later versions add are ignored;
 5. hands the effects to the execution port, which keeps the receipts for
    the next round;
-6. runs `Round::finish`;
+6. runs `Round::finish_with` with a `LayoutInput` of its own font set, the
+   table `TOKENS` and the size of each surface whose `Configure` it took, so
+   that each such surface is laid out under its latest size; the round
+   builds no font set of its own, and a surface without a `Configure` is not
+   laid out;
 7. pushes the tree updates of the output's `accessibility` through
    `AccessibilitySink`, in their order;
 8. presents each of the output's `frames` with `Shell::present`.
@@ -460,7 +530,8 @@ wait: the round's time while receipts wait, `Shell::has_receipts`, so that
 the wait does not block, and otherwise the round's `next_deadline`; before
 the first round it is 0, so the first round runs at once and builds the
 view. `Shell::runtime`, `app`, `port` and `port_mut` give a driver the
-control tree, the model and the execution port.
+control tree with the layout of each surface, the model and the execution
+port.
 
 `Shell::present(platform, surface, list, damage)` presents a frame: it draws
 `list` inside `damage` with `kosmo-render`'s `VelloRasterizer` into the
@@ -486,7 +557,8 @@ frame, too, the frame and the buffer are as they were. Its other errors are
 damage region that does not fit the frame, `Convert`, for a buffer whose
 bytes do not match its description, and `FrameTooLarge`, for a previous
 frame beyond the buffer limits. The headless backend keeps what is presented
-as its read-back. Until rounds draw, a driver builds a layout result, gets
+as its read-back. Until rounds draw, a driver takes a surface's layout
+result from `shell.runtime().layout(surface)`, or builds one in code, gets
 its display list with `paint(shell.runtime().tree(), &layout, &damage)` and
 presents it.
 
@@ -523,8 +595,9 @@ production: the round line; the receipts; the platform events, key and
 focus lines as they were delivered; the job reports; the due timers,
 `timer due` or `timer dropped missing`, by deadline and then by
 registration; the effects; the timer requests, `timer set` or
-`timer refused full`; then the view line and the deadline line. The lines
-are of these kinds:
+`timer refused full`; then the view line, the layout lines, one for each
+surface that the layout pass lays out, in the order of the surfaces, and
+the deadline line. The lines are of these kinds:
 
 | Line | Meaning |
 | --- | --- |
@@ -542,6 +615,8 @@ are of these kinds:
 | `timer set <requester> deadline <t> label <l>` | A registered timer |
 | `timer refused full <requester> deadline <t> label <l>` | A request to a full timer table |
 | `view rebuilt controls <n>`, `view rejected <error>`, `view skipped` | What the view pass did |
+| `layout surface <s> boxes <n> laid <k> texts <t>` | A surface laid out: the boxes of its layout tree, the boxes whose size and children's positions the pass computed again, and the text leaves that it laid out with the font set |
+| `layout surface <s> failed <error>` | A surface whose layout failed |
 | `deadline <t>`, `deadline none` | The next deadline |
 
 In a key line, `<meaning>` is `named <number>` or `char <c>`, `<action>` is
@@ -557,9 +632,13 @@ a command that carries a character, whichever binding gave it, is followed
 by that character, as in `kosmo.InsertText '1'`. Characters, `<c>` and
 those of commands, are written in Rust's debug form: in single quotes, with
 escapes such as `'\''` and `'\u{301}'`. A requester is `app` or
-`control <slot>:<generation>`, and a view error is `too-many-controls`,
+`control <slot>:<generation>`, a view error is `too-many-controls`,
 `too-deep`, `duplicate-key <key>`, `second-focus`, `second-region` or
-`focus-outside-region`. For example:
+`focus-outside-region`, and a layout error is `input-out-of-range`,
+`overflow`, `too-many-boxes` or `order`. In a layout line, `laid` and
+`texts` count the work of the incremental layout, not its result, so they
+change with how the layout pass finds what to lay out again, while the
+layout trees stay the same. For example:
 
 ```text
 round 8 time 8000000
@@ -594,11 +673,11 @@ no wall-clock time; review checks these, as the
 
 ## Limits
 
-- The round function has no layout or accessibility pass and does not run
-  the drawing pass, so its outputs hold no tree updates and no frames. The
+- The round function has no accessibility pass and does not run the
+  drawing pass, so its outputs hold no tree updates and no frames. The
   drawing pass has no caller outside tests; a driver that presents a frame
-  builds its layout result, draws it with `paint` and presents it with
-  `Shell::present`.
+  takes a surface's layout result from the runtime, or builds one, draws it
+  with `paint` and presents it with `Shell::present`.
 - The shell creates and destroys no surface: the application's assembly or
   the driver creates them through `SurfacePort` before the first round. A
   driver of `Shell::run_round` destroys them before it calls `shutdown`;
@@ -608,9 +687,19 @@ no wall-clock time; review checks these, as the
   not released makes `run_round` return
   `ShellError::Platform(PlatformError::Busy)` after both steps, and `run`
   then stops with `ExitReason::Failed`; rounds hold no frames yet.
-- Rounds do not lay text out: a driver that presents text lays it out with
-  a font set of its own, built from the same bytes, and a frame with glyph
-  runs presented before the first round fails with a missing glyph.
+- Rounds lay text out with the shell's own font set, so the glyph runs of
+  a frame that a driver draws from a surface's layout come from the font
+  set whose glyph cache presents them. A frame that a driver builds from
+  text laid out with a font set of its own matches that cache only when
+  that font set holds the same two fonts in the same places, which nothing
+  checks, and a frame with glyph runs presented before the first round
+  fails with a missing glyph.
+- The layout pass takes the layout node of every control in every round to
+  find the dirty ones; only the laying out is limited to dirty subtrees. A
+  change of a control's value that its layout node does not show lays
+  nothing out. The runtime tells font sets apart only by the `fonts_id`
+  that its driver gives, and takes unchanged text from the layout before
+  while the number stays; the shell builds one font set and keeps it.
 - With a backend that never blocks, such as the headless backend, a wait
   without events returns at once, so `run` keeps running rounds until the
   platform disconnects or fails; drivers of such a backend use
@@ -871,3 +960,41 @@ wall clock.
     `run_shuts_down_and_returns_when_the_platform_disconnects`,
     `run_returns_another_status_when_a_resource_is_missing_at_start_up`,
     `run_stops_at_any_other_error_with_a_failure_and_shuts_down`.
+20. The layout pass of a round lays out each surface with a size under its
+    size, in the order of the surfaces, and keeps its layout, which hit
+    testing reads; it lays out again only what changed. A longer text lays
+    out the leaf and its ancestors up to the root under the surface's tight
+    constraint, and neither the leaf beside it nor the other subtree; a text
+    that a leaf holds, laid out under the tight constraint of size zero,
+    lays out only that text; the work stops at a box whose size and
+    baseline stay; a changed scroll request lays nothing out and changes
+    only its container's offset; another size, table of tokens or font set
+    lays the tree out whole, and nothing changed lays nothing out. After
+    random changes of a value, the children of a control, a scroll request
+    or the root constraint, the layout against the one before is the whole
+    layout byte for byte, and a scroll request whose absolute value
+    exceeds `MAX_LAYOUT_INPUT` in a subtree taken whole fails both alike.
+    The offsets are written back along the axis of each container, the
+    smallest of the surfaces', so that requests beyond the range of the
+    content do not add up, and the kept layouts of all surfaces follow the
+    requests as the round leaves them, also in nested containers and where
+    a control does not write its offset back; a failed layout is recorded
+    and leaves the surface without a layout. The shell hands its own font
+    set to the round. Tests:
+    `round::tests::layout::`
+    `each_surface_with_a_size_is_laid_out_under_it_in_the_order_of_the_surfaces`,
+    `changing_one_text_leaf_lays_out_only_it_and_its_ancestors_up_to_the_boundary`,
+    `a_text_that_a_leaf_holds_lays_out_only_itself`,
+    `the_work_stops_at_a_box_whose_size_and_baseline_stay`,
+    `a_changed_scroll_request_only_moves_its_container`,
+    `the_round_writes_offsets_back_so_that_requests_beyond_the_range_do_not_add_up`,
+    `a_horizontal_scroll_container_writes_its_offset_back_along_x`,
+    `every_scroll_container_on_every_surface_follows_the_requests_written_back`,
+    `a_new_size_table_of_tokens_or_font_set_lays_the_whole_tree_out_again`,
+    `a_failed_layout_is_recorded_and_leaves_the_surface_without_a_layout`;
+    `layout::tests::a_layout_against_the_layout_before_lays_out_only_what_changed`,
+    `layout::tests::a_request_beyond_its_range_in_a_subtree_taken_whole_fails_as_the_whole_layout`,
+    `layout::tests::another_constraint_table_of_tokens_or_font_set_lays_out_the_whole_tree`,
+    `layout::tests::random::layouts_against_the_layout_before_equal_whole_layouts_after_random_changes`;
+    `shell::tests::each_round_lays_out_the_configured_surfaces_with_the_shells_font_set`,
+    `shell::tests::rounds_lay_text_out_with_the_font_set_that_the_shell_fetched`.

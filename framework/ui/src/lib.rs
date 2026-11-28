@@ -1,8 +1,8 @@
 //! The core of kosmo's framework: the control tree with its passes, the
 //! round function of the single-threaded event loop and its shell,
 //! versioned result slots, timers, the dispatch of key events with focus
-//! checks, command tables with the minimal key map, hit testing and the
-//! drawing pass.
+//! checks, command tables with the minimal key map, layout with its design
+//! tokens, hit testing and the drawing pass.
 //!
 //! An application is a model that implements [`App`]: `update` handles
 //! [`Message`]s one at a time and is the only place that changes the model;
@@ -19,9 +19,14 @@
 //! [`Input`] (its time, receipts, platform events and job reports) and runs
 //! the event and update passes, and [`Round::finish`] runs the view pass
 //! and gives the next deadline and the event handling [`Record`] of the
-//! round. Between the two, whoever drives the rounds hands the effects to
-//! the execution port, a [`JobPort`], for example with [`execute`], and
-//! passes the receipts to the next round.
+//! round. [`Round::finish_with`] runs the layout pass after the view pass,
+//! with the font set, the table of design tokens and the surface sizes of
+//! its [`LayoutInput`]: it lays out each surface under its size against the
+//! layout that the runtime kept from the round before, laying out again
+//! only dirty subtrees, and [`Runtime::layout`] gives each surface's
+//! [`LayoutTree`]. Between the two steps, whoever drives the rounds hands
+//! the effects to the execution port, a [`JobPort`], for example with
+//! [`execute`], and passes the receipts to the next round.
 //!
 //! ```
 //! use kosmo_types::{Epoch, FocusGen, HidUsage, KeyAction, KeyEvent, KeyMeaning, ModSet, MonoTime};
@@ -106,8 +111,10 @@
 //! `kosmo-text` through `ResourceProvider` and builds its font set from
 //! them. [`Shell::run_round`], the single-round entry, waits once for
 //! platform events, reads the clock, takes job reports, runs both steps
-//! with the execution port between them, and pushes the round's
-//! accessibility updates and presents its frames; [`Shell::present`]
+//! with the execution port between them, handing its font set, the table
+//! of design tokens and the size of each configured surface to the layout
+//! pass, and pushes the round's accessibility updates and presents its
+//! frames; [`Shell::present`]
 //! prepares the coverage masks of a display list's glyph runs in the glyph
 //! cache of the font set, draws the list into a surface's previous frame
 //! and presents its damage.
@@ -124,6 +131,36 @@
 //! a [`LayoutResult`], [`paint`] builds the display list of a damage region
 //! from one, which rounds do not do yet, and [`ResultSlot`] holds the
 //! current result of a region against the versions of `kosmo-math-model`.
+//!
+//! [`layout()`] lays a control tree out under the [`Constraint`] of its
+//! root into a [`LayoutTree`], a pure function of the controls with their
+//! presentation states, the constraint, a table of design tokens and the
+//! text metrics of a font set. Each control gives a [`Node`] through
+//! [`Control::layout`]: a [`Row`], a [`Column`] or a [`Scroll`] container,
+//! which lays out the control's children, a [`Text`] leaf, a fixed-size
+//! leaf, or by default an empty leaf. A parent passes each child the
+//! smallest and the largest size it may take, the child reports its size
+//! and an optional baseline, and the parent places it; rows can align
+//! their children by baseline. A box whose natural size exceeds its
+//! largest size takes the largest size and marks the overflow of that
+//! axis, and a scroll container brings the offset that its control
+//! requests into the range of its content. Coordinates are `Fx` values; an
+//! input beyond [`MAX_LAYOUT_INPUT`] gives
+//! [`LayoutError::InputOutOfRange`], and a length beyond the numeric
+//! representation [`LayoutError::Overflow`], for the whole layout.
+//! [`LayoutTree::result`] gives the [`LayoutResult`] of the tree, and
+//! [`LayoutTree::text`] writes the tree as text, one line for each box.
+//! After the layout pass of a round, the control of each scroll container
+//! learns its offset through [`Control::scrolled`]; a control that keeps
+//! its request in its presentation state writes the offset back there,
+//! and by default a control writes nothing.
+//!
+//! Rows and columns take their spacing and padding only as [`Space`]
+//! tokens, and text leaves their size as a [`FontSize`] token and their
+//! colour as a [`ColorToken`], so a length in pixels does not compile in
+//! their place. [`TOKENS`], a [`Tokens`] table, holds the value of each:
+//! spacings of 2, 4, 8 and 16 pixels, font sizes of 12, 16 and 24 pixels
+//! and five opaque colours.
 
 #![forbid(unsafe_code)]
 
@@ -131,6 +168,7 @@ mod app;
 mod command;
 mod focus;
 mod hit;
+mod layout;
 mod paint;
 mod port;
 mod record;
@@ -138,6 +176,7 @@ mod round;
 mod shell;
 mod slot;
 mod timer;
+mod tokens;
 mod tree;
 
 #[cfg(test)]
@@ -152,13 +191,18 @@ pub use command::{
 };
 pub use focus::{Event, Stamp, SurfaceId};
 pub use hit::{LayoutBox, LayoutError, LayoutResult, hit_test};
+pub use layout::{
+    Align, Axis, Column, Constraint, Font, LaidText, LayoutTree, MAX_LAYOUT_INPUT, Node, Overflow,
+    Row, RowAlign, Scroll, Text, TreeBox, layout,
+};
 pub use paint::{PaintError, paint};
 pub use port::{Effect, JobPort, Receipt, execute};
 pub use record::Record;
-pub use round::{Counts, Input, Output, Round, Runtime, ViewPass};
+pub use round::{Counts, Input, LayoutInput, Output, Round, Runtime, ViewPass};
 pub use shell::{ExitReason, ExitStatus, RoundEnd, Shell, ShellError, run};
 pub use slot::{Delivered, ResultSlot, Shown, Tagged};
 pub use timer::{TIMER_CAPACITY, TimerLabel};
+pub use tokens::{ColorToken, FontSize, Space, TOKENS, Tokens};
 pub use tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, RebuildError, Tree, View, WidgetId};
 
 /// The longest that the event loop waits while jobs that it submitted have

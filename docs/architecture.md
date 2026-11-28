@@ -989,11 +989,60 @@ against the new version instead of being shown as current and at once as stale.
 - A parent passes a minimum and a maximum size to each child; the child reports
   its size and an optional baseline, and the parent places it. Layout reads only
   the view model, display parameters and text metrics and is a pure function.
-- Only dirty subtrees are laid out again; a node whose size depends only on its
-  parent's constraints bounds the work. Scrolling changes only the offset.
-  Overflow is marked in the layout result, never clipped silently.
-- Coordinates use the [numeric representation](#numeric-representation); a value
-  out of its range makes the whole layout return a distinct error.
+- Each control gives a layout node from its value and presentation state: a
+  row, a column or a scroll container, which lays out the control's children,
+  or a leaf, a text leaf or a leaf of a fixed size. A control that gives none is
+  a leaf of size zero without a baseline.
+- Rows and columns place their children one after another, each at its own
+  size, with spacing between them and padding around them, and align them
+  across at the start, the centre or the end; a row can also align them by
+  baseline, where a child without a baseline uses its bottom edge. Nothing
+  stretches, and children do not wrap. A text leaf breaks its lines at the
+  largest width of its constraint and has the baseline of its first line; a row
+  or column has the baseline of its first child that has one.
+- A scroll container has one child, its content, which the container does not
+  limit along its axis. The offset that the control's presentation state
+  requests is brought into the range from 0 to the content's length less the
+  container's.
+- Spacing and padding are spacing tokens and the size of text a font size
+  token, so a control cannot give a length in pixels in their place; one table
+  of design tokens holds their values.
+- The layout pass runs in each round after the view pass, for each surface
+  that has a size, with the size of the surface's latest configuration as the
+  tight constraint of the root, the table of design tokens and the shell's own
+  font set, which the shell hands to the round; the round builds no font set.
+  The runtime keeps each surface's layout for the next round.
+- Only dirty subtrees are laid out again. A control is dirty when it is new,
+  when its layout node, which its value and presentation state give, differs
+  other than in a scroll request, or when its children differ. A subtree
+  without a dirty control keeps its layout while its root gets the same
+  constraint. A box whose control is not dirty keeps its size and its
+  children's positions while its children come out with their sizes and
+  baselines of the round before, so the work goes up from a dirty control
+  only while sizes or baselines change; a node whose size depends only on its
+  parent's constraint, such as one under a tight constraint, is a layout
+  boundary and ends it unless its baseline changed. Another surface size,
+  another table of tokens or another font set lays the whole tree out again,
+  and the result is that of a whole layout byte for byte.
+- Scrolling changes only the offset: a change of a scroll container's request
+  alone lays nothing out. After the layout pass the round tells each
+  container's control its offset, its request brought into range and, when
+  several surfaces lay it out, the smallest of theirs, through
+  `Control::scrolled`; a control that keeps its request in its presentation
+  state writes the offset back there, so that requests beyond the range do
+  not add up. The default writes nothing.
+- Overflow is marked in the layout result, along each axis where a box's
+  natural size exceeds its maximum size, never clipped silently; the box then
+  takes its maximum size, and its children keep theirs.
+- Coordinates use the [numeric representation](#numeric-representation). Its
+  bound on layout inputs applies to constraints, to the sizes that leaves give,
+  to scroll requests and to the spacings of the table of design tokens, whose
+  font sizes must be sizes that the text layout takes; the sizes that rows,
+  columns and scroll containers add up from their children are checked only
+  for overflow. An input out of its range, a constraint whose minimum exceeds
+  its maximum, a table of tokens out of its range, or a sum or a position of
+  the text layout that does not fit makes the whole layout return a distinct
+  error.
 - The first release has rows, columns and scrolling, written in kosmo without a
   general layout library.
 
@@ -1898,14 +1947,15 @@ Besides the rules above:
   `Rgba8Premul`, 2 for `Xrgb8888`, 3 for `Rgb565` and 4 for `Argb8888Premul`.
   `kosmo-testkit` computes the digests of presented buffers in this encoding
   with the `sha2` package, so the digest of a frame equals the digest that a
-  golden's manifest lists for the same frame.
+  golden's manifest lists for the same frame. Layout tree goldens are
+  compared by the SHA-256 of their text as `LayoutTree::text` writes it.
 - **Pinning.** The toolchain and the chosen libraries are pinned exactly. Each
   upgrade is a pull request of its own, which updates the goldens by category,
   and the list of forbidden methods is generated again with a toolchain upgrade.
-- **Authority.** Pixel goldens have zero tolerance, and the check on
-  GitHub-hosted runners is authoritative. The digests of a local run are
-  compared with those of CI one by one, and a difference between hosts is a
-  failure.
+- **Authority.** Pixel and layout tree goldens have zero tolerance, and the
+  check on GitHub-hosted runners is authoritative. The digests of a local run
+  are compared with those of CI one by one, and a difference between hosts is
+  a failure.
 
 ### External dependencies
 

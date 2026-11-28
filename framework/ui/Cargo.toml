@@ -1,6 +1,6 @@
 [package]
 name = "kosmo-ui"
-description = "The framework core: the control tree with its passes, the round function and its shell, result slots, timers, dispatch, focus checks, key bindings, hit testing and the drawing pass"
+description = "The framework core: the control tree with its passes, the round function and its shell, result slots, timers, dispatch, focus checks, key bindings, layout with its design tokens, hit testing and the drawing pass"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

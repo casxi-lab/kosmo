@@ -43,17 +43,17 @@ const KINDS: [&str; 3] = ["label", "row", "field"];
 /// The commands that the model's controls may handle.
 const HANDLED: [CommandId; 3] = [MOVE_LEFT, MOVE_RIGHT, DELETE_BACKWARD];
 
-/// The SplitMix64 generator.
-struct SplitMix64 {
+/// The SplitMix64 generator, which the random layouts use too.
+pub(crate) struct SplitMix64 {
     state: u64,
 }
 
 impl SplitMix64 {
-    fn new(seed: u64) -> SplitMix64 {
+    pub(crate) fn new(seed: u64) -> SplitMix64 {
         SplitMix64 { state: seed }
     }
 
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9e37_79b9_7f4a_7c15);
         let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -62,7 +62,7 @@ impl SplitMix64 {
     }
 
     /// A value in `0..bound`, up to the generator's bias; 0 when `bound` is 0.
-    fn below(&mut self, bound: usize) -> usize {
+    pub(crate) fn below(&mut self, bound: usize) -> usize {
         if bound == 0 {
             0
         } else {

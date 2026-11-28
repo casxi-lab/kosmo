@@ -130,8 +130,9 @@ application's [control tree](docs/features/framework/runtime.md) and runs
 the rounds of its event loop with result slots, timers, focus checks and
 the dispatch of commands, with a shell that fetches the two fonts through
 the platform interface, drives rounds through it and presents frames,
-drawing text from the glyph cache of its font set, so far without layout
-and with a drawing pass that rounds do not run yet, the
+drawing text from the glyph cache of its font set, with a layout of rows,
+columns and scroll containers that each round runs and a drawing pass that
+rounds do not run yet, the
 headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance

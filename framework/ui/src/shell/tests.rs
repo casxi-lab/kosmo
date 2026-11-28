@@ -12,8 +12,11 @@ use kosmo_text::{GlyphError, MONO, SANS};
 use kosmo_types::{DamageRect, Fx, KeyAction, KeyMeaning, NamedKey, Point, Rect, Size, convert};
 
 use super::*;
+use crate::app::{Control, DrawContext, Message, Out};
 use crate::command::{EVALUATE_SELECTION, MOVE_LEFT};
+use crate::layout::{self, Column, Constraint, Font, Text};
 use crate::testing::{SURFACE, TestApp, TestPort, Widget, key_event, node, stamp};
+use crate::tokens::FontSize;
 use crate::tree::{Key, View};
 
 type Log = Rc<RefCell<Vec<String>>>;
@@ -831,4 +834,119 @@ fn glyph_runs_are_drawn_from_the_glyph_cache_into_a_kept_frame() {
         .unwrap();
     assert_eq!(fake.bytes, expected.bytes());
     assert!(fake.bytes.iter().any(|&byte| byte != 0));
+}
+
+/// A control of the label: a column, or a text leaf in Fira Sans.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Label {
+    Column,
+    Text(&'static str),
+}
+
+impl Control<Labels> for Label {
+    type State = ();
+
+    fn kind(&self) -> crate::tree::Kind {
+        crate::tree::Kind::new(match self {
+            Label::Column => "column",
+            Label::Text(_) => "text",
+        })
+    }
+
+    fn layout(&self, _: &()) -> layout::Node<'_> {
+        match self {
+            Label::Column => layout::Node::Column(Column::new()),
+            Label::Text(text) => layout::Node::Text(Text::new(text, Font::Sans, FontSize::Body)),
+        }
+    }
+
+    fn draw(&self, _: &mut DrawContext<'_, ()>) {}
+}
+
+/// An application whose view is a column with the text "Ag".
+struct Labels;
+
+impl App for Labels {
+    type Message = ();
+    type Control = Label;
+    type Port = TestPort;
+
+    fn update(&mut self, _: Message<Self>, _: &mut Out<Self>) {}
+
+    fn view(&self) -> View<Label> {
+        View::new(Key::new(0), Label::Column).child(View::new(Key::new(0), Label::Text("Ag")))
+    }
+}
+
+/// The layout lines of the record of `end`.
+fn layout_lines(end: &RoundEnd) -> Vec<String> {
+    let lines = end.output.record.lines();
+    lines
+        .iter()
+        .filter(|line| line.starts_with("layout "))
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn each_round_lays_out_the_configured_surfaces_with_the_shells_font_set() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 64, 8, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Labels, TestPort::default());
+    // Before a `Configure` the surface has no size, and nothing is laid
+    // out.
+    let first = shell.run_round(&mut fake, None).unwrap();
+    assert!(layout_lines(&first).is_empty());
+    assert!(shell.runtime().layout(SURFACE).is_none());
+    let size = PixelSize::new(64, 8).unwrap();
+    fake.batches.push_back(vec![PlatformEvent::Configure {
+        surface: SURFACE,
+        size,
+    }]);
+    let second = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(
+        layout_lines(&second),
+        ["layout surface 1 boxes 2 laid 2 texts 1"]
+    );
+    let laid = shell.runtime().layout(SURFACE).unwrap();
+    let px = |pixels| Fx::from_pixels(pixels).unwrap();
+    let surface = Size::new(px(64), px(8)).unwrap();
+    assert_eq!(laid.boxes()[0].constraint, Constraint::tight(surface));
+    assert!(laid.boxes()[1].text.is_some());
+    // The fonts are not fetched again, and an unchanged tree is not laid
+    // out again.
+    taken(&log);
+    let third = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(taken(&log), ["wait none", "now"]);
+    assert_eq!(
+        layout_lines(&third),
+        ["layout surface 1 boxes 2 laid 0 texts 0"]
+    );
+}
+
+#[test]
+fn rounds_lay_text_out_with_the_font_set_that_the_shell_fetched() {
+    // A resource table with the two fonts swapped: the shell builds its
+    // font set from them, with Fira Mono in the place of Fira Sans, and the
+    // round lays the text out with that font set, not with one of its own.
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 64, 8, PixelFormat::Rgba8Premul);
+    fake.resources.insert(SANS_RESOURCE, MONO_BYTES.to_vec());
+    fake.resources.insert(MONO_RESOURCE, SANS_BYTES.to_vec());
+    fake.batches.push_back(vec![PlatformEvent::Configure {
+        surface: SURFACE,
+        size: PixelSize::new(64, 8).unwrap(),
+    }]);
+    let mut shell = Shell::new(Labels, TestPort::default());
+    shell.run_round(&mut fake, None).unwrap();
+    let laid = shell.runtime().layout(SURFACE).unwrap();
+    let width = laid.boxes()[1].text.as_ref().unwrap().paragraph.width();
+    let width_in = |sans: &[u8], mono: &[u8]| {
+        let mut fonts = FontSet::new(sans, mono).unwrap();
+        let style = kosmo_text::TextStyle::new(SANS, Fx::from_pixels(16).unwrap()).unwrap();
+        let limit = Some(Fx::from_pixels(64).unwrap());
+        fonts.layout("Ag", style, limit).unwrap().width()
+    };
+    assert_eq!(width, width_in(MONO_BYTES, SANS_BYTES));
+    assert_ne!(width, width_in(SANS_BYTES, MONO_BYTES));
 }
