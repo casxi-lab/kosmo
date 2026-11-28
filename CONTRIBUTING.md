@@ -496,13 +496,17 @@ its tests and have no goldens. Those of `kosmo-ui` hold the layout trees
 of its layout cases, each a control tree of rows, columns, scroll
 containers, text leaves and fixed-size leaves laid out under the
 constraint of its root with the table of design tokens and the font set of
-the two bundled fonts. A layout tree is UTF-8 text as `LayoutTree::text`
-writes it: the line `layout-tree 1`, the format and its version, and then
-one line for each box in preorder, with its index, its parent's index,
-the kind and key of its control, the smallest and largest size of its
-constraint, its position, its size, its baseline, its scroll offset, the
-axes along which it overflows and whether it draws, every number an
-integer, a count, a key or a value in 1/64 pixel. Names are lowercase
+the two bundled fonts, and the layout tree and the drawing of a scene that
+uses every design token, which a round lays out and draws on a surface of
+240 by 160 pixels and vello_cpu draws from the coverage masks of the glyph
+cache over the background colour of the tokens. A layout tree is UTF-8
+text as `LayoutTree::text` writes it: the line `layout-tree 1`, the format
+and its version, and then one line for each box in preorder, with its
+index, its parent's index, the kind and key of its control, the smallest
+and largest size of its constraint, its position, its size, its baseline,
+its scroll offset, the axes along which it overflows and whether it
+draws, every number an integer, a count, a key or a value in 1/64 pixel.
+Names are lowercase
 letters, digits and `-`, and one name has one file. A test refers to a
 golden by calling `matches_golden` with the name as a string literal; the
 call draws the golden's scene and encodes it in memory, or lays out the
