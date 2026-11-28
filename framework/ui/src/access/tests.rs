@@ -18,6 +18,8 @@ use crate::testing::{SURFACE, TestPort, font_set, key_event, press, stamp};
 use crate::tokens::{FontSize, TOKENS};
 use crate::tree::{Key, Kind, View, WidgetId};
 
+mod random;
+
 /// A command of the tests that turns the presentation state of the
 /// control that handles it on.
 const TURN_ON: CommandId = CommandId::new("test", "TurnOn", false);
