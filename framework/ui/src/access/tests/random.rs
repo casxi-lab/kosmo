@@ -11,7 +11,8 @@
 //! without a size. The updates of each round are applied in order to an
 //! `AccessibilityTree` of their surface, as the headless backend keeps it,
 //! except in one group of `DROP_EVERY`, where one update of one surface is
-//! dropped and the runtime is told so.
+//! dropped and the runtime is told so; a later round of that group lays the
+//! surface out again, and its update holds the whole tree.
 //!
 //! After every round nothing has panicked, every update was taken, and the
 //! tree of each surface with a layout has a node for each control and no
@@ -79,7 +80,7 @@ const TOO_DEEP_EVERY: usize = 16;
 const UNSIZED_EVERY: usize = 8;
 
 /// One group in this many, the last of each run of this many, drops one
-/// update of one surface.
+/// update of one surface and checks the whole update after it.
 const DROP_EVERY: u64 = 16;
 
 /// The names, values and texts of the controls, with repeats and the empty
@@ -530,8 +531,10 @@ fn char_press(character: char) -> Event {
 
 /// What the test keeps of a surface between rounds.
 struct Kept {
-    /// The size of its latest round with a size.
+    /// The size that a round with a size gives it.
     size: PixelSize,
+    /// The size of its latest round with a size, if any.
+    given: Option<PixelSize>,
     /// The tree that the platform keeps, from the updates applied in order.
     tree: Option<AccessibilityTree>,
     /// Its next update must hold the whole tree: none has been applied, or
@@ -567,14 +570,25 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
     let mut kept: Vec<Kept> = (0..1 + rng.below(SURFACES.len()))
         .map(|_| Kept {
             size: random_size(&mut rng),
+            given: None,
             tree: None,
             whole: true,
         })
         .collect();
-    let rounds = 1 + rng.below(MAX_ROUNDS);
+    let dropping = group % DROP_EVERY == DROP_EVERY - 1;
+    // A group that drops an update has a round from which to drop it, the
+    // second to last round, by which it has dropped it, and the last, by
+    // which it has checked the whole update after it.
+    let rounds = if dropping {
+        3 + rng.below(MAX_ROUNDS - 2)
+    } else {
+        1 + rng.below(MAX_ROUNDS)
+    };
     // The round from which one update of the surface `drop.1` is dropped.
-    let mut drop =
-        (group % DROP_EVERY == DROP_EVERY - 1).then(|| (rng.below(rounds), rng.below(kept.len())));
+    let mut drop = dropping.then(|| (rng.below(rounds - 2), rng.below(kept.len())));
+    // The surface whose update was dropped, until the whole update after
+    // it is checked.
+    let mut again: Option<usize> = None;
     let mut sized: Vec<bool> = vec![true; kept.len()];
     let mut dropped_last = false;
     let mut left: BTreeSet<WidgetId> = BTreeSet::new();
@@ -589,7 +603,17 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
                 });
             }
         }
-        app.too_deep = !dropped_last && rng.below(TOO_DEEP_EVERY) == 0;
+        // While the update is not dropped yet, the second to last round lays
+        // the chosen surface out at a size other than its last one, so that
+        // the box of the root and with it the tree change; while the whole
+        // update after the drop is not checked yet, the last round lays the
+        // surface out. Neither round rejects its view.
+        let forced = match (drop, again) {
+            (Some((_, at)), _) if round + 2 == rounds => Some((at, true)),
+            (_, Some(at)) if round + 1 == rounds => Some((at, false)),
+            _ => None,
+        };
+        app.too_deep = forced.is_none() && !dropped_last && rng.below(TOO_DEEP_EVERY) == 0;
         // Half the rejected rounds change nothing else; the others give the
         // surfaces new sizes.
         let pure = !app.too_deep || rng.below(2) == 0;
@@ -615,11 +639,19 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
                     surface.size = random_size(&mut rng);
                 }
             }
+            if let Some((at, resize)) = forced {
+                sized[at] = true;
+                if resize {
+                    let last = kept[at].given.unwrap_or(kept[at].size);
+                    kept[at].size = PixelSize::new(last.width() % 800 + 1, last.height()).unwrap();
+                }
+            }
         }
         let mut layout = LayoutInput::new(fonts, 0, TOKENS);
-        for (index, surface) in kept.iter().enumerate() {
+        for (index, surface) in kept.iter_mut().enumerate() {
             if sized[index] {
                 layout = layout.surface(SURFACES[index], surface.size);
+                surface.given = Some(surface.size);
             }
         }
         let before = runtime.tree().preorder();
@@ -667,6 +699,7 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
                 .unwrap_or_else(|what| panic!("{}", fail(round, &what)));
             if drop.is_some_and(|(from, at)| round >= from && at == index) {
                 drop = None;
+                again = Some(index);
                 dropped = Some(index);
                 runtime.push_failed(*surface);
                 kept[index].whole = true;
@@ -680,6 +713,9 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
             };
             assert_eq!(taken, Ok(()), "{}", fail(round, "an update was refused"));
             kept[index].whole = false;
+            if again == Some(index) {
+                again = None;
+            }
         }
         dropped_last = dropped.is_some();
         for (index, expected) in built.iter().enumerate() {
@@ -696,6 +732,16 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
                 .unwrap_or_else(|what| panic!("{}", fail(round, &what)));
         }
     }
+    assert!(
+        drop.is_none(),
+        "{}",
+        fail(rounds - 1, "no update was dropped")
+    );
+    assert!(
+        again.is_none(),
+        "{}",
+        fail(rounds - 1, "no whole update followed the dropped one")
+    );
     log
 }
 
