@@ -989,11 +989,35 @@ against the new version instead of being shown as current and at once as stale.
 - A parent passes a minimum and a maximum size to each child; the child reports
   its size and an optional baseline, and the parent places it. Layout reads only
   the view model, display parameters and text metrics and is a pure function.
+- Each control gives a layout node from its value and presentation state: a
+  row, a column or a scroll container, which lays out the control's children,
+  or a leaf, a text leaf or a leaf of a fixed size. A control that gives none is
+  a leaf of size zero without a baseline.
+- Rows and columns place their children one after another, each at its own
+  size, with spacing between them and padding around them, and align them
+  across at the start, the centre or the end; a row can also align them by
+  baseline, where a child without a baseline uses its bottom edge. Nothing
+  stretches, and children do not wrap. A text leaf breaks its lines at the
+  largest width of its constraint and has the baseline of its first line; a row
+  or column has the baseline of its first child that has one.
+- A scroll container has one child, its content, which the container does not
+  limit along its axis. The offset that the control's presentation state
+  requests is brought into the range from 0 to the content's length less the
+  container's.
+- Spacing and padding are spacing tokens and the size of text a font size
+  token, so a control cannot give a length in pixels in their place; one table
+  of design tokens holds their values.
 - Only dirty subtrees are laid out again; a node whose size depends only on its
   parent's constraints bounds the work. Scrolling changes only the offset.
-  Overflow is marked in the layout result, never clipped silently.
-- Coordinates use the [numeric representation](#numeric-representation); a value
-  out of its range makes the whole layout return a distinct error.
+  Overflow is marked in the layout result, along each axis where a box's
+  natural size exceeds its maximum size, never clipped silently; the box then
+  takes its maximum size, and its children keep theirs.
+- Coordinates use the [numeric representation](#numeric-representation). Its
+  bound on layout inputs applies to constraints, to the sizes that leaves give
+  and to scroll requests; the sizes that rows, columns and scroll containers
+  add up from their children are checked only for overflow. An input out of its
+  range, a constraint whose minimum exceeds its maximum, or a sum that does not
+  fit makes the whole layout return a distinct error.
 - The first release has rows, columns and scrolling, written in kosmo without a
   general layout library.
 

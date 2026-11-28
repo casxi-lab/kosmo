@@ -1,8 +1,8 @@
 //! The core of kosmo's framework: the control tree with its passes, the
 //! round function of the single-threaded event loop and its shell,
 //! versioned result slots, timers, the dispatch of key events with focus
-//! checks, command tables with the minimal key map, hit testing and the
-//! drawing pass.
+//! checks, command tables with the minimal key map, layout with its design
+//! tokens, hit testing and the drawing pass.
 //!
 //! An application is a model that implements [`App`]: `update` handles
 //! [`Message`]s one at a time and is the only place that changes the model;
@@ -124,6 +124,32 @@
 //! a [`LayoutResult`], [`paint`] builds the display list of a damage region
 //! from one, which rounds do not do yet, and [`ResultSlot`] holds the
 //! current result of a region against the versions of `kosmo-math-model`.
+//!
+//! [`layout()`] lays a control tree out under the [`Constraint`] of its
+//! root into a [`LayoutTree`], a pure function of the controls with their
+//! presentation states, the constraint, a table of design tokens and the
+//! text metrics of a font set. Each control gives a [`Node`] through
+//! [`Control::layout`]: a [`Row`], a [`Column`] or a [`Scroll`] container,
+//! which lays out the control's children, a [`Text`] leaf, a fixed-size
+//! leaf, or by default an empty leaf. A parent passes each child the
+//! smallest and the largest size it may take, the child reports its size
+//! and an optional baseline, and the parent places it; rows can align
+//! their children by baseline. A box whose natural size exceeds its
+//! largest size takes the largest size and marks the overflow of that
+//! axis, and a scroll container brings the offset that its control
+//! requests into the range of its content. Coordinates are `Fx` values; an
+//! input beyond [`MAX_LAYOUT_INPUT`] gives
+//! [`LayoutError::InputOutOfRange`], and a length beyond the numeric
+//! representation [`LayoutError::Overflow`], for the whole layout.
+//! [`LayoutTree::result`] gives the [`LayoutResult`] of the tree, and
+//! [`LayoutTree::text`] writes the tree as text, one line for each box.
+//!
+//! Rows and columns take their spacing and padding only as [`Space`]
+//! tokens, and text leaves their size as a [`FontSize`] token and their
+//! colour as a [`ColorToken`], so a length in pixels does not compile in
+//! their place. [`TOKENS`], a [`Tokens`] table, holds the value of each:
+//! spacings of 2, 4, 8 and 16 pixels, font sizes of 12, 16 and 24 pixels
+//! and five opaque colours.
 
 #![forbid(unsafe_code)]
 
