@@ -199,6 +199,24 @@ fn a_golden_file_one_line_off_its_layout_fails() -> Checked {
 }
 
 #[test]
+fn a_golden_file_that_differs_only_in_its_line_ends_fails() -> Checked {
+    let name = "layout-row-spacing";
+    let text = fs::read_to_string(golden::file_in(golden::GOLDENS, name)).map_err(failed)?;
+    // Line ends of CR LF, as a checkout that converted them would give,
+    // and a file without its last line end.
+    let crlf = text.replace('\n', "\r\n");
+    assert_eq!(
+        golden::compare(name, crlf.as_bytes(), &text),
+        Err(format!(
+            "{name}: line 1 is \"layout-tree 1\\n\" laid out and \"layout-tree 1\\r\\n\" in the golden"
+        ))
+    );
+    let cut = text.strip_suffix('\n').unwrap_or_default();
+    assert!(golden::compare(name, cut.as_bytes(), &text).is_err());
+    Ok(())
+}
+
+#[test]
 fn the_helper_of_the_comparisons_fails_without_a_case() {
     // Not a string literal, so the goldens step does not count it as a
     // reference to a golden.
