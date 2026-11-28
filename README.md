@@ -111,8 +111,9 @@ jobs](docs/features/framework/job-layer.md), `kosmo-render`, which holds
 [display lists](docs/features/framework/rendering.md) with their text
 form, the renderer interface, the rasterizer on vello_cpu that draws display
 lists on the CPU and the wrapper of the transcendental functions that
-rendering and layout are to call, `kosmo-text`, which holds the two fonts
-that kosmo bundles, Fira Sans and Fira Mono, with their license files and
+rendering and layout are to call, `kosmo-text`, which holds the [two
+fonts](docs/features/framework/text.md) that kosmo bundles, Fira Sans and
+Fira Mono, with their license files and
 their asset manifest, the font set that registers their bytes for the text
 stack parley without system fonts, the shaping and line breaking of
 paragraphs into glyph runs of display lists and the glyph cache of their
@@ -144,7 +145,9 @@ the facade `kosmo-sdk`, which re-exports
 `kosmo-math-model`, `kosmo-jobs`, `kosmo-math-kalyx` and `kosmo-scratchpad`
 and through which the `desktop/` workspace uses them. The
 `desktop/` workspace has the `kosmo` program. CI runs the repository checks on every pull request to
-`main` and every push to `main`. These commands run from the repository root:
+`main` and every push to `main`, and a weekly job audits the lock files
+against the RustSec advisory database. These commands run from the
+repository root:
 
 ```sh
 printf ':diff x x^2\n:diff x x^3\n:history\n' | cargo run --quiet --locked --manifest-path desktop/Cargo.toml -p kosmo
@@ -171,7 +174,8 @@ reads the lines that you type. The second prints `kosmo` and its version. The
 next thirteen run the tests of the terminal, of the editing structure, of
 the job layer, of rendering, with its pixel goldens and the wrapper of
 transcendental functions, of the text crate, with its font set, shaping,
-line breaking, glyph cache and pixel goldens, of the platform interface
+line breaking, glyph cache, pixel goldens and the coverage of the interface
+strings, of the platform interface
 with its test hooks, of formula conversion with the kalyx runner, of the
 Scratchpad, of the framework core, of the headless
 backend with its test hooks, the conformance suite, the shell and the

@@ -421,8 +421,8 @@ group open.
 
 A `Shell` holds an application's `Runtime`, the application and its
 execution port, the receipts that wait for the next round, the font set of
-`kosmo-text` and, for each surface, its size and the previous frame that
-presentation keeps. It holds no platform:
+[`kosmo-text`](text.md) and, for each surface, its size and the previous
+frame that presentation keeps. It holds no platform:
 `Shell::run_round(platform, deadline)`, the single-round entry, borrows one
 for each round, so a driver keeps its backend between rounds.
 `Shell::new(app, port)` builds it. Before its first round the shell fetches

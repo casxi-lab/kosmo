@@ -1661,10 +1661,12 @@ pub trait Rasterizer {
   goldens step of `cargo xtask check` compares the directory with it, as
   [the font assets](../CONTRIBUTING.md#the-font-assets) describes. Variable
   fonts are not used, because taking an instance rewrites the file.
-- Without fallback, each font covers every character of its role; the character
-  set is fixed with `kosmo-text`. Fira Sans has no `□` (U+25A1), so the
-  formula editing control draws a hole as a rectangle and no interface string
-  contains `□`. Fira Mono has no `∆` (U+2206) and no `⋅` (U+22C5), and
+- Without fallback, each font covers every character of its role: the
+  characters of the interface strings that
+  `framework/text/tests/data/interface-strings.txt` lists for it, which a test
+  of `kosmo-text` checks against that font. Fira Sans has no `□` (U+25A1),
+  so the formula editing control draws a hole as a rectangle and no interface
+  string contains `□`. Fira Mono has no `∆` (U+2206) and no `⋅` (U+22C5), and
   monospaced interface strings do not use them.
 
 Fonts are loaded through the platform interface:
@@ -4165,7 +4167,7 @@ A component is a unit with its own role, contract and level.
 | Layout (rows, columns and scrolling; hit testing) | `kosmo-ui` | Framework core | A0 | `planned` |
 | Accessibility tree (AccessKit nodes and tree updates) and test queries | `kosmo-ui`, `kosmo-testkit` | Framework core | A0 | `planned` |
 | Rendering (renderer interface, display lists, rasterization with vello_cpu, per-pixel reference implementation, wrapper of transcendental functions) | `kosmo-render` | Presentation | A0 | [Rendering](features/framework/rendering.md); tests in `framework/render/src/` and `framework/render/tests/` |
-| Text (shaping and line breaking with parley, glyph outlines and coverage cache, the two bundled fonts and their asset manifest) | `kosmo-text` | Presentation | A0 | `planned` |
+| Text (shaping and line breaking with parley, glyph outlines and coverage cache, the two bundled fonts and their asset manifest) | `kosmo-text` | Presentation | A0 | [Text](features/framework/text.md); tests in `framework/text/src/` and `framework/text/tests/` |
 | Platform interface (nine traits, with AccessKit re-exported) and conformance suite | `kosmo-platform`, with the suite in `kosmo-testkit` | Platform contract | A1 | [Platform interface](features/framework/platform-interface.md); the suite in `framework/testkit/src/conformance.rs`, its positive and negative cases on the headless backend in `framework/backend-headless/tests/conformance.rs`, and tests in `framework/platform/src/` |
 | Headless backend (no threads, a virtual clock that only the driver advances) | `kosmo-backend-headless` | Backend | A0, passing the platform conformance suite | [The headless backend](features/framework/platform-interface.md#the-headless-backend); the example of the crate documentation in `framework/backend-headless/src/lib.rs` and tests in `framework/backend-headless/tests/` |
 | Test support (script runner with checkpoint records, clock control, call probes, pixel digests) | `kosmo-testkit` | Tool | A0 | [Platform interface](features/framework/platform-interface.md) for the script runner, pixel digests and call probes, and [call probes](../CONTRIBUTING.md#call-probes) for their rules; tests in `framework/testkit/src/`, `framework/testkit/tests/` and, for the runner and call relations, `framework/backend-headless/tests/` |

@@ -613,10 +613,13 @@ license files as those of the google/fonts files at commit `29b4ec6`, their
 `upstream` as google/fonts records it and their `version` as their name
 tables give it, so such a change also changes that test, and review
 compares it with the files of `source`. The step does not read the fonts
-themselves, neither their tables nor the characters that they cover. It
-recognizes a font outside the asset directory only by the extensions above,
-so a font under another extension, such as `.otc` or `.bin`, or one
-embedded in another file is not reported; review covers these.
+themselves, neither their tables nor the characters that they cover; a test
+of `kosmo-text` checks the characters, as [the coverage of the interface
+strings](docs/features/framework/text.md#the-coverage-of-the-interface-strings)
+describes. The step recognizes a font outside the asset directory only by
+the extensions above, so a font under another extension, such as `.otc` or
+`.bin`, or one embedded in another file is not reported; review covers
+these.
 
 `kosmo-text` is not published yet. Its asset directory lies inside the
 crate's directory, so a published package would carry the fonts, their
@@ -1078,13 +1081,45 @@ Security advisories are checked by hand before each version is tagged,
 pre-release versions such as `0.1.0-dev.1` included: a maintainer checks the
 crates.io packages in every `Cargo.lock` of the repository against the RustSec
 advisory database and records, with the release decision, the commit of the
-advisory database that was used. A weekly advisory job, not required for
-merging, is planned: with the framework's raster library and text stack, the
-allowlists of the product workspaces together list more than about 20
-distinct packages, each name and version counted once however many
-allowlists list it, the packages of the tool workspace `xtask` not counted.
-The job will change neither the `cargo xtask check` job nor the branch rules
-of `main`.
+advisory database that was used.
+
+With the framework's raster library and text stack, the allowlists of the
+product workspaces together list more than about 20 distinct packages, each
+name and version counted once however many allowlists list it, the packages
+of the tool workspace `xtask` not counted, so a weekly job checks them too:
+the job `security advisories` of `.github/workflows/advisories.yml`. It runs
+for `main` only, on a GitHub-hosted `ubuntu-24.04-arm` runner, every Monday
+at 09:41 UTC and when a maintainer starts it by hand, with read access to the
+contents of the repository and without secrets. It installs the toolchain of
+`rust-toolchain.toml` and then cargo-audit 0.23.0 with
+`cargo install --locked --no-default-features`, which leaves out the
+default feature `binary-scanning` that only audits compiled programs, and
+prints the version of cargo-audit. It then runs
+`cargo audit --file <workspace>/Cargo.lock` for `display/`, `framework/`,
+`desktop/` and `xtask/` in turn. Each run fetches the RustSec advisory
+database into `advisory-db` in the Cargo home, and the job prints the commit
+of the database after each run. A vulnerability advisory for a package of
+any of the four lock files fails the job, once all four have been audited.
+An audit that fails for another reason, such as an advisory database that
+cannot be fetched, fails the job in the same way; its log shows which.
+Versions that crates.io has yanked and informational advisories, such as a
+package that is no longer maintained, are reported as warnings and do not
+fail it. The job is not required for merging, and it changes neither the
+`cargo xtask check` job nor the branch rules of `main`; the check by hand
+before each tag stays. GitHub disables a scheduled workflow of a public
+repository after 60 days without activity in the repository; the workflow
+then runs neither on its schedule nor by hand until a maintainer enables it
+again.
+
+The job has a limit: `cargo install --locked` compiles cargo-audit from the
+`Cargo.lock` of the cargo-audit package, which lists 363 packages for every
+platform and feature, and the job builds those that its target and features
+select. No allowlist covers that lock file: the fetch and deps steps never
+read it, so they check neither the sources nor the licenses nor the build
+scripts of its packages, even of those whose name and version an allowlist
+also lists, and their build scripts and procedural macros run on the runner
+of this job. They run only there: nothing that the job builds enters a
+build of kosmo.
 
 ## Commit messages
 

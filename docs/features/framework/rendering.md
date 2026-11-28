@@ -14,10 +14,10 @@ same bytes on every run and every host, and pixel goldens check this.
 The framework's drawing pass in `kosmo-ui` builds display lists, but rounds
 do not call it yet; the shell of `kosmo-ui` keeps a `RenderTarget` for each
 surface and presents the frames that its driver draws through the platform
-interface, as [the shell](runtime.md#the-shell) describes. `kosmo-text`
-shapes text into glyph runs and fills their coverage masks in its glyph cache
-through `fill_coverage`, and the shell hands the cache to the rasterizer;
-images are planned, and the image store is empty.
+interface, as [the shell](runtime.md#the-shell) describes.
+[`kosmo-text`](text.md) shapes text into glyph runs and fills their coverage
+masks in its glyph cache through `fill_coverage`, and the shell hands the
+cache to the rasterizer; images are planned, and the image store is empty.
 `kosmo-render` depends on `kosmo-types`, vello_cpu and libm, and it is a core
 library on the deterministic path. The design rules that it follows are in the
 [renderer interface](../../architecture.md#renderer-interface),
