@@ -474,25 +474,31 @@ pub fn report(
 
 /// The files of the goldens in the directory `dir` on disk, by name.
 /// Files whose names start with `.`, such as `.DS_Store`, are left out; any
-/// other file but `MANIFEST`, and a second file of one name, is an error.
+/// other file but `MANIFEST`, and a second file of one name, is an error,
+/// which names the first such file in the order of file names.
 fn files_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
     let shown = dir.display();
     let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {shown}: {error}"))?;
-    let mut files = BTreeMap::new();
+    let mut found = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|error| format!("cannot read {shown}: {error}"))?;
-        let file = entry.file_name();
-        let file = file.to_string_lossy();
+        let file = entry.file_name().to_string_lossy().into_owned();
         if file == "MANIFEST" || file.starts_with('.') {
             continue;
         }
-        let is_file = entry.file_type().is_ok_and(|kind| kind.is_file());
+        found.push((file, entry.file_type().is_ok_and(|kind| kind.is_file())));
+    }
+    // The order of `read_dir` depends on the file system; taking the files
+    // in the order of their names makes the outcome independent of it.
+    found.sort();
+    let mut files = BTreeMap::new();
+    for (file, is_file) in found {
         let Some(name) = golden_name(&file).filter(|_| is_file) else {
             return Err(format!(
                 "{shown}/{file} is not a golden `<name>.px` or `<name>.tree`"
             ));
         };
-        if let Some(first) = files.insert(name.to_string(), file.to_string()) {
+        if let Some(first) = files.insert(name.to_string(), file.clone()) {
             return Err(format!(
                 "{shown}/{file} is a second file of the golden {name}, beside {first}"
             ));

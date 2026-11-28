@@ -908,19 +908,23 @@ fn other_files_beside_layout_tree_goldens_are_reported() {
 
 #[test]
 fn the_manifest_lists_layout_tree_goldens_beside_pixel_goldens() {
-    let dir = scratch("manifest-trees");
-    fs::write(dir.join("glyphs.px"), bytes_of("glyphs")).unwrap();
-    fs::write(dir.join("layout-row.tree"), tree_bytes_of("layout-row")).unwrap();
-    let text = manifest_text(&digests_in(&dir).unwrap());
-    assert_eq!(text, line_of("glyphs") + &tree_line_of("layout-row"));
-    // A second file of one name gives no manifest.
-    fs::write(dir.join("glyphs.tree"), tree_bytes_of("glyphs")).unwrap();
-    let error = digests_in(&dir).unwrap_err();
-    assert!(
-        error.ends_with("/glyphs.tree is a second file of the golden glyphs, beside glyphs.px"),
-        "{error}"
-    );
-    fs::remove_dir_all(&dir).unwrap();
+    // A file system can list the two files of one name in either order,
+    // and for these two names APFS lists them in opposite orders.
+    for name in ["glyphs", "clip-group"] {
+        let dir = scratch(&format!("manifest-trees-{name}"));
+        fs::write(dir.join(format!("{name}.px")), bytes_of(name)).unwrap();
+        fs::write(dir.join("layout-row.tree"), tree_bytes_of("layout-row")).unwrap();
+        let text = manifest_text(&digests_in(&dir).unwrap());
+        assert_eq!(text, line_of(name) + &tree_line_of("layout-row"));
+        // A second file of one name gives no manifest, and the error names
+        // the second by name, whatever the order of the directory.
+        fs::write(dir.join(format!("{name}.tree")), tree_bytes_of(name)).unwrap();
+        let error = digests_in(&dir).unwrap_err();
+        let second =
+            format!("/{name}.tree is a second file of the golden {name}, beside {name}.px");
+        assert!(error.ends_with(&second), "{error}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
 
 #[test]
