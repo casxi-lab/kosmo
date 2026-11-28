@@ -1,5 +1,7 @@
 //! The drawing pass of a round: each surface with a layout is drawn whole
-//! when its layout or its controls changed since its latest frame, a
+//! when its layout changed since its latest frame, a view rebuilt the tree
+//! or a handler took its presentation state mutably; a key that no control
+//! handles and a handler that only reads its state give no frame; a
 //! pending region is drawn by itself, and a drawing pass that fails, also
 //! beyond the command limit of the display list, gives no frame and is
 //! recorded.
@@ -11,7 +13,7 @@ use kosmo_types::{BufferDesc, DamageRect, Fx, MonoTime, NamedKey, PixelFormat, P
 
 use super::super::*;
 use crate::app::{Context, DrawContext, Handling, Message, Out, Phase};
-use crate::command::{Command as KeyCommand, MOVE_LEFT};
+use crate::command::{Command as KeyCommand, DELETE_BACKWARD, MOVE_LEFT, MOVE_RIGHT};
 use crate::layout::{Column, Font, Node, Row, Text};
 use crate::testing::{SURFACE, TestPort, font_set, press, stamp};
 use crate::tokens::{ColorToken, FontSize, TOKENS};
@@ -22,8 +24,10 @@ fn px(pixels: i32) -> Fx {
 }
 
 /// A control of the scene: a row; a column; a fixed-size leaf of 4 by 4
-/// pixels that fills its box with the colour of a token and handles
-/// `MoveLeft` by counting it in its presentation state; a text leaf that
+/// pixels that fills its box with the colour of a token, handles
+/// `MoveLeft` by counting it in its presentation state, `MoveRight` by
+/// reading the count only and `DeleteBackward` by taking the count
+/// mutably and leaving it as it was; a text leaf that
 /// draws the text that the layout laid out; a fixed-size leaf that fills
 /// its box with a colour given as a value; or a fixed-size leaf of 1 by 1
 /// pixel that fills its box a number of times.
@@ -50,12 +54,20 @@ impl Control<Scene> for Part {
     }
 
     fn handle(&self, _: Phase, command: &KeyCommand, cx: &mut Context<'_, Scene, u32>) -> Handling {
-        if matches!(self, Part::Swatch(_)) && command.id == MOVE_LEFT {
-            *cx.state_mut() += 1;
-            Handling::Handled
-        } else {
-            Handling::Unhandled
+        if !matches!(self, Part::Swatch(_)) {
+            return Handling::Unhandled;
         }
+        match command.id {
+            MOVE_LEFT => *cx.state_mut() += 1,
+            MOVE_RIGHT => {
+                let _count: u32 = *cx.state();
+            }
+            DELETE_BACKWARD => {
+                let _count: &mut u32 = cx.state_mut();
+            }
+            _ => return Handling::Unhandled,
+        }
+        Handling::Handled
     }
 
     fn layout(&self, _: &u32) -> Node<'_> {
@@ -269,7 +281,13 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
         events,
         both(&mut fonts, first, second),
     );
-    assert_eq!(output.frames.len(), 2);
+    assert_eq!(
+        regions(&output),
+        [
+            (SURFACE, vec![rect(0, 0, 40, 20)]),
+            (SECOND, vec![rect(0, 0, 30, 20)])
+        ]
+    );
     assert_eq!(
         runtime.tree().state(runtime.tree().focused().unwrap()),
         Some(&1)
@@ -316,6 +334,100 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
         rect: Rect::new(Point::default(), Size::new(px(4), px(4)).unwrap()),
         color: TOKENS.error,
     }));
+}
+
+/// The key lines of the record of `output`.
+fn keys(output: &Output) -> Vec<&str> {
+    output
+        .record
+        .lines()
+        .iter()
+        .map(String::as_str)
+        .filter(|line| line.starts_with("key "))
+        .collect()
+}
+
+/// A surface that has a frame, keeps its size and has no pending region
+/// gets no frame from a round with only a key that no control handles:
+/// the swatch, the focused control, and the row decline its command, the
+/// application does not handle it, so the round rebuilds no view, and the
+/// layout tree stays as it was.
+#[test]
+fn a_key_that_no_control_handles_gives_no_frame() {
+    let mut fonts = font_set();
+    let mut app = Scene {
+        view: swatch_and_label(),
+    };
+    let mut runtime = Runtime::new();
+    let whole = size(40, 20);
+    let focus_in = Event::FocusIn {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+    };
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, vec![focus_in], input);
+    assert_eq!(regions(&output), [(SURFACE, vec![rect(0, 0, 40, 20)])]);
+    let before = runtime.layout(SURFACE).unwrap().clone();
+
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let events = vec![press(NamedKey::EXECUTE, stamp(1, 1))];
+    let output = drawn(&mut runtime, &mut app, events, input);
+    let unhandled = keys(&output);
+    assert_eq!(unhandled.len(), 1);
+    assert!(unhandled[0].ends_with(" unhandled kosmo.EvaluateSelection"));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(runtime.layout(SURFACE), Some(&before));
+    assert!(output.frames.is_empty());
+    assert!(output.paint_errors.is_empty());
+}
+
+/// Handlers that run without taking their presentation states mutably,
+/// the row's on a focus change and the swatch's on `MoveRight`, which it
+/// handles by reading its count, give no frame; the swatch's handler of
+/// `DeleteBackward`, which takes its count mutably and leaves it as it
+/// was, draws the surface whole, since states are not compared.
+#[test]
+fn only_a_handler_that_takes_its_state_mutably_draws_the_surface_again() {
+    let mut fonts = font_set();
+    let mut app = Scene {
+        view: swatch_and_label(),
+    };
+    let mut runtime = Runtime::new();
+    let whole = size(40, 20);
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, Vec::new(), input);
+    assert_eq!(output.frames.len(), 1);
+
+    let events = vec![
+        Event::FocusIn {
+            surface: SURFACE,
+            stamp: stamp(1, 1),
+        },
+        press(NamedKey::RIGHT, stamp(1, 1)),
+    ];
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, events, input);
+    let swatch = runtime.tree().focused().unwrap();
+    assert!(
+        output
+            .record
+            .lines()
+            .iter()
+            .any(|line| line.starts_with("focus-in ") && !line.ends_with(" no-region"))
+    );
+    assert!(keys(&output)[0].ends_with(&format!(" handled kosmo.MoveRight by control {swatch}")));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert!(output.frames.is_empty());
+
+    let events = vec![press(NamedKey::DELETE, stamp(1, 1))];
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, events, input);
+    assert!(keys(&output)[0].ends_with(&format!(
+        " handled kosmo.DeleteBackward by control {swatch}"
+    )));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(runtime.tree().state(swatch), Some(&0));
+    assert_eq!(regions(&output), [(SURFACE, vec![rect(0, 0, 40, 20)])]);
 }
 
 #[test]

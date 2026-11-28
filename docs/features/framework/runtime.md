@@ -1164,3 +1164,17 @@ wall clock.
     give no frame, `PaintError::List(ListError::TooManyCommands)` in
     `Output::paint_errors` and `too-many-commands` in the record. Test:
     `round::tests::draw::a_frame_beyond_the_command_limit_gives_no_frame_and_is_recorded`.
+25. Besides a surface's first frame, a new size and its pending region, a
+    round draws a surface only when its layout tree, the value of a
+    control or a presentation state changed. On a surface that has a
+    frame, keeps its size and has no pending region, a round with only a
+    key whose command the controls of the focus chain decline and the
+    application does not handle rebuilds no view, leaves the layout tree
+    as it was and gives no frame; handlers that only read their
+    presentation states, the region's root on a focus change and the
+    focused control on a command that it handles, give no frame either;
+    a handler that takes its presentation state through
+    `Context::state_mut` draws the surface whole, also when it leaves the
+    value as it was. Tests: `round::tests::draw::`
+    `a_key_that_no_control_handles_gives_no_frame`,
+    `only_a_handler_that_takes_its_state_mutably_draws_the_surface_again`.
