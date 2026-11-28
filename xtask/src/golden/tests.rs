@@ -429,6 +429,34 @@ fn the_goldens_of_this_repository_pass() {
 }
 
 #[test]
+fn the_git_attributes_keep_the_files_of_every_kind_of_golden_as_they_are() {
+    // A checkout that converted the line ends of a golden's file would
+    // give it another digest than MANIFEST lists, and so would a merge
+    // of two changes of its text.
+    let attributes = fs::read_to_string(repo::root().join(".gitattributes")).unwrap();
+    let rule = |pattern: &str| -> Vec<String> {
+        attributes
+            .lines()
+            .map(|line| line.split_whitespace().collect::<Vec<_>>())
+            .find(|words| words.first() == Some(&pattern))
+            .map_or_else(Vec::new, |words| {
+                words[1..].iter().map(|word| word.to_string()).collect()
+            })
+    };
+    assert_eq!(rule("**/tests/golden/MANIFEST"), ["text", "eol=lf"]);
+    for extension in EXTENSIONS {
+        let pattern = format!("**/tests/golden/*{extension}");
+        let attributes = rule(&pattern);
+        let unset = |attribute: &str| {
+            attributes
+                .iter()
+                .any(|word| word == "binary" || *word == format!("-{attribute}"))
+        };
+        assert!(unset("text") && unset("merge"), "{pattern}: {attributes:?}");
+    }
+}
+
+#[test]
 fn a_crate_with_goldens_without_its_test_file_is_reported() {
     // The fixtures hold the goldens of kosmo-render alone, so with every
     // crate of `SETS` the test files of kosmo-text and kosmo-ui are
