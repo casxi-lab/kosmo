@@ -131,6 +131,7 @@ mod app;
 mod command;
 mod focus;
 mod hit;
+mod layout;
 mod paint;
 mod port;
 mod record;
@@ -153,6 +154,10 @@ pub use command::{
 };
 pub use focus::{Event, Stamp, SurfaceId};
 pub use hit::{LayoutBox, LayoutError, LayoutResult, hit_test};
+pub use layout::{
+    Align, Axis, Column, Constraint, Font, LaidText, LayoutTree, MAX_LAYOUT_INPUT, Node, Overflow,
+    Row, RowAlign, Scroll, Text, TreeBox, layout,
+};
 pub use paint::{PaintError, paint};
 pub use port::{Effect, JobPort, Receipt, execute};
 pub use record::Record;

@@ -5,6 +5,7 @@ use kosmo_render::{ListBuilder, ListError};
 use kosmo_types::{MonoTime, Rect, Size};
 
 use crate::command::{Binding, Command};
+use crate::layout::Node;
 use crate::port::{Effect, JobPort};
 use crate::timer::{Requester, TimerLabel, TimerRequest};
 use crate::tree::{Kind, View, WidgetId};
@@ -317,6 +318,17 @@ pub trait Control<A: App>: Clone {
     /// nothing by default.
     fn timer(&self, label: TimerLabel, cx: &mut Context<'_, A, Self::State>) {
         let _ = (label, cx);
+    }
+
+    /// The control's layout node, from its value and its presentation
+    /// state `state`: a row, a column or a scroll container, which lays
+    /// out the control's children, or a leaf. [`layout`](crate::layout())
+    /// calls it once for each control it lays out. By default the control
+    /// is [`Node::Empty`], a leaf of size zero without a baseline, which
+    /// draws nothing.
+    fn layout(&self, state: &Self::State) -> Node<'_> {
+        let _ = state;
+        Node::Empty
     }
 
     /// The drawing entry. The drawing pass calls it in preorder; its

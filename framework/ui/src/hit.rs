@@ -42,6 +42,10 @@ pub enum LayoutError {
     TooManyBoxes,
     /// A position or an edge does not fit the numeric representation.
     Overflow,
+    /// A layout input is out of its range: a constraint whose smallest
+    /// size exceeds its largest, or a constraint, a leaf or a scroll
+    /// request beyond `MAX_LAYOUT_INPUT`.
+    InputOutOfRange,
 }
 
 impl LayoutResult {
