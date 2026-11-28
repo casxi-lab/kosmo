@@ -69,8 +69,8 @@ struct Surface {
     /// Its buffer is presented and not released yet.
     presented: bool,
     /// The region of the frames of rounds that came while its buffer was
-    /// presented, and the whole surface after a new size, which the next
-    /// round after the release draws again.
+    /// presented, and the whole surface after a new size or a dropped
+    /// frame, which the next round after the release draws again.
     pending: Option<Damage>,
 }
 
@@ -238,7 +238,8 @@ impl<A: App> Shell<A> {
     ///    `FocusOut` become the round's [`Event`]s in their order, while
     ///    the shell handles `Configure`, which sets the surface's size,
     ///    drops a previous frame of another size and, when the size
-    ///    changes, makes the whole surface its pending region, and
+    ///    changes or it drops the frame, makes the whole surface its
+    ///    pending region, and
     ///    `Released`, which makes the surface's buffer available again;
     ///    kinds of events that later versions add are ignored;
     /// 5. hands the effects to the execution port, which keeps the

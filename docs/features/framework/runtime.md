@@ -257,11 +257,13 @@ the layout pass nor the drawing pass, and the layouts that the runtime
 keeps stay as they were, also when its view pass rebuilt the tree.
 
 `Round::finish_with(app, input)` runs the view pass of `Round::finish` and
-then the layout pass, before the deadline. Its `LayoutInput` holds the font
-set that lays text out, `fonts`, the number `fonts_id` that names that font
-set, the table of design tokens, `tokens`, and the surfaces to lay out,
-`sizes`, each with its size; `LayoutInput::new(fonts, fonts_id, tokens)`
-builds it without surfaces, and `surface(surface, size)` adds one. The pass
+then the layout and drawing passes, before the deadline. Its `LayoutInput`
+holds the font set that lays text out, `fonts`, the number `fonts_id` that
+names that font set, the table of design tokens, `tokens`, the surfaces to
+lay out, `sizes`, each with its size, and `pending`, the regions that the
+drawing pass draws besides the update region of each surface;
+`LayoutInput::new(fonts, fonts_id, tokens)` builds it without surfaces, and
+`surface(surface, size)` adds one. The pass
 lays out the one control tree for each surface of `sizes`, in the order of
 the surfaces, with the surface's size as the tight constraint of the root,
 as the [layout pass](../../architecture.md#layout-pass) describes. The
@@ -314,7 +316,9 @@ layout, in the order of the surfaces, with the tokens of the
 damage region)` for each surface that it drew. The damage region of a
 surface's frame, as of a buffer of the surface's size, is its update
 region together with its region in `LayoutInput::pending`, which the
-shell fills with the regions of frames that it could not present. The
+shell fills with the regions of frames that it could not present, because
+the buffer was presented or the presentation failed, and with the whole of
+a surface after a new size or a dropped frame. The
 update region is the whole surface:
 
 - on the surface's first frame;
@@ -535,8 +539,9 @@ control leaves a group open.
 
 A `Shell` holds an application's `Runtime`, the application and its
 execution port, the receipts that wait for the next round, the font set of
-[`kosmo-text`](text.md) and, for each surface, its size and the previous
-frame that presentation keeps. It holds no platform:
+[`kosmo-text`](text.md) and, for each surface, its size, the previous
+frame that presentation keeps and the pending region of the frames that
+wait to be drawn again. It holds no platform:
 `Shell::run_round(platform, deadline)`, the single-round entry, borrows one
 for each round, so a driver keeps its backend between rounds.
 `Shell::new(app, port)` builds it. Before its first round the shell fetches
@@ -557,8 +562,9 @@ fonts again. Then each round:
    the reports. `Key`, `FocusIn` and `FocusOut` become the round's `Event`s
    in their order. The shell handles `Configure` itself, which sets the
    surface's size, `Shell::size`, drops a previous frame of another size
-   and, when the size changes, makes the whole surface its pending region,
-   so that the next frame after the release is whole, and `Released`,
+   and, when the size changes or it drops the frame, makes the whole surface
+   its pending region, so that the next frame after the release is whole,
+   and `Released`,
    which makes the surface's buffer available again; kinds of events that
    later versions add are ignored;
 5. hands the effects to the execution port, which keeps the receipts for
@@ -756,7 +762,11 @@ no wall-clock time; review checks these, as the
   the driver creates them through `SurfacePort` before the first round. A
   driver of `Shell::run_round` destroys them before it calls `shutdown`;
   `run` calls `shutdown` itself, so the surfaces of an application that
-  `run` drives are not destroyed before `shutdown`.
+  `run` drives are not destroyed before `shutdown`. A frame that fails to
+  present is drawn and presented again in every later round, which returns
+  the error again, also when nothing changed, and the frames of the
+  surfaces after it wait with it; so a driver runs no round after it
+  destroys a surface, which the shell still lays out and draws.
 - A frame of a round for a surface whose buffer is presented and not
   released is not presented: the shell keeps only its damage region, and
   the first round after the release draws that region again from the

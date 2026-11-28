@@ -11,8 +11,8 @@ descriptions, the conversion of pixels between them and damage regions are in
 the display server share. The same display list and damage region give the
 same bytes on every run and every host, and pixel goldens check this.
 
-The framework's drawing pass in `kosmo-ui` builds the display list of each
-surface in each round, and the shell of `kosmo-ui` keeps a `RenderTarget`
+The framework's drawing pass in `kosmo-ui` builds the display lists of the
+frames that rounds draw, and the shell of `kosmo-ui` keeps a `RenderTarget`
 for each surface and presents the frames of rounds through the platform
 interface, as [the shell](runtime.md#the-shell) describes.
 [`kosmo-text`](text.md) shapes text into glyph runs and fills their coverage

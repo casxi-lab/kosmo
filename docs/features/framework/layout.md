@@ -235,13 +235,14 @@ scene of the design tokens uses all twelve: a column with the padding
 of "x = 1/3" in Fira Mono at `FontSize::Body` and "stale" at
 `FontSize::Small` in `ColorToken::TextSecondary`; a rule of 208 × 2 pixels
 in `ColorToken::Accent`; and a row with the spacing `Space::S` of "error:"
-and "division by zero" at `FontSize::Body` in `ColorToken::Error`; the
-other text has no colour of its own and takes the default,
-`ColorToken::Text`, and is in Fira Sans. The first round of a
-new runtime lays it out on a surface of 240 × 160 pixels and draws it, and
-vello_cpu draws a rectangle of the surface in `ColorToken::Background` and
-over it the round's frame from the coverage masks of the glyph cache, into
-a tightly packed `Rgba8Premul` canvas encoded as the pixel goldens of
+and "division by zero" at `FontSize::Body` in `ColorToken::Error`.
+"Result" and "x = 1/3" have no colour of their own and take the default,
+`ColorToken::Text`, and all text but "x = 1/3" is in Fira Sans. The first
+round of a new runtime lays it out on a surface of 240 × 160 pixels and
+draws it, and vello_cpu draws a rectangle of the surface in
+`ColorToken::Background` and over it the round's frame from the coverage
+masks of the glyph cache, into a tightly packed `Rgba8Premul` canvas
+encoded as the pixel goldens of
 [rendering](rendering.md#pixel-goldens) are. Each golden test lays out or
 draws its golden alone and compares the result with the file byte for
 byte, without tolerance.
@@ -464,7 +465,8 @@ is tested in `xtask/`. No test sleeps or reads the wall clock.
     no display list. Tests: `paint::tests::`
     `a_colour_outside_the_table_of_tokens_is_refused`,
     `a_glyph_run_at_a_size_outside_the_font_size_tokens_is_refused`,
-    `the_check_compares_values_not_where_they_come_from`.
+    `the_check_compares_values_not_where_they_come_from`,
+    `every_kind_of_command_with_a_colour_is_checked`.
 12. The scene of the design tokens uses every token: its layout tree and
     its pixels, laid out and drawn by a round through the drawing pass
     with the check of the tokens, vello_cpu and the glyph cache, match

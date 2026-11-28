@@ -64,8 +64,10 @@ impl<P: JobPort> Input<P> {
 ///
 /// The shell gives its own font set, which it builds once before its first
 /// round, the table [`TOKENS`](crate::TOKENS), the size of each surface's
-/// latest `Configure`, and the regions of the frames that it could not
-/// present while a surface's buffer was presented and not released.
+/// latest `Configure`, and, for each surface whose buffer is not presented,
+/// its pending region: the regions of the frames that it could not present,
+/// because the buffer was presented or the presentation failed, and the
+/// whole surface after a new size or a dropped frame.
 #[non_exhaustive]
 pub struct LayoutInput<'f> {
     /// The font set that lays text out.

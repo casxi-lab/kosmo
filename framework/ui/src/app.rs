@@ -346,8 +346,9 @@ pub trait Control<A: App>: Clone {
 
     /// The drawing entry. The drawing pass calls it in preorder; its
     /// context holds only the control's identity and presentation state,
-    /// the size of its box, the colours of the design tokens and the
-    /// display list that it draws into.
+    /// the size of its box, the text that the layout pass laid out for a
+    /// text leaf, the colours of the design tokens and the display list
+    /// that it draws into.
     fn draw(&self, cx: &mut DrawContext<'_, Self::State>);
 }
 

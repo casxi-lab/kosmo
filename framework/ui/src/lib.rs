@@ -119,8 +119,8 @@
 //! and drawing passes, and pushes the round's accessibility updates and
 //! presents its frames, keeping the region of a frame for a surface whose
 //! buffer is still presented for the round after its release;
-//! [`Shell::present`]
-//! prepares the coverage masks of a display list's glyph runs in the glyph
+//! [`Shell::present`] prepares the coverage masks of a display list's glyph
+//! runs in the glyph
 //! cache of the font set, draws the list into a surface's previous frame
 //! and presents its damage.
 //! [`run`] runs rounds until the platform disconnects and returns an
