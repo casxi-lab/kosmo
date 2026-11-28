@@ -5,7 +5,7 @@ use kosmo_render::{Color, ListBuilder, ListError};
 use kosmo_types::{Fx, MonoTime, Rect, Size};
 
 use crate::command::{Binding, Command};
-use crate::layout::Node;
+use crate::layout::{LaidText, Node};
 use crate::paint::PaintError;
 use crate::port::{Effect, JobPort};
 use crate::timer::{Requester, TimerLabel, TimerRequest};
@@ -466,28 +466,31 @@ impl<A: App, S> Context<'_, A, S> {
 
 /// What the drawing entry of a control reaches: the control's identity and
 /// its presentation state, which it can only read, the size of its box, the
-/// colours of the design tokens, and the display list of the drawing pass,
-/// to which it appends commands.
+/// text that the layout laid out for it, the colours of the design tokens,
+/// and the display list of the drawing pass, to which it appends commands.
 pub struct DrawContext<'a, S> {
     id: WidgetId,
     state: &'a S,
     size: Size,
+    text: Option<&'a LaidText>,
     canvas: Canvas<'a>,
 }
 
 impl<'a, S> DrawContext<'a, S> {
     /// The context for drawing the control `id` with `state` into `canvas`,
-    /// with a box of `size`.
+    /// with a box of `size` and the laid-out `text` of a text leaf.
     pub(crate) fn new(
         id: WidgetId,
         state: &'a S,
         size: Size,
+        text: Option<&'a LaidText>,
         canvas: Canvas<'a>,
     ) -> DrawContext<'a, S> {
         DrawContext {
             id,
             state,
             size,
+            text,
             canvas,
         }
     }
@@ -505,6 +508,15 @@ impl<'a, S> DrawContext<'a, S> {
     /// The size of the control's box.
     pub fn size(&self) -> Size {
         self.size
+    }
+
+    /// The text of the control's text leaf as the layout pass of a round
+    /// laid it out, in the coordinates of its box, with its colour token.
+    /// It is `None` for any other control, and for every control that
+    /// [`paint`](crate::paint()) draws from a layout result, which holds no
+    /// text.
+    pub fn text(&self) -> Option<&'a LaidText> {
+        self.text
     }
 
     /// The colour of the colour token `token` in the table of design

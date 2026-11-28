@@ -13,16 +13,15 @@ the display list of a damage region from a layout result with its drawing
 pass, and drives rounds through the platform interface with its shell,
 which presents frames.
 
-The round function covers the event, update, view and layout passes. The
-drawing pass is a function of its own, which rounds do not call yet; it
-draws from the layout that the layout pass keeps for each surface. The
-[shell](#the-shell) waits for platform events, reads the clock, takes job
-reports, runs both steps of a round with its own font set for the layout
-pass and presents frames through the platform interface `kosmo-platform`;
-the headless backend `kosmo-backend-headless` is one platform it runs on.
-Accessibility is planned; until rounds draw, tests and other drivers draw
-the frames that they present from a surface's layout, or from a layout
-result that they build in code. `kosmo-ui` depends on `kosmo-types` for
+The round function covers the event, update, view, layout and drawing
+passes; the drawing pass draws from the layout that the layout pass keeps
+for each surface, and is also a function of its own for layout results
+built in code. The [shell](#the-shell) waits for platform events, reads
+the clock, takes job reports, runs both steps of a round with its own font
+set for the layout and drawing passes and presents the frames of rounds
+through the platform interface `kosmo-platform`; the headless backend
+`kosmo-backend-headless` is one platform it runs on. Accessibility is
+planned. `kosmo-ui` depends on `kosmo-types` for
 geometry, logical time, focus generations, epochs, key events and damage
 regions, on the versions of
 `kosmo-math-model`, on `kosmo-platform` for the platform interface, on
@@ -248,12 +247,13 @@ the round's record, what the view pass did, as `ViewPass::Rebuilt`,
 earliest timer and, while `unfinished_jobs` is above 0, the round's time
 plus `JOB_POLL_INTERVAL`, 16 ms; `None` when there is neither. A driver that
 holds receipts of the round's effects runs the next round at once, without
-waiting for the deadline. Its `accessibility` and `frames`, the tree updates
-and the display lists with their damage regions of each surface, which the
-[shell](#the-shell) hands to the platform, are empty until rounds run the
-accessibility and drawing passes. `Round::finish` runs no layout pass,
-and the layouts that the runtime keeps stay as they were, also when its
-view pass rebuilt the tree.
+waiting for the deadline. Its `accessibility` and `frames` are the tree
+updates and the display lists with their damage regions of each surface,
+which the [shell](#the-shell) hands to the platform; `accessibility` is
+empty until rounds run the accessibility pass, and `frames` holds what the
+drawing pass of `Round::finish_with` drew. `Round::finish` runs neither
+the layout pass nor the drawing pass, and the layouts that the runtime
+keeps stay as they were, also when its view pass rebuilt the tree.
 
 `Round::finish_with(app, input)` runs the view pass of `Round::finish` and
 then the layout pass, before the deadline. Its `LayoutInput` holds the font
@@ -306,6 +306,31 @@ layout, and so does a surface whose layout fails; the record names the
 error, `LayoutError::InputOutOfRange` for an input beyond its range and
 `Overflow` for a sum of lengths, or a position that the text layout gives,
 that does not fit.
+
+After the layout pass, the drawing pass draws each surface that has a
+layout, in the order of the surfaces, with the tokens of the
+`LayoutInput`, and `Output::frames` holds a `(surface, display list,
+damage region)` for each surface that it drew. The damage region of a
+surface's frame, as of a buffer of the surface's size, is its update
+region together with its region in `LayoutInput::pending`, which the
+shell fills with the regions of frames that it could not present. The
+update region is the whole surface:
+
+- on the surface's first frame;
+- when its layout tree differs from the one of its latest frame, which a
+  new size or a change of the layout always gives;
+- when a view rebuilt the tree or a handler of a control ran since the
+  drawing pass before: a control's value or presentation state may have
+  changed, and controls are not compared.
+
+Otherwise it is empty, and a surface whose update and pending regions are
+both empty has no frame. The controls draw through `paint`, with the text
+of each text leaf that the layout pass laid out with the round's font set.
+A drawing pass that fails gives the surface no frame, never a panic: the
+record names the error and `Output::paint_errors` holds the surface with
+its `PaintError`, and the surface's next frame is whole. A surface whose
+frame of 4 bytes per pixel would exceed the buffer limits of `kosmo-types`
+fails with `LayoutError::InputOutOfRange`.
 
 ## Effects and the execution port
 
@@ -443,7 +468,9 @@ in code.
 
 `Control::draw` takes the control and a `DrawContext`, which gives the
 control's identity and its presentation state, to read, the size of its
-box and, with `DrawContext::color`, the colour of a `ColorToken` in the
+box, with `DrawContext::text` the text of a text leaf as the layout pass
+laid it out, a `LaidText` whose paragraph is in the coordinates of the
+box, and with `DrawContext::color` the colour of a `ColorToken` in the
 table of design tokens of the drawing pass, and appends commands of
 `kosmo-render`'s display lists with `DrawContext::draw`. The commands are
 relative to the control's box, whose top-left corner is (0, 0), and are
@@ -516,30 +543,38 @@ fonts again. Then each round:
 4. runs `Runtime::round` with the receipts of the last round, the events and
    the reports. `Key`, `FocusIn` and `FocusOut` become the round's `Event`s
    in their order. The shell handles `Configure` itself, which sets the
-   surface's size, `Shell::size`, and drops a previous frame of another
-   size, and `Released`, which makes the surface's buffer available again;
-   kinds of events that later versions add are ignored;
+   surface's size, `Shell::size`, and drops a previous frame and a pending
+   region of another size, and `Released`, which makes the surface's
+   buffer available again; kinds of events that later versions add are
+   ignored;
 5. hands the effects to the execution port, which keeps the receipts for
    the next round;
 6. runs `Round::finish_with` with a `LayoutInput` of its own font set, the
-   table `TOKENS` and the size of each surface whose `Configure` it took, so
-   that each such surface is laid out under its latest size; the round
-   builds no font set of its own, and a surface without a `Configure` is not
-   laid out;
+   table `TOKENS`, the size of each surface whose `Configure` it took, so
+   that each such surface is laid out under its latest size and drawn, and
+   the pending region of each such surface whose buffer is not presented;
+   the round builds no font set of its own, and a surface without a
+   `Configure` is neither laid out nor drawn;
 7. pushes the tree updates of the output's `accessibility` through
    `AccessibilitySink`, in their order;
-8. presents each of the output's `frames` with `Shell::present`.
+8. presents each of the output's `frames` with `Shell::present`, in their
+   order, except a frame for a surface whose buffer is presented and not
+   released: its damage region joins the surface's pending region, a
+   `Damage` of at most 16 rectangles, beyond which they merge into their
+   bounding rectangle, and its display list is dropped. The first round
+   after the `Released` draws the pending region together with its own
+   update region, and a presented frame empties the pending region.
 
 `run_round` returns a `RoundEnd` with how the wait ended, `WaitEnd::Events`,
-`Deadline` or `Idle`, and the round's `Output`. Rounds have no
-accessibility pass and do not run the drawing pass yet, so `accessibility`
-and `frames` are empty. `Shell::next_deadline` is the deadline for the next
-wait: the round's time while receipts wait, `Shell::has_receipts`, so that
-the wait does not block, and otherwise the round's `next_deadline`; before
-the first round it is 0, so the first round runs at once and builds the
-view. `Shell::runtime`, `app`, `port` and `port_mut` give a driver the
-control tree with the layout of each surface, the model and the execution
-port.
+`Deadline` or `Idle`, and the round's `Output`, whose `frames` are those
+that the round drew, presented or waiting. Rounds have no accessibility
+pass, so `accessibility` is empty. `Shell::next_deadline` is the deadline
+for the next wait: the round's time while receipts wait,
+`Shell::has_receipts`, so that the wait does not block, and otherwise the
+round's `next_deadline`; before the first round it is 0, so the first round
+runs at once and builds the view. `Shell::runtime`, `app`, `port` and
+`port_mut` give a driver the control tree with the layout of each surface,
+the model and the execution port.
 
 `Shell::present(platform, surface, list, damage)` presents a frame: it draws
 `list` inside `damage` with `kosmo-render`'s `VelloRasterizer` into the
@@ -565,10 +600,12 @@ frame, too, the frame and the buffer are as they were. Its other errors are
 damage region that does not fit the frame, `Convert`, for a buffer whose
 bytes do not match its description, and `FrameTooLarge`, for a previous
 frame beyond the buffer limits. The headless backend keeps what is presented
-as its read-back. Until rounds draw, a driver takes a surface's layout
-result from `shell.runtime().layout(surface)`, or builds one in code, gets
-its display list with
-`paint(shell.runtime().tree(), &layout, &damage, &TOKENS)` and presents it.
+as its read-back. The frames of rounds take their glyph runs from the
+shell's font set. A driver may also present frames of its own, for
+example a display list that `paint` built from a layout result: a glyph
+run of such a frame matches the glyph cache only when its text was laid
+out with the shell's font set, or with one that holds the same two fonts
+in the same places.
 
 With the feature `call-probes`, which is off by default and only the
 command line turns on, as `--features kosmo-ui/call-probes`, each call of
@@ -604,8 +641,9 @@ focus lines as they were delivered; the job reports; the due timers,
 `timer due` or `timer dropped missing`, by deadline and then by
 registration; the effects; the timer requests, `timer set` or
 `timer refused full`; then the view line, the layout lines, one for each
-surface that the layout pass lays out, in the order of the surfaces, and
-the deadline line. The lines are of these kinds:
+surface that the layout pass lays out, in the order of the surfaces, the
+paint lines, one for each surface whose drawing pass failed, in the order
+of the surfaces, and the deadline line. The lines are of these kinds:
 
 | Line | Meaning |
 | --- | --- |
@@ -625,6 +663,7 @@ the deadline line. The lines are of these kinds:
 | `view rebuilt controls <n>`, `view rejected <error>`, `view skipped` | What the view pass did |
 | `layout surface <s> boxes <n> laid <k> texts <t>` | A surface laid out: the boxes of its layout tree, the boxes whose size and children's positions the pass computed again, and the text leaves that it laid out with the font set |
 | `layout surface <s> failed <error>` | A surface whose layout failed |
+| `paint surface <s> failed <error>` | A surface whose drawing pass failed, which has no frame |
 | `deadline <t>`, `deadline none` | The next deadline |
 
 In a key line, `<meaning>` is `named <number>` or `char <c>`, `<action>` is
@@ -643,10 +682,14 @@ escapes such as `'\''` and `'\u{301}'`. A requester is `app` or
 `control <slot>:<generation>`, a view error is `too-many-controls`,
 `too-deep`, `duplicate-key <key>`, `second-focus`, `second-region` or
 `focus-outside-region`, and a layout error is `input-out-of-range`,
-`overflow`, `too-many-boxes` or `order`. In a layout line, `laid` and
-`texts` count the work of the incremental layout, not its result, so they
-change with how the layout pass finds what to lay out again, while the
-layout trees stay the same. For example:
+`overflow`, `too-many-boxes` or `order`. A paint error is
+`untokened control <slot>:<generation>`,
+`missing-control <slot>:<generation>`, a layout error, or an error of the
+display list: `too-many-commands`, `too-many-items`, `negative-radius`,
+`negative-width`, `unpaired-pop-clip` or `unclosed-clip`. In a layout
+line, `laid` and `texts` count the work of the incremental layout, not its
+result, so they change with how the layout pass finds what to lay out
+again, while the layout trees stay the same. For example:
 
 ```text
 round 8 time 8000000
@@ -681,27 +724,31 @@ no wall-clock time; review checks these, as the
 
 ## Limits
 
-- The round function has no accessibility pass and does not run the
-  drawing pass, so its outputs hold no tree updates and no frames. The
-  drawing pass has no caller outside tests; a driver that presents a frame
-  takes a surface's layout result from the runtime, or builds one, draws it
-  with `paint` and presents it with `Shell::present`.
+- The round function has no accessibility pass, so its outputs hold no
+  tree updates.
+- The update region of a surface is the whole surface or nothing: rounds
+  do not work out which part of a surface changed. Every view that a round
+  rebuilds and every handler of a control that runs counts as a change of
+  what the controls show, since controls and their presentation states are
+  not compared, and so does every change of the layout tree, while what
+  `Control::scrolled` writes counts only through the layout tree.
 - The shell creates and destroys no surface: the application's assembly or
   the driver creates them through `SurfacePort` before the first round. A
   driver of `Shell::run_round` destroys them before it calls `shutdown`;
   `run` calls `shutdown` itself, so the surfaces of an application that
   `run` drives are not destroyed before `shutdown`.
-- A frame of a round's output for a surface whose buffer is presented and
-  not released makes `run_round` return
-  `ShellError::Platform(PlatformError::Busy)` after both steps, and `run`
-  then stops with `ExitReason::Failed`; rounds hold no frames yet.
-- Rounds lay text out with the shell's own font set, so the glyph runs of
-  a frame that a driver draws from a surface's layout come from the font
-  set whose glyph cache presents them. A frame that a driver builds from
-  text laid out with a font set of its own matches that cache only when
-  that font set holds the same two fonts in the same places, which nothing
-  checks, and a frame with glyph runs presented before the first round
-  fails with a missing glyph.
+- A frame of a round for a surface whose buffer is presented and not
+  released is not presented: the shell keeps only its damage region, and
+  the first round after the release draws that region again from the
+  controls as they are then. A driver that calls `Shell::present` for such
+  a surface still gets `ShellError::Platform(PlatformError::Busy)`.
+- Rounds lay text out and draw it with the shell's own font set, so the
+  glyph runs of their frames come from the font set whose glyph cache
+  presents them. A frame that a driver hands straight to `Shell::present`
+  matches that cache only when its text was laid out with the same font
+  set, or with one that holds the same two fonts in the same places, which
+  nothing checks, and a frame with glyph runs presented before the first
+  round fails with a missing glyph.
 - The layout pass takes the layout node of every control in every round to
   find the dirty ones; only the laying out is limited to dirty subtrees. A
   change of a control's value that its layout node does not show lays
@@ -927,8 +974,7 @@ wall clock.
     `a_missing_resource_stops_the_first_round_before_its_wait`,
     `bytes_that_are_not_the_fonts_stop_the_first_round_before_its_wait`.
 18. The tree updates and frames of an output go to the platform in their
-    order, and a frame for a presented buffer stops the delivery with
-    `Busy`; presentation draws into the previous frame and converts only
+    order; presentation draws into the previous frame and converts only
     the damage into the buffer, presents a buffer again only after its
     release, presents nothing for an empty damage region, changes nothing
     when the frame cannot be drawn, presents nothing into a buffer that
@@ -939,11 +985,8 @@ wall clock.
     shell presents is what it reads back, and a new previous frame is
     presented whole whatever its damage. Glyph runs are drawn from the
     glyph cache of the fetched fonts, a run of a font outside the font set
-    is refused before the buffer is asked for, and the ASCII string that
-    the shell presents on the headless backend is the pixel golden of
-    `kosmo-text` byte for byte. Tests: `shell::tests::`
+    is refused before the buffer is asked for. Tests: `shell::tests::`
     `the_updates_and_frames_of_an_output_go_to_the_platform_in_order`,
-    `a_frame_of_an_output_for_a_presented_buffer_stops_the_delivery_with_busy`,
     `presenting_converts_only_the_damage_of_the_frame_into_the_buffer`,
     `a_presented_buffer_is_not_presented_again_until_it_is_released`,
     `an_empty_damage_region_presents_nothing`,
@@ -957,9 +1000,7 @@ wall clock.
     `an_empty_or_refused_presentation_leaves_the_glyph_cache_alone`,
     `glyph_runs_are_drawn_from_the_glyph_cache_into_a_kept_frame`;
     `framework/backend-headless/tests/shell.rs`:
-    `a_frame_that_the_shell_presents_is_what_the_backend_reads_back`,
-    `a_new_previous_frame_is_presented_whole_whatever_its_damage`,
-    `text_that_the_shell_presents_is_the_golden_of_kosmo_text`.
+    `a_new_previous_frame_is_presented_whole_whatever_its_damage`.
 19. `run` waits with the deadline that each round leaves, and when the
     platform disconnects it calls `shutdown` and returns
     `ExitReason::Disconnected`; when a font is missing at start-up, by
@@ -1022,3 +1063,33 @@ wall clock.
     `a_colour_outside_the_table_of_tokens_is_refused`,
     `a_glyph_run_at_a_size_outside_the_font_size_tokens_is_refused`,
     `the_check_compares_values_not_where_they_come_from`.
+22. The drawing pass of a round draws each surface with a layout, in the
+    order of the surfaces: the first frame of each surface is whole, and
+    its controls draw from the layout of their surface, the text leaf with
+    the paragraph that the layout pass laid out with the round's font set;
+    a round in which nothing changed draws nothing; after a handler of a
+    control ran, or a view was rebuilt, each surface is drawn whole; a new
+    size draws only the surface that has it, whole; a pending region alone
+    draws only that region; a surface without a layout is not drawn. A
+    drawing pass that fails, for a colour outside the tokens or for a
+    surface whose frame would exceed the buffer limits, gives no frame,
+    names the error in the record and in `Output::paint_errors`, and the
+    surface is drawn whole again in the next round. On the headless
+    backend, the frame that the first round draws is presented and read
+    back as drawn, and the round that takes its release draws nothing;
+    text that a round lays out and draws with the fonts that the shell
+    fetched has the coverage of the pixel golden of `kosmo-text` byte for
+    byte, in the colour of text. Tests: `round::tests::draw::`
+    `each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed`,
+    `a_drawing_pass_that_fails_gives_no_frame_and_is_recorded`;
+    `framework/backend-headless/tests/shell.rs`:
+    `the_frame_that_a_round_draws_is_what_the_backend_reads_back`,
+    `text_that_a_round_draws_has_the_coverage_of_the_golden_of_kosmo_text`.
+23. A frame for a surface whose buffer is presented and not released is
+    not presented, and `run_round` returns no error for it: its region
+    joins the surface's pending region, 17 rectangles merge into their
+    bounding rectangle, and the first round after the release draws the
+    pending region, in which nothing else changed, and presents it; a
+    driver that presents directly is refused with `Busy`, and once a
+    presented frame emptied the pending region, nothing more is presented.
+    Test: `shell::tests::a_frame_for_a_presented_buffer_is_drawn_again_after_the_release`.

@@ -8,9 +8,10 @@
 //! holds a number of key events. The plan never looks at virtual time.
 //!
 //! The driver runs the application in the shell of `kosmo-ui` on the
-//! headless backend. After each round whose view changed it lays the
-//! single control out over the main surface, builds the display list with
-//! the drawing pass and presents it; rounds do not draw yet.
+//! headless backend. The single control is a leaf that takes the size of
+//! the main surface, and each round whose view changed draws it and
+//! presents the frame; the driver keeps the display list of the latest
+//! frame of the main surface.
 
 #![allow(
     dead_code,
@@ -27,17 +28,14 @@ use kosmo_jobs::{
     Request, RequestReport, SessionId, Submission, TerminalState,
 };
 use kosmo_math_model::version::Versions;
-use kosmo_platform::{
-    PixelSize, PlatformCaps, PlatformError, ResourceId, Stamp, SurfaceId, WaitEnd,
-};
+use kosmo_platform::{PixelSize, PlatformCaps, ResourceId, Stamp, SurfaceId, WaitEnd};
 use kosmo_render::{Command, DisplayList};
 use kosmo_testkit::script::Driver;
 use kosmo_text::{MONO_FILE, SANS_FILE};
-use kosmo_types::{BufferDesc, Damage, Fx, MonoTime, PixelFormat, Point, Rect, Size};
+use kosmo_types::{Fx, MonoTime, PixelFormat, Point, Rect, Size};
 use kosmo_ui::{
     App, CANCEL_JOB, ColorToken, Control, DELETE_BACKWARD, DrawContext, EVALUATE_SELECTION,
-    INSERT_TEXT, Key, Kind, LayoutBox, LayoutResult, MOVE_LEFT, MOVE_RIGHT, Message, Out, Shell,
-    ShellError, TOKENS, View, ViewPass, paint,
+    INSERT_TEXT, Key, Kind, MOVE_LEFT, MOVE_RIGHT, Message, Node, Out, Shell, View,
 };
 
 /// The main surface of a script on a new headless backend, which numbers
@@ -95,6 +93,11 @@ impl Control<Editor> for Field {
 
     fn focus(&self, holds: bool, cx: &mut kosmo_ui::Context<'_, Editor, ()>) {
         cx.message(Edit::Focus(holds));
+    }
+
+    /// A leaf of size zero, which takes the size of the surface.
+    fn layout(&self, _: &()) -> Node<'_> {
+        Node::Fixed(Size::ZERO)
     }
 
     fn draw(&self, cx: &mut DrawContext<'_, ()>) {
@@ -388,9 +391,7 @@ pub struct EditorDriver {
     keys: usize,
     /// The event handling record of every round so far.
     record: Vec<String>,
-    /// The view changed since the last presentation.
-    dirty: bool,
-    /// The display list presented last.
+    /// The display list of the latest frame of the main surface.
     presented: Option<DisplayList>,
 }
 
@@ -403,7 +404,6 @@ impl EditorDriver {
             plan: release.into_iter().map(|step| (step, false)).collect(),
             keys: 0,
             record: Vec::new(),
-            dirty: false,
             presented: None,
         }
     }
@@ -411,45 +411,6 @@ impl EditorDriver {
     /// The event handling record of every round so far, line by line.
     pub fn record(&self) -> &[String] {
         &self.record
-    }
-
-    /// Draws the editor over the main surface and presents it, unless its
-    /// buffer has not been released yet.
-    fn present(&mut self, platform: &mut HeadlessBackend) -> Result<(), String> {
-        let Some(size) = self.shell.size(MAIN) else {
-            return Ok(());
-        };
-        let tree = self.shell.runtime().tree();
-        let Some(root) = tree.root() else {
-            return Ok(());
-        };
-        let (width, height) = (size.width(), size.height());
-        let whole = |pixels: u32| i32::try_from(pixels).map_err(|error| error.to_string());
-        let rect = self::pixels(0, 0, whole(width)?, whole(height)?).ok_or("no rectangle")?;
-        let mut layout = LayoutResult::new();
-        layout
-            .push(LayoutBox {
-                widget: root,
-                parent: None,
-                rect,
-                scroll: Point::default(),
-                draws: true,
-            })
-            .map_err(|error| format!("{error:?}"))?;
-        let frame = BufferDesc::new(width, height, width * 4, PixelFormat::Rgba8Premul)
-            .map_err(|error| format!("{error:?}"))?;
-        let mut damage = Damage::new(frame);
-        damage.add(0, 0, width, height);
-        let list = paint(tree, &layout, &damage, &TOKENS).map_err(|error| format!("{error:?}"))?;
-        match self.shell.present(platform, MAIN, &list, &damage) {
-            Ok(_) => {
-                self.presented = Some(list);
-                self.dirty = false;
-                Ok(())
-            }
-            Err(ShellError::Platform(PlatformError::Busy)) => Ok(()),
-            Err(error) => Err(error.to_string()),
-        }
     }
 }
 
@@ -465,8 +426,10 @@ impl Driver<HeadlessBackend> for EditorDriver {
         let lines = end.output.record.lines();
         self.keys += lines.iter().filter(|line| line.starts_with("key ")).count();
         self.record.extend(lines.iter().cloned());
-        if end.output.view == ViewPass::Rebuilt {
-            self.dirty = true;
+        for (surface, list, _) in &end.output.frames {
+            if *surface == MAIN {
+                self.presented = Some(list.clone());
+            }
         }
         let keys = self.keys;
         let layer = &mut self.shell.port_mut().layer;
@@ -475,9 +438,6 @@ impl Driver<HeadlessBackend> for EditorDriver {
                 layer.controllable().release(step.job, step.gate);
                 *done = true;
             }
-        }
-        if self.dirty {
-            self.present(platform)?;
         }
         Ok(end.wait)
     }

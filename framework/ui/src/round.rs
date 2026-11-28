@@ -1,13 +1,16 @@
-//! The round function: the event and update passes, then the view pass
-//! and the layout pass.
+//! The round function: the event and update passes, then the view pass,
+//! the layout pass and the drawing pass.
 
 use std::collections::BTreeMap;
 
 use kosmo_platform::PixelSize;
 use kosmo_platform::accesskit::TreeUpdate;
 use kosmo_render::DisplayList;
+use kosmo_render::ListError;
 use kosmo_text::FontSet;
-use kosmo_types::{Damage, Fx, KeyAction, KeyEvent, KeyMeaning, MonoTime, Size};
+use kosmo_types::{
+    BufferDesc, Damage, Fx, KeyAction, KeyEvent, KeyMeaning, MonoTime, PixelFormat, Size,
+};
 
 use crate::JOB_POLL_INTERVAL;
 use crate::app::{App, Context, Control, Handling, Message, Out, Phase};
@@ -15,6 +18,7 @@ use crate::command::{MINIMAL_KEY_MAP, resolve};
 use crate::focus::{Dropped, Event, FocusTable, Stamp, SurfaceId};
 use crate::hit::LayoutError;
 use crate::layout::{Constraint, Kept, LayoutTree, relayout};
+use crate::paint::{PaintError, paint_tree};
 use crate::port::{Effect, JobPort, Receipt};
 use crate::record::Record;
 use crate::timer::{Requester, TimerTable};
@@ -53,13 +57,15 @@ impl<P: JobPort> Input<P> {
     }
 }
 
-/// What the layout pass of a round reads besides the control tree: the
-/// font set that lays text out, the number that names it, the table of
-/// design tokens, and the size of each surface to lay out.
+/// What the layout and drawing passes of a round read besides the control
+/// tree: the font set that lays text out, the number that names it, the
+/// table of design tokens, the size of each surface to lay out and draw,
+/// and the regions of surfaces that wait to be drawn again.
 ///
 /// The shell gives its own font set, which it builds once before its first
-/// round, the table [`TOKENS`](crate::TOKENS) and the size of each
-/// surface's latest `Configure`.
+/// round, the table [`TOKENS`](crate::TOKENS), the size of each surface's
+/// latest `Configure`, and the regions of the frames that it could not
+/// present while a surface's buffer was presented and not released.
 #[non_exhaustive]
 pub struct LayoutInput<'f> {
     /// The font set that lays text out.
@@ -74,8 +80,11 @@ pub struct LayoutInput<'f> {
     pub fonts_id: u64,
     /// The table of design tokens.
     pub tokens: Tokens,
-    /// The surfaces to lay out, each with its size.
+    /// The surfaces to lay out and draw, each with its size.
     pub sizes: BTreeMap<SurfaceId, PixelSize>,
+    /// For a surface of `sizes`, a region that the drawing pass draws
+    /// besides the round's update region of the surface.
+    pub pending: BTreeMap<SurfaceId, Damage>,
 }
 
 impl<'f> LayoutInput<'f> {
@@ -87,6 +96,7 @@ impl<'f> LayoutInput<'f> {
             fonts_id,
             tokens,
             sizes: BTreeMap::new(),
+            pending: BTreeMap::new(),
         }
     }
 
@@ -128,11 +138,14 @@ pub struct Output {
     /// to the platform. Rounds have no accessibility pass yet, so this is
     /// empty.
     pub accessibility: Vec<(SurfaceId, TreeUpdate)>,
-    /// The frames of the round: for each surface with update regions, in
-    /// the order of the surfaces, its display list and its damage region,
-    /// which the shell presents. Rounds do not run the drawing pass yet,
-    /// so this is empty.
+    /// The frames of the round: for each surface whose drawing pass ran,
+    /// in the order of the surfaces, its display list and its damage
+    /// region, which the shell presents. A round without a layout pass
+    /// draws nothing.
     pub frames: Vec<(SurfaceId, DisplayList, Damage)>,
+    /// The surfaces whose drawing pass failed in the round, in the order
+    /// of the surfaces, each with its error; they have no frame.
+    pub paint_errors: Vec<(SurfaceId, PaintError)>,
 }
 
 /// The counts of what the runtime dropped or refused since it was built.
@@ -166,6 +179,11 @@ pub struct Runtime<A: App> {
     rounds: u64,
     built: bool,
     layouts: BTreeMap<SurfaceId, Kept>,
+    /// The layout tree of each surface's latest frame.
+    drawn: BTreeMap<SurfaceId, LayoutTree>,
+    /// Whether a view rebuilt the tree, or a handler of a control ran,
+    /// since the latest drawing pass.
+    changed: bool,
 }
 
 impl<A: App> Default for Runtime<A> {
@@ -178,6 +196,8 @@ impl<A: App> Default for Runtime<A> {
             rounds: 0,
             built: false,
             layouts: BTreeMap::new(),
+            drawn: BTreeMap::new(),
+            changed: false,
         }
     }
 }
@@ -208,7 +228,8 @@ impl<A: App> Round<'_, A> {
     /// The second step without a layout pass: calls `view` if the round
     /// handled a message, or if the tree has not been built yet, and
     /// rebuilds the tree from it; then gives the next deadline and the
-    /// round's record. The layouts of the surfaces stay as they were.
+    /// round's record. The layouts of the surfaces stay as they were, and
+    /// nothing is drawn.
     pub fn finish(self, app: &A) -> Output {
         self.end(app, None)
     }
@@ -243,6 +264,20 @@ impl<A: App> Round<'_, A> {
     /// whose absolute value exceeds `MAX_LAYOUT_INPUT`. A surface that
     /// `input` does not list loses its layout, and so does a surface whose
     /// layout fails; the record names the error.
+    ///
+    /// Then the drawing pass draws each surface that has a layout, in the
+    /// order of the surfaces, with the tokens of `input`, and the frames
+    /// of the output hold the display lists. The update region of a
+    /// surface is the whole surface on its first frame and whenever its
+    /// layout tree differs from that of its latest frame, which covers a
+    /// new size, and whenever a view rebuilt the tree or a handler of a
+    /// control ran since the drawing pass before, since a control's value
+    /// or presentation state may have changed; otherwise it is empty. The
+    /// pass draws the update region together with the pending region of
+    /// the surface in `input`, and a surface with neither has no frame. A
+    /// drawing pass that fails gives the surface no frame; the record and
+    /// [`Output::paint_errors`] name the error, and the next frame of the
+    /// surface is whole.
     pub fn finish_with(self, app: &A, input: LayoutInput<'_>) -> Output {
         self.end(app, Some(input))
     }
@@ -261,6 +296,7 @@ impl<A: App> Round<'_, A> {
             match runtime.tree.rebuild(&app.view()) {
                 Ok(()) => {
                     runtime.built = true;
+                    runtime.changed = true;
                     record.push(format!("view rebuilt controls {}", runtime.tree.len()));
                     ViewPass::Rebuilt
                 }
@@ -273,8 +309,30 @@ impl<A: App> Round<'_, A> {
             record.push("view skipped".to_string());
             ViewPass::Skipped
         };
+        let mut frames = Vec::new();
+        let mut paint_errors = Vec::new();
         if let Some(input) = input {
-            runtime.lay_out(input, &mut record);
+            let LayoutInput {
+                fonts,
+                fonts_id,
+                tokens,
+                sizes,
+                pending,
+            } = input;
+            runtime.lay_out(fonts, fonts_id, &tokens, &sizes, &mut record);
+            for (surface, drawn) in runtime.draw(&tokens, &sizes, &pending) {
+                match drawn {
+                    Ok((list, damage)) => frames.push((surface, list, damage)),
+                    Err(error) => {
+                        record.push(format!(
+                            "paint surface {} failed {}",
+                            surface.get(),
+                            describe_paint_error(error)
+                        ));
+                        paint_errors.push((surface, error));
+                    }
+                }
+            }
         }
         let polling = (unfinished_jobs > 0).then(|| time.saturating_add_nanos(JOB_POLL_INTERVAL));
         let next_deadline = match (runtime.timers.next_deadline(), polling) {
@@ -290,7 +348,8 @@ impl<A: App> Round<'_, A> {
             next_deadline,
             view,
             accessibility: Vec::new(),
-            frames: Vec::new(),
+            frames,
+            paint_errors,
         }
     }
 }
@@ -420,19 +479,20 @@ impl<A: App> Runtime<A> {
         }
     }
 
-    /// The layout pass: lays out each surface of `input` against its
+    /// The layout pass: lays out each surface of `sizes` against its
     /// layout of the round before, keeps the layouts, records each, tells
     /// each scroll container its offset, and lets the kept layouts follow
     /// the requests that the controls wrote back.
-    fn lay_out(&mut self, input: LayoutInput<'_>, record: &mut Record) {
-        let LayoutInput {
-            fonts,
-            fonts_id,
-            tokens,
-            sizes,
-        } = input;
+    fn lay_out(
+        &mut self,
+        fonts: &mut FontSet,
+        fonts_id: u64,
+        tokens: &Tokens,
+        sizes: &BTreeMap<SurfaceId, PixelSize>,
+        record: &mut Record,
+    ) {
         let mut before = std::mem::take(&mut self.layouts);
-        for (surface, size) in sizes {
+        for (&surface, &size) in sizes {
             let kept = before.remove(&surface);
             let laid = surface_size(size)
                 .ok_or(LayoutError::InputOutOfRange)
@@ -441,7 +501,7 @@ impl<A: App> Runtime<A> {
                     relayout(
                         &self.tree,
                         constraint,
-                        &tokens,
+                        tokens,
                         fonts,
                         fonts_id,
                         kept.as_ref(),
@@ -487,6 +547,52 @@ impl<A: App> Runtime<A> {
         for kept in self.layouts.values_mut() {
             kept.follow_requests(&self.tree);
         }
+    }
+
+    /// The drawing pass: draws each surface that has a layout, in the
+    /// order of the surfaces, inside its update region and its region of
+    /// `pending`, and keeps the layout tree of each frame. A surface whose
+    /// regions are empty is left out.
+    fn draw(
+        &mut self,
+        tokens: &Tokens,
+        sizes: &BTreeMap<SurfaceId, PixelSize>,
+        pending: &BTreeMap<SurfaceId, Damage>,
+    ) -> Vec<(SurfaceId, Drawn)> {
+        let changed = std::mem::take(&mut self.changed);
+        let mut before = std::mem::take(&mut self.drawn);
+        let mut drawn = Vec::new();
+        for (&surface, kept) in &self.layouts {
+            let laid = kept.tree();
+            let last = before.remove(&surface);
+            // The layout pass lays out only the surfaces of `sizes`.
+            let Some(&size) = sizes.get(&surface) else {
+                continue;
+            };
+            let Some(mut damage) = surface_damage(size) else {
+                drawn.push((surface, Err(LayoutError::InputOutOfRange.into())));
+                continue;
+            };
+            if changed || last.as_ref() != Some(laid) {
+                damage.add(0, 0, size.width(), size.height());
+            } else if let Some(region) = pending.get(&surface) {
+                for rect in region.rects() {
+                    damage.add(rect.x(), rect.y(), rect.width(), rect.height());
+                }
+            }
+            if damage.is_empty() {
+                if let Some(last) = last {
+                    self.drawn.insert(surface, last);
+                }
+                continue;
+            }
+            let frame = paint_tree(&self.tree, laid, &damage, tokens);
+            if frame.is_ok() {
+                self.drawn.insert(surface, laid.clone());
+            }
+            drawn.push((surface, frame.map(|list| (list, damage))));
+        }
+        drawn
     }
 
     /// Takes one platform event.
@@ -673,6 +779,8 @@ impl<A: App> Runtime<A> {
         f: impl FnOnce(&A::Control, &mut Context<'_, A, crate::app::StateOf<A>>) -> R,
     ) -> Option<R> {
         let node = self.tree.node_mut(id)?;
+        // The handler may change the control's presentation state.
+        self.changed = true;
         let mut cx = Context {
             id,
             state: &mut node.state,
@@ -716,6 +824,44 @@ fn no_region(reached: bool) -> &'static str {
 fn surface_size(size: PixelSize) -> Option<Size> {
     let side = |pixels: u32| i32::try_from(pixels).ok().and_then(Fx::from_pixels);
     Size::new(side(size.width())?, side(size.height())?)
+}
+
+/// What the drawing pass gave for a surface: its display list and damage
+/// region, or why it gave none.
+type Drawn = Result<(DisplayList, Damage), PaintError>;
+
+/// The empty damage region of a surface of `size`, of the size of the
+/// frame that the shell keeps for it, 4 bytes per pixel; `None` when such a
+/// frame would exceed the buffer limits of `kosmo-types`.
+fn surface_damage(size: PixelSize) -> Option<Damage> {
+    let stride = size.width().checked_mul(4)?;
+    BufferDesc::new(
+        size.width(),
+        size.height(),
+        stride,
+        PixelFormat::Rgba8Premul,
+    )
+    .ok()
+    .map(Damage::new)
+}
+
+/// The record form of an error of the drawing pass.
+fn describe_paint_error(error: PaintError) -> String {
+    match error {
+        PaintError::List(error) => match error {
+            ListError::TooManyCommands => "too-many-commands",
+            ListError::TooManyItems => "too-many-items",
+            ListError::NegativeRadius => "negative-radius",
+            ListError::NegativeWidth => "negative-width",
+            ListError::UnpairedPopClip => "unpaired-pop-clip",
+            ListError::UnclosedClip => "unclosed-clip",
+            _ => "list",
+        }
+        .to_string(),
+        PaintError::Layout(error) => describe_layout_error(error).to_string(),
+        PaintError::MissingControl(id) => format!("missing-control {id}"),
+        PaintError::Untokened(id) => format!("untokened control {id}"),
+    }
 }
 
 /// The record form of a layout error.

@@ -407,25 +407,69 @@ fn the_updates_and_frames_of_an_output_go_to_the_platform_in_order() {
     assert_eq!(&fake.bytes[..4], &[1, 2, 3, 255]);
 }
 
+/// The calls of `log` that ask for a buffer or present one.
+fn presentations(log: &Log) -> Vec<String> {
+    taken(log)
+        .into_iter()
+        .filter(|call| call.starts_with("buffer") || call.starts_with("present"))
+        .collect()
+}
+
 #[test]
-fn a_frame_of_an_output_for_a_presented_buffer_stops_the_delivery_with_busy() {
+fn a_frame_for_a_presented_buffer_is_drawn_again_after_the_release() {
     let log = Log::default();
-    let mut fake = Fake::new(&log, 4, 2, PixelFormat::Rgba8Premul);
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
     let mut shell = calculator(&log, 0);
-    let mut output = shell.run_round(&mut fake, None).unwrap().output;
-    let whole = damage(&fake, &[(0, 0, 4, 2)]);
-    output
-        .frames
-        .push((SURFACE, fill(0, 0, 4, 2, Color::opaque(1, 2, 3)), whole));
+    let configure = PlatformEvent::Configure {
+        surface: SURFACE,
+        size: PixelSize::new(32, 2).unwrap(),
+    };
+    fake.batches.push_back(vec![configure, focus_in()]);
+    // The first frame of the configured surface is presented whole.
+    let first = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(first.output.frames.len(), 1);
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+
+    // While the buffer is presented, the frames of an output are not
+    // presented: their regions join the pending region, whose 17th
+    // rectangle merges all of them into their bounding rectangle.
+    let mut output = first.output.clone();
+    output.frames.clear();
+    for x in 0..17 {
+        let list = DisplayList::default();
+        output
+            .frames
+            .push((SURFACE, list, damage(&fake, &[(x, 0, 1, 1)])));
+    }
     shell.deliver(&mut fake, &output).unwrap();
-    taken(&log);
-    // The buffer is presented and not released, so the same output's frame
-    // is refused, and the delivery returns the error.
+    assert!(presentations(&log).is_empty());
+    let pending = shell.surfaces[&SURFACE].pending.unwrap();
+    assert_eq!(pending.rects(), [DamageRect::new(0, 0, 17, 1).unwrap()]);
+
+    // The round after the release, in which nothing changed, draws the
+    // pending region and presents it.
+    release(&mut shell, &mut fake);
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 17x1"]);
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
+
+    // A round whose view changes while the buffer is presented gives a
+    // whole frame, which waits: the round returns no error.
+    fake.batches.push_back(vec![execute_key()]);
+    let busy = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(busy.output.frames.len(), 1);
+    assert!(presentations(&log).is_empty());
+    // A driver that presents directly is still refused.
+    let list = DisplayList::default();
+    let whole = damage(&fake, &[(0, 0, 32, 2)]);
     assert_eq!(
-        shell.deliver(&mut fake, &output),
+        shell.present(&mut fake, SURFACE, &list, &whole),
         Err(ShellError::Platform(PlatformError::Busy))
     );
-    assert!(taken(&log).is_empty());
+    release(&mut shell, &mut fake);
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+    // Then nothing is pending, and nothing is presented.
+    release(&mut shell, &mut fake);
+    assert!(presentations(&log).is_empty());
 }
 
 #[test]

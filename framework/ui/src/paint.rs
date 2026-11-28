@@ -6,6 +6,7 @@ use kosmo_types::{Damage, DamageRect, Fx, Point, Rect, Size};
 
 use crate::app::{App, Canvas, Control, DrawContext};
 use crate::hit::{LayoutError, LayoutResult, Placed, negate};
+use crate::layout::LayoutTree;
 use crate::tokens::Tokens;
 use crate::tree::{Tree, WidgetId};
 
@@ -85,6 +86,30 @@ pub fn paint<A: App>(
     damage: &Damage,
     tokens: &Tokens,
 ) -> Result<DisplayList, PaintError> {
+    draw(tree, layout, None, damage, tokens)
+}
+
+/// The drawing pass of a round: [`paint`] over the layout result of
+/// `laid`, in which the control of each text leaf gets the text that the
+/// layout laid out through [`DrawContext::text`].
+pub(crate) fn paint_tree<A: App>(
+    tree: &Tree<A>,
+    laid: &LayoutTree,
+    damage: &Damage,
+    tokens: &Tokens,
+) -> Result<DisplayList, PaintError> {
+    draw(tree, &laid.result()?, Some(laid), damage, tokens)
+}
+
+/// [`paint`], with the boxes of `laid`, when there is one, for the text of
+/// each box of `layout` at the same index.
+fn draw<A: App>(
+    tree: &Tree<A>,
+    layout: &LayoutResult,
+    laid: Option<&LayoutTree>,
+    damage: &Damage,
+    tokens: &Tokens,
+) -> Result<DisplayList, PaintError> {
     let damage = damage
         .rects()
         .iter()
@@ -151,7 +176,10 @@ pub fn paint<A: App>(
                 return Err(PaintError::MissingControl(id));
             };
             let canvas = Canvas::new(&mut list, tokens, id, layout_box.rect);
-            let mut cx = DrawContext::new(id, state, layout_box.rect.size(), canvas);
+            let text = laid
+                .and_then(|laid| laid.boxes().get(index))
+                .and_then(|laid| laid.text.as_ref());
+            let mut cx = DrawContext::new(id, state, layout_box.rect.size(), text, canvas);
             control.draw(&mut cx);
             cx.into_canvas().finish()?;
         }
