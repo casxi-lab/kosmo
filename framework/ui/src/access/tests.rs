@@ -406,7 +406,11 @@ fn a_scroll_container_gives_its_offset_and_range_and_moves_its_content() {
     assert_eq!(content.bounds(), Some(rect(0.0, -30.0, 100.0, 90.0)));
     assert!(!content.clips_children());
     assert_eq!(content.scroll_y(), None);
+    assert_eq!(content.role(), Role::GenericContainer);
+    assert_eq!(content.label(), None);
     for (index, &line) in lines.iter().enumerate() {
+        assert_eq!(node_of(&first[0], line).role(), Role::GenericContainer);
+        assert_eq!(node_of(&first[0], line).label(), None);
         let top = -30.0 + 20.0 * index as f64;
         let bounds = node_of(&first[0], line).bounds();
         assert_eq!(bounds, Some(rect(0.0, top, 100.0, top + 20.0)));
