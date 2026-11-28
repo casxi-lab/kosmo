@@ -1,6 +1,7 @@
 //! Layout: the layout nodes that controls give, and the pure function
 //! that lays a control tree out with constraints into a layout tree.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use kosmo_text::{FontSet, MONO, Paragraph, SANS, TextStyle};
@@ -478,26 +479,230 @@ pub fn layout<A: App>(
     tokens: &Tokens,
     fonts: &mut FontSet,
 ) -> Result<LayoutTree, LayoutError> {
+    relayout(tree, constraint, tokens, fonts, 0, None).map(|(kept, _)| kept.tree)
+}
+
+/// A layout node as a layout keeps it for the next: the node with its text
+/// owned and, for a scroll container, without its request, which changes
+/// only the container's offset.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Shape {
+    Empty,
+    Fixed(Size),
+    Text {
+        text: String,
+        font: Font,
+        size: FontSize,
+        color: ColorToken,
+    },
+    Row(Row),
+    Column(Column),
+    Scroll(Axis),
+}
+
+impl Shape {
+    /// The shape of `node` and its scroll request, zero for a node that is
+    /// not a scroll container.
+    fn of(node: Node<'_>) -> (Shape, Fx) {
+        match node {
+            Node::Empty => (Shape::Empty, Fx::ZERO),
+            Node::Fixed(size) => (Shape::Fixed(size), Fx::ZERO),
+            Node::Text(text) => {
+                let shape = Shape::Text {
+                    text: text.text.to_string(),
+                    font: text.font,
+                    size: text.size,
+                    color: text.color,
+                };
+                (shape, Fx::ZERO)
+            }
+            Node::Row(row) => (Shape::Row(row), Fx::ZERO),
+            Node::Column(column) => (Shape::Column(column), Fx::ZERO),
+            Node::Scroll(scroll) => (Shape::Scroll(scroll.axis), scroll.request),
+        }
+    }
+}
+
+/// What the layout pass of a round keeps of a surface's layout for the
+/// next: the layout tree, the shape of each box's control, where each
+/// box's subtree ends in preorder, the box of each control, and the
+/// constraint, tokens and font set it was laid out with.
+#[derive(Debug)]
+pub(crate) struct Kept {
+    tree: LayoutTree,
+    shapes: Vec<Shape>,
+    ends: Vec<usize>,
+    index: BTreeMap<WidgetId, usize>,
+    constraint: Constraint,
+    tokens: Tokens,
+    fonts: u64,
+}
+
+impl Kept {
+    /// Whether the children of the box `at` are the controls `children`,
+    /// in this order.
+    fn children_are(&self, at: usize, children: &[WidgetId]) -> bool {
+        let mut kept = self.children(at);
+        children.iter().all(|&child| {
+            kept.next()
+                .and_then(|index| self.tree.boxes.get(index))
+                .is_some_and(|laid| laid.widget == child)
+        }) && kept.next().is_none()
+    }
+
+    /// The indices of the children of the box `at`, in order.
+    fn children(&self, at: usize) -> impl Iterator<Item = usize> + '_ {
+        let end = self.end(at);
+        let mut next = at + 1;
+        std::iter::from_fn(move || {
+            (next < end).then(|| {
+                let child = next;
+                next = self.end(child).max(child + 1);
+                child
+            })
+        })
+    }
+
+    /// Where the subtree of the box `at` ends in preorder.
+    fn end(&self, at: usize) -> usize {
+        self.ends.get(at).copied().unwrap_or(at)
+    }
+}
+
+/// How much a layout did: the boxes whose size and children's positions it
+/// computed, and the text leaves it laid out with the font set. The boxes
+/// that it took from the layout before do not count.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Work {
+    pub(crate) laid: usize,
+    pub(crate) texts: usize,
+}
+
+/// Lays the controls of `tree` out as [`layout`] does, with the font set
+/// `fonts` named by the number `fonts_id`, and keeps the result for the
+/// next layout, which takes `kept`, this layout's, as the one before.
+///
+/// When `kept` was laid out under the same constraint, with the same
+/// tokens and the same font set, only dirty subtrees are laid out again. A
+/// control is dirty when it is new, when its layout node differs from the
+/// one before other than in a scroll request, or when its children differ.
+/// A subtree without a dirty control under the constraint of the layout
+/// before is taken from it whole. A box whose control is not dirty and
+/// whose children came out with the sizes and baselines of the layout
+/// before keeps its size and its children's positions; otherwise its parent
+/// computes them again, so the work goes up from a dirty control only while
+/// sizes or baselines change, and stops at the latest at a box under a
+/// tight constraint whose baseline stays, a layout boundary. A scroll
+/// container's offset always follows its current request, so a change of
+/// the request alone moves only the container's content. With another
+/// constraint, other tokens or another font set the whole tree is laid out
+/// again. The result is that of [`layout`] byte for byte.
+pub(crate) fn relayout<A: App>(
+    tree: &Tree<A>,
+    constraint: Constraint,
+    tokens: &Tokens,
+    fonts: &mut FontSet,
+    fonts_id: u64,
+    kept: Option<&Kept>,
+) -> Result<(Kept, Work), LayoutError> {
     check_tokens(tokens)?;
     check_constraint(constraint)?;
+    let kept = kept.filter(|kept| {
+        kept.constraint == constraint && kept.tokens == *tokens && kept.fonts == fonts_id
+    });
+    let mut marks = marks(tree, kept)?;
     let mut pass = Pass {
         tree,
         tokens,
         fonts,
+        marks: &marks,
+        kept,
         boxes: Vec::with_capacity(tree.len()),
+        work: Work::default(),
     };
     if let Some(root) = tree.root() {
         pass.lay(root, None, constraint)?;
     }
-    Ok(LayoutTree { boxes: pass.boxes })
+    let (boxes, work) = (pass.boxes, pass.work);
+    let mut ends: Vec<usize> = (1..=boxes.len()).collect();
+    for (index, laid) in boxes.iter().enumerate().rev() {
+        let end = ends.get(index).copied().unwrap_or(index);
+        if let Some(parent_end) = laid.parent.and_then(|parent| ends.get_mut(parent)) {
+            *parent_end = (*parent_end).max(end);
+        }
+    }
+    let mut shapes = Vec::with_capacity(boxes.len());
+    let mut index = BTreeMap::new();
+    for (at, laid) in boxes.iter().enumerate() {
+        let mark = marks.remove(&laid.widget).ok_or(LayoutError::Order)?;
+        shapes.push(mark.shape);
+        index.insert(laid.widget, at);
+    }
+    let kept = Kept {
+        tree: LayoutTree { boxes },
+        shapes,
+        ends,
+        index,
+        constraint,
+        tokens: *tokens,
+        fonts: fonts_id,
+    };
+    Ok((kept, work))
 }
 
-/// A layout in progress: the boxes laid out so far, in preorder.
+/// A control's layout node in this layout and whether it or its subtree
+/// changed since the layout before.
+struct Mark {
+    /// The shape of the control's node.
+    shape: Shape,
+    /// The scroll request of a scroll container; zero for other nodes.
+    request: Fx,
+    /// The control is dirty: new, with another shape or other children.
+    dirty: bool,
+    /// The control or one of its descendants is dirty.
+    below: bool,
+}
+
+/// The mark of each control of `tree` against `kept`, the layout before:
+/// each control's node is taken once, children before their parents.
+fn marks<A: App>(
+    tree: &Tree<A>,
+    kept: Option<&Kept>,
+) -> Result<BTreeMap<WidgetId, Mark>, LayoutError> {
+    let mut marks: BTreeMap<WidgetId, Mark> = BTreeMap::new();
+    for id in tree.preorder().into_iter().rev() {
+        let node = tree.node(id).ok_or(LayoutError::Order)?;
+        let (shape, request) = Shape::of(node.control.layout(&node.state));
+        let before = kept.and_then(|kept| kept.index.get(&id).map(|&at| (kept, at)));
+        let dirty = !before.is_some_and(|(kept, at)| {
+            kept.shapes.get(at) == Some(&shape) && kept.children_are(at, &node.children)
+        });
+        let below = dirty
+            || node
+                .children
+                .iter()
+                .any(|child| marks.get(child).is_some_and(|mark| mark.below));
+        let mark = Mark {
+            shape,
+            request,
+            dirty,
+            below,
+        };
+        marks.insert(id, mark);
+    }
+    Ok(marks)
+}
+
+/// A layout in progress: the boxes laid out so far, in preorder, the marks
+/// of the controls, the layout before, if any, and the work so far.
 struct Pass<'t, 'f, A: App> {
     tree: &'t Tree<A>,
     tokens: &'t Tokens,
     fonts: &'f mut FontSet,
+    marks: &'t BTreeMap<WidgetId, Mark>,
+    kept: Option<&'t Kept>,
     boxes: Vec<TreeBox>,
+    work: Work,
 }
 
 /// What a node gives its box once its children are placed.
@@ -532,6 +737,33 @@ struct Lane {
     align: RowAlign,
 }
 
+impl Lane {
+    /// The lane of `row`.
+    fn row(row: &Row) -> Lane {
+        Lane {
+            axis: Axis::X,
+            spacing: row.spacing,
+            padding: row.padding,
+            align: row.align,
+        }
+    }
+
+    /// The lane of `column`.
+    fn column(column: &Column) -> Lane {
+        let align = match column.align {
+            Align::Start => RowAlign::Start,
+            Align::Center => RowAlign::Center,
+            Align::End => RowAlign::End,
+        };
+        Lane {
+            axis: Axis::Y,
+            spacing: column.spacing,
+            padding: column.padding,
+            align,
+        }
+    }
+}
+
 impl<A: App> Pass<'_, '_, A> {
     /// Lays out the control `id` under `constraint`, as a child of the box
     /// `parent`, with its subtree, and returns the index of its box. The
@@ -542,8 +774,15 @@ impl<A: App> Pass<'_, '_, A> {
         parent: Option<usize>,
         constraint: Constraint,
     ) -> Result<usize, LayoutError> {
-        let tree = self.tree;
+        let (tree, marks) = (self.tree, self.marks);
         let node = tree.node(id).ok_or(LayoutError::Order)?;
+        let mark = marks.get(&id).ok_or(LayoutError::Order)?;
+        let before = self.before(id, constraint);
+        if let Some(at) = before
+            && !mark.below
+        {
+            return self.copy(at, parent);
+        }
         let index = self.boxes.len();
         self.boxes.push(TreeBox {
             widget: id,
@@ -560,44 +799,44 @@ impl<A: App> Pass<'_, '_, A> {
             text: None,
         });
         let children = node.children.as_slice();
-        let laid = match node.control.layout(&node.state) {
-            Node::Empty => {
+        // The children that the node places, laid out first.
+        let placed = match &mark.shape {
+            Shape::Row(row) => self.lay_lane(index, children, constraint, &Lane::row(row))?,
+            Shape::Column(column) => {
+                self.lay_lane(index, children, constraint, &Lane::column(column))?
+            }
+            Shape::Scroll(axis) => {
+                check_request(mark.request)?;
+                let inner = Constraint::new(
+                    Size::ZERO,
+                    size(*axis, MAX_LAYOUT_INPUT, cross(constraint.max, *axis))?,
+                );
+                match children.split_first() {
+                    Some((&first, rest)) => {
+                        let content = self.lay(first, Some(index), inner)?;
+                        self.unplaced(index, rest)?;
+                        vec![content]
+                    }
+                    None => Vec::new(),
+                }
+            }
+            Shape::Fixed(size) => {
+                check_size(*size)?;
                 self.unplaced(index, children)?;
-                Laid::leaf(Size::ZERO, constraint, false)?
+                Vec::new()
             }
-            Node::Fixed(size) => {
-                check_size(size)?;
+            Shape::Empty | Shape::Text { .. } => {
                 self.unplaced(index, children)?;
-                Laid::leaf(size, constraint, true)?
+                Vec::new()
             }
-            Node::Text(text) => {
-                self.unplaced(index, children)?;
-                self.text(text, constraint)?
+        };
+        let kept = before.filter(|&at| !mark.dirty && self.same_results(at, &placed));
+        let laid = match kept {
+            Some(at) => self.keep(at, &placed, mark)?,
+            None => {
+                self.work.laid += 1;
+                self.compute(&mark.shape, mark.request, &placed, constraint)?
             }
-            Node::Row(row) => {
-                let lane = Lane {
-                    axis: Axis::X,
-                    spacing: row.spacing,
-                    padding: row.padding,
-                    align: row.align,
-                };
-                self.lane(index, children, constraint, &lane)?
-            }
-            Node::Column(column) => {
-                let align = match column.align {
-                    Align::Start => RowAlign::Start,
-                    Align::Center => RowAlign::Center,
-                    Align::End => RowAlign::End,
-                };
-                let lane = Lane {
-                    axis: Axis::Y,
-                    spacing: column.spacing,
-                    padding: column.padding,
-                    align,
-                };
-                self.lane(index, children, constraint, &lane)?
-            }
-            Node::Scroll(scroll) => self.scroll(index, children, constraint, scroll)?,
         };
         let laid_box = self.boxes.get_mut(index).ok_or(LayoutError::Order)?;
         laid_box.size = laid.size;
@@ -607,6 +846,138 @@ impl<A: App> Pass<'_, '_, A> {
         laid_box.draws = laid.draws;
         laid_box.text = laid.text;
         Ok(index)
+    }
+
+    /// The box of the control `id` in the layout before, when that layout
+    /// passed it `constraint` too.
+    fn before(&self, id: WidgetId, constraint: Constraint) -> Option<usize> {
+        let kept = self.kept?;
+        let at = *kept.index.get(&id)?;
+        let laid = kept.tree.boxes.get(at)?;
+        (laid.constraint == constraint).then_some(at)
+    }
+
+    /// Takes the box `at` of the layout before with its subtree, as a child
+    /// of the box `parent`, and returns the index of its box. The offset of
+    /// each scroll container in it follows its current request.
+    fn copy(&mut self, at: usize, parent: Option<usize>) -> Result<usize, LayoutError> {
+        let kept = self.kept.ok_or(LayoutError::Order)?;
+        let base = self.boxes.len();
+        for from in at..kept.end(at) {
+            let mut laid = kept.tree.boxes.get(from).ok_or(LayoutError::Order)?.clone();
+            laid.parent = match laid.parent {
+                _ if from == at => parent,
+                Some(old) => Some(
+                    old.checked_sub(at)
+                        .and_then(|offset| base.checked_add(offset))
+                        .ok_or(LayoutError::Order)?,
+                ),
+                None => return Err(LayoutError::Order),
+            };
+            if let Some(Mark {
+                shape: Shape::Scroll(axis),
+                request,
+                ..
+            }) = self.marks.get(&laid.widget)
+            {
+                check_request(*request)?;
+                let content = kept.children(from).next();
+                let content = content
+                    .and_then(|child| kept.tree.boxes.get(child))
+                    .map_or(Size::ZERO, |child| child.size);
+                laid.scroll = offset(*axis, *request, content, laid.size);
+            }
+            self.boxes.push(laid);
+        }
+        Ok(base)
+    }
+
+    /// Whether the boxes `placed` came out with the sizes and baselines of
+    /// the first children of the box `at` in the layout before.
+    fn same_results(&self, at: usize, placed: &[usize]) -> bool {
+        let Some(kept) = self.kept else {
+            return false;
+        };
+        let mut children = kept.children(at);
+        placed.iter().all(|&index| {
+            let old = children.next().and_then(|child| kept.tree.boxes.get(child));
+            let new = self.boxes.get(index);
+            matches!((old, new), (Some(old), Some(new))
+                if old.size == new.size && old.baseline == new.baseline)
+        })
+    }
+
+    /// The result of the box `at` of the layout before, whose control is not
+    /// dirty and whose children `placed` came out as before: the children
+    /// take their positions of the layout before, and a scroll container's
+    /// offset follows its request.
+    fn keep(&mut self, at: usize, placed: &[usize], mark: &Mark) -> Result<Laid, LayoutError> {
+        let kept = self.kept.ok_or(LayoutError::Order)?;
+        let old = kept.tree.boxes.get(at).ok_or(LayoutError::Order)?;
+        for (&index, child) in placed.iter().zip(kept.children(at)) {
+            let position = kept
+                .tree
+                .boxes
+                .get(child)
+                .ok_or(LayoutError::Order)?
+                .position;
+            self.place(index, position)?;
+        }
+        let scroll = match mark.shape {
+            Shape::Scroll(axis) => {
+                let content = placed.first().map_or(Ok(Size::ZERO), |&index| {
+                    self.child(index).map(|content| content.size)
+                })?;
+                offset(axis, mark.request, content, old.size)
+            }
+            _ => old.scroll,
+        };
+        Ok(Laid {
+            size: old.size,
+            baseline: old.baseline,
+            scroll,
+            overflow: old.overflow,
+            draws: old.draws,
+            text: old.text.clone(),
+        })
+    }
+
+    /// Computes the result of a box of `shape` with the scroll request
+    /// `request` under `constraint`, whose children `placed` are laid out,
+    /// and places them.
+    fn compute(
+        &mut self,
+        shape: &Shape,
+        request: Fx,
+        placed: &[usize],
+        constraint: Constraint,
+    ) -> Result<Laid, LayoutError> {
+        match shape {
+            Shape::Empty => Laid::leaf(Size::ZERO, constraint, false),
+            Shape::Fixed(size) => Laid::leaf(*size, constraint, true),
+            Shape::Text {
+                text,
+                font,
+                size,
+                color,
+            } => self.text(Text::new(text, *font, *size).color(*color), constraint),
+            Shape::Row(row) => self.lane(placed, constraint, &Lane::row(row)),
+            Shape::Column(column) => self.lane(placed, constraint, &Lane::column(column)),
+            Shape::Scroll(axis) => {
+                let content = placed.first().map_or(Ok(Size::ZERO), |&index| {
+                    self.child(index).map(|content| content.size)
+                })?;
+                let taken = constraint.clamp(content)?;
+                Ok(Laid {
+                    size: taken,
+                    baseline: None,
+                    scroll: offset(*axis, request, content, taken),
+                    overflow: Overflow::default(),
+                    draws: false,
+                    text: None,
+                })
+            }
+        }
     }
 
     /// Lays out `children` of the box `parent`, which its node does not lay
@@ -646,6 +1017,7 @@ impl<A: App> Pass<'_, '_, A> {
             .map_err(|_| LayoutError::InputOutOfRange)?;
         // The width is at most `MAX_LAYOUT_INPUT`, which the text layout
         // accepts, so its only error is a position that does not fit.
+        self.work.texts += 1;
         let paragraph = self
             .fonts
             .layout(text.text, style, Some(constraint.max.width()))
@@ -662,11 +1034,32 @@ impl<A: App> Pass<'_, '_, A> {
         Ok(laid)
     }
 
-    /// Lays out a row or a column with `children` under `constraint`.
-    fn lane(
+    /// Lays out the `children` of the row or column `index` under the
+    /// constraint that `lane` passes them within `constraint`, and returns
+    /// their boxes.
+    fn lay_lane(
         &mut self,
         index: usize,
         children: &[WidgetId],
+        constraint: Constraint,
+        lane: &Lane,
+    ) -> Result<Vec<usize>, LayoutError> {
+        let axis = lane.axis;
+        let padding = self.space(lane.padding);
+        let room = less(cross(constraint.max, axis), add(padding, padding)?);
+        let inner = Constraint::new(Size::ZERO, size(axis, MAX_LAYOUT_INPUT, room)?);
+        let mut laid = Vec::with_capacity(children.len());
+        for &child in children {
+            laid.push(self.lay(child, Some(index), inner)?);
+        }
+        Ok(laid)
+    }
+
+    /// Places the children `laid` of a row or a column under `constraint`
+    /// and gives its result.
+    fn lane(
+        &mut self,
+        laid: &[usize],
         constraint: Constraint,
         lane: &Lane,
     ) -> Result<Laid, LayoutError> {
@@ -674,12 +1067,6 @@ impl<A: App> Pass<'_, '_, A> {
         let padding = self.space(lane.padding);
         let spacing = self.space(lane.spacing);
         let both = add(padding, padding)?;
-        let room = less(cross(constraint.max, axis), both);
-        let inner = Constraint::new(Size::ZERO, size(axis, MAX_LAYOUT_INPUT, room)?);
-        let mut laid = Vec::with_capacity(children.len());
-        for &child in children {
-            laid.push(self.lay(child, Some(index), inner)?);
-        }
         // Along the main axis: the children one after the other.
         let mut along = Vec::with_capacity(laid.len());
         let mut end = padding;
@@ -696,14 +1083,14 @@ impl<A: App> Pass<'_, '_, A> {
         let natural_cross = if lane.align == RowAlign::Baseline {
             let mut above = Fx::ZERO;
             let mut below = Fx::ZERO;
-            for &child in &laid {
+            for &child in laid {
                 let child = self.child(child)?;
                 let height = cross(child.size, axis);
                 let baseline = child.baseline.unwrap_or(height);
                 above = above.max(baseline);
                 below = below.max(sub(height, baseline)?);
             }
-            for &child in &laid {
+            for &child in laid {
                 let child = self.child(child)?;
                 let baseline = child.baseline.unwrap_or(cross(child.size, axis));
                 across.push(add(padding, sub(above, baseline)?)?);
@@ -718,7 +1105,7 @@ impl<A: App> Pass<'_, '_, A> {
             // The children align in the box less its padding, or in their
             // own extent where the box is smaller.
             let extent = less(taken, both).max(content);
-            for &child in &laid {
+            for &child in laid {
                 let free = sub(extent, cross(self.child(child)?.size, axis))?;
                 let offset = match lane.align {
                     RowAlign::Start | RowAlign::Baseline => Fx::ZERO,
@@ -749,43 +1136,23 @@ impl<A: App> Pass<'_, '_, A> {
             text: None,
         })
     }
+}
 
-    /// Lays out a scroll container with `children` under `constraint`.
-    fn scroll(
-        &mut self,
-        index: usize,
-        children: &[WidgetId],
-        constraint: Constraint,
-        scroll: Scroll,
-    ) -> Result<Laid, LayoutError> {
-        if scroll.request < MIN_REQUEST || scroll.request > MAX_LAYOUT_INPUT {
-            return Err(LayoutError::InputOutOfRange);
-        }
-        let axis = scroll.axis;
-        let inner = Constraint::new(
-            Size::ZERO,
-            size(axis, MAX_LAYOUT_INPUT, cross(constraint.max, axis))?,
-        );
-        let (content, rest) = match children.split_first() {
-            Some((&first, rest)) => {
-                let child = self.lay(first, Some(index), inner)?;
-                (self.child(child)?.size, rest)
-            }
-            None => (Size::ZERO, children),
-        };
-        self.unplaced(index, rest)?;
-        let taken = constraint.clamp(content)?;
-        let range = less(main(content, axis), main(taken, axis));
-        let offset = scroll.request.max(Fx::ZERO).min(range);
-        Ok(Laid {
-            size: taken,
-            baseline: None,
-            scroll: point(axis, offset, Fx::ZERO),
-            overflow: Overflow::default(),
-            draws: false,
-            text: None,
-        })
+/// Checks that a scroll request is within `-MAX_LAYOUT_INPUT` to
+/// [`MAX_LAYOUT_INPUT`].
+fn check_request(request: Fx) -> Result<(), LayoutError> {
+    if request < MIN_REQUEST || request > MAX_LAYOUT_INPUT {
+        return Err(LayoutError::InputOutOfRange);
     }
+    Ok(())
+}
+
+/// The offset of a scroll container along `axis` with `request`, `content`
+/// and the size `viewport`: the request brought into 0 to the content's
+/// length less the viewport's, or 0 when the content is shorter.
+fn offset(axis: Axis, request: Fx, content: Size, viewport: Size) -> Point {
+    let range = less(main(content, axis), main(viewport, axis));
+    point(axis, request.max(Fx::ZERO).min(range), Fx::ZERO)
 }
 
 /// Checks that each spacing of `tokens` is from zero to

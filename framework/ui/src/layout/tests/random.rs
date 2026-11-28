@@ -17,20 +17,27 @@
 //! the viewport across it, and the offset is the request brought into 0 to
 //! the content's length less the viewport's; and the two layouts write the
 //! same text. A failure names the seed and the group.
+//!
+//! Each group in range is also changed twice at random, one change after
+//! the other: a control's value, the children of a control, the scroll
+//! request in a control's presentation state, or the root constraint.
+//! After each change the tree laid out against the layout before equals
+//! the tree laid out whole, byte for byte.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use kosmo_text::FontSet;
 use kosmo_types::{Fx, Size};
 
-use super::{Part, Spec, build, fonts};
+use super::{Layouts, Part, Spec, build, fonts, rebuild};
 use crate::hit::LayoutError;
 use crate::layout::{
     Align, Axis, Column, Constraint, Font, LayoutTree, MAX_LAYOUT_INPUT, Overflow, Row, RowAlign,
-    TreeBox, layout,
+    TreeBox, layout, relayout,
 };
 use crate::random::SplitMix64;
 use crate::tokens::{ColorToken, FontSize, Space, TOKENS};
+use crate::tree::{Tree, WidgetId};
 
 /// The seed of the first group; group `n` uses `SEED + n`.
 const SEED: u64 = 0x6b6f_736d_6f00_0303;
@@ -53,6 +60,10 @@ const MAX_TEXTS: usize = 8;
 
 /// The most characters of the text of a leaf.
 const MAX_CHARACTERS: usize = 24;
+
+/// The changes of each group in range, laid out one after the other
+/// against the layout before.
+const CHANGES: usize = 2;
 
 /// The operators and arrows of the interface strings in Fira Sans.
 const SANS_OPERATORS: &str = "−∕√∞∑∫∂∆≈≠≤≥⋅←↑→↓";
@@ -567,5 +578,155 @@ fn random_trees_lay_out_within_their_constraints_without_panicking() {
         Beyond::Request,
     ] {
         assert!(beyond.contains(&input), "no group had {input:?}");
+    }
+}
+
+/// What a change of a group changed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Change {
+    Value,
+    Children,
+    State,
+    Constraint,
+}
+
+/// Changes one thing of a group at random and says what: the value of a
+/// control, now and then into a control of another kind; the children of
+/// a control, by a new child or by a subtree removed; the scroll request
+/// in the presentation state of a scroll container; or the root
+/// constraint. A change of value or children goes into `drafts`, from
+/// which the caller rebuilds the tree.
+fn change(
+    rng: &mut SplitMix64,
+    drafts: &mut Vec<Draft>,
+    tree: &mut Tree<Layouts>,
+    constraint: &mut Constraint,
+) -> Change {
+    let mut texts = 0;
+    match rng.below(4) {
+        0 => {
+            let index = rng.below(drafts.len());
+            drafts[index].part = match (&drafts[index].part, rng.below(2)) {
+                (Part::Fixed(_), 0) => Part::Fixed(Size::new(side(rng), side(rng)).unwrap()),
+                (Part::Text(_, font, size, color), 0) => {
+                    Part::Text(fragment(rng, *font), *font, *size, *color)
+                }
+                (Part::Scroll(axis, _), 0) => Part::Scroll(*axis, request(rng)),
+                _ => part(rng, &mut texts),
+            };
+            Change::Value
+        }
+        1 if drafts.len() > 1 && rng.below(2) == 0 => {
+            let removed = 1 + rng.below(drafts.len() - 1);
+            for draft in drafts.iter_mut() {
+                draft.children.retain(|&child| child != removed);
+            }
+            Change::Children
+        }
+        1 => {
+            let parent = rng.below(drafts.len());
+            let index = drafts.len();
+            drafts.push(Draft {
+                part: part(rng, &mut texts),
+                depth: drafts[parent].depth + 1,
+                children: Vec::new(),
+            });
+            let at = rng.below(drafts[parent].children.len() + 1);
+            drafts[parent].children.insert(at, index);
+            Change::Children
+        }
+        2 => {
+            let scrolls: Vec<WidgetId> = tree
+                .preorder()
+                .into_iter()
+                .filter(|&id| matches!(tree.control(id), Some(Part::Scroll(..))))
+                .collect();
+            if scrolls.is_empty() {
+                *constraint = root(rng);
+                return Change::Constraint;
+            }
+            let id = scrolls[rng.below(scrolls.len())];
+            tree.node_mut(id).unwrap().state = request(rng);
+            Change::State
+        }
+        _ => {
+            *constraint = root(rng);
+            Change::Constraint
+        }
+    }
+}
+
+/// Runs the changes of group `number`, a group in range, and says what
+/// they changed. Each change is laid out against the layout before and
+/// laid out whole, and the two must give the same tree, or the same error.
+fn changed_group(number: u64, fonts: &mut FontSet) -> Result<Vec<Change>, String> {
+    let mut rng = SplitMix64::new(SEED + number);
+    let mut drafts = tree(&mut rng);
+    let mut constraint = root(&mut rng);
+    let mut tree = build(&spec(&drafts, 0));
+    let (mut kept, _) = relayout(&tree, constraint, &TOKENS, fonts, 0, None)
+        .map_err(|error| format!("the first layout failed with {error:?}"))?;
+    let mut changes = Vec::with_capacity(CHANGES);
+    for _ in 0..CHANGES {
+        let change = change(&mut rng, &mut drafts, &mut tree, &mut constraint);
+        if matches!(change, Change::Value | Change::Children) {
+            rebuild(&mut tree, &spec(&drafts, 0));
+        }
+        changes.push(change);
+        let again = catch_unwind(AssertUnwindSafe(|| {
+            relayout(&tree, constraint, &TOKENS, fonts, 0, Some(&kept))
+        }))
+        .map_err(|_| format!("{change:?}: the layout against the one before panicked"))?;
+        let whole = catch_unwind(AssertUnwindSafe(|| {
+            relayout(&tree, constraint, &TOKENS, fonts, 0, None)
+        }))
+        .map_err(|_| format!("{change:?}: the whole layout panicked"))?;
+        match (again, whole) {
+            (Ok((again, _)), Ok((whole, _))) => {
+                if again.tree.text() != whole.tree.text() || again.tree != whole.tree {
+                    return Err(format!(
+                        "{change:?}: the layout against the one before differs from the whole layout"
+                    ));
+                }
+                kept = again;
+            }
+            // A change may make a sum of lengths too large for the numeric
+            // representation; both layouts then fail alike, and the group
+            // ends.
+            (Err(again), Err(whole)) if again == whole => break,
+            (again, whole) => {
+                let error = |laid: &Result<_, LayoutError>| laid.as_ref().err().copied();
+                return Err(format!(
+                    "{change:?}: the layout against the one before gave {:?}, the whole layout {:?}",
+                    error(&again),
+                    error(&whole)
+                ));
+            }
+        }
+    }
+    Ok(changes)
+}
+
+#[test]
+fn layouts_against_the_layout_before_equal_whole_layouts_after_random_changes() {
+    let mut fonts = fonts();
+    let mut seen = Vec::new();
+    for number in (0..GROUPS).filter(|number| number % OUT_OF_RANGE_EVERY != OUT_OF_RANGE_EVERY - 1)
+    {
+        match changed_group(number, &mut fonts) {
+            Ok(changes) => seen.extend(changes),
+            Err(why) => panic!("seed {:#x}, group {number}: {why}", SEED + number),
+        }
+    }
+    for change in [
+        Change::Value,
+        Change::Children,
+        Change::State,
+        Change::Constraint,
+    ] {
+        assert!(
+            seen.contains(&change),
+            "no group made a change of {change:?}"
+        );
     }
 }

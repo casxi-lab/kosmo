@@ -4,6 +4,7 @@ use kosmo_types::{Fx, Point, Size};
 use super::*;
 use crate::app::{App, Control, DrawContext, Message, Out};
 use crate::hit::hit_test;
+use crate::layout::{Kept, Work, relayout};
 use crate::testing::{TestApp, TestPort, node};
 use crate::tokens::{ColorToken, FontSize, Space, TOKENS, Tokens};
 use crate::tree::{Key, Kind, Tree, View};
@@ -109,6 +110,19 @@ fn build(spec: &Spec) -> Tree<Layouts> {
         }
     }
     tree
+}
+
+/// Applies the view of `spec` to `tree`, which keeps the identities of the
+/// controls that stay, and sets the request of each scroll container from
+/// its value, as `build` does.
+fn rebuild(tree: &mut Tree<Layouts>, spec: &Spec) {
+    tree.rebuild(&view(spec, 0)).unwrap();
+    for id in tree.preorder() {
+        let node = tree.node_mut(id).unwrap();
+        if let Part::Scroll(_, request) = &node.control {
+            node.state = *request;
+        }
+    }
 }
 
 fn px(pixels: i32) -> Fx {
@@ -767,4 +781,118 @@ fn the_layout_result_holds_the_boxes_of_the_tree() {
         .unwrap();
     assert_eq!(path.last(), Some(&tree.boxes()[4].widget));
     assert_eq!(path.len(), 3);
+}
+
+/// A row of a column of two text leaves, the first `first`, and of a
+/// vertical scroll container that asks for `request` pixels, with a column
+/// of six rows of 100 × 40 pixels, the first `first_width` pixels wide, as
+/// its content; under the tight constraint of 200 × 100 pixels, the
+/// container is 100 pixels high and may scroll by 140.
+fn dashboard(first: &str, first_width: i32, request: i32) -> Case {
+    let mut rows = vec![fixed(100, 40); 6];
+    rows[0] = fixed(first_width, 40);
+    Case {
+        constraint: constraint(200, 100, 200, 100),
+        spec: row(
+            Row::new().spacing(Space::S),
+            vec![
+                column(
+                    Column::new(),
+                    vec![
+                        text(first, Font::Sans, FontSize::Body),
+                        text("a", Font::Sans, FontSize::Body),
+                    ],
+                ),
+                scroll(Axis::Y, request, column(Column::new(), rows)),
+            ],
+        ),
+    }
+}
+
+/// Lays out `tree` against `kept` and as a whole, checks that both give
+/// the same tree, and returns the first with its work.
+fn again(
+    tree: &Tree<Layouts>,
+    constraint: Constraint,
+    kept: &Kept,
+    fonts: &mut FontSet,
+) -> (Kept, Work) {
+    let (again, work) = relayout(tree, constraint, &TOKENS, fonts, 0, Some(kept)).unwrap();
+    let (whole, _) = relayout(tree, constraint, &TOKENS, fonts, 0, None).unwrap();
+    assert_eq!(again.tree.text(), whole.tree.text());
+    assert_eq!(again.tree, whole.tree);
+    (again, work)
+}
+
+#[test]
+fn a_layout_against_the_layout_before_lays_out_only_what_changed() {
+    let mut fonts = fonts();
+    let case = dashboard("1", 100, 0);
+    let mut tree = build(&case.spec);
+    let (first, work) = relayout(&tree, case.constraint, &TOKENS, &mut fonts, 0, None).unwrap();
+    // Every box, and both text leaves, the first time.
+    assert_eq!(first.tree.boxes().len(), 12);
+    assert_eq!(work, Work { laid: 12, texts: 2 });
+    // Nothing changed: the whole tree is taken from the layout before.
+    let (kept, work) = again(&tree, case.constraint, &first, &mut fonts);
+    assert_eq!(work, Work::default());
+    assert_eq!(kept.tree, first.tree);
+    // A longer first text: the leaf, its column, whose width grows, and
+    // the root, whose size its tight constraint keeps; the other leaf and
+    // the scroll container with its content are taken as they were.
+    rebuild(&mut tree, &dashboard("1234", 100, 0).spec);
+    let (kept, work) = again(&tree, case.constraint, &kept, &mut fonts);
+    assert_eq!(work, Work { laid: 3, texts: 1 });
+    // A narrower first row in the content, which keeps the width of the
+    // content, and another request: the row and the content's column are
+    // laid out, and the scroll container keeps its size and follows its
+    // request.
+    rebuild(&mut tree, &dashboard("1234", 50, 30).spec);
+    let (kept, work) = again(&tree, case.constraint, &kept, &mut fonts);
+    assert_eq!(work, Work { laid: 2, texts: 0 });
+    let scroll = &kept.tree.boxes()[4];
+    assert_eq!(scroll.scroll, Point::new(Fx::ZERO, px(30)));
+    // Another request alone moves only the scroll container's content.
+    rebuild(&mut tree, &dashboard("1234", 50, 45).spec);
+    let (moved, work) = again(&tree, case.constraint, &kept, &mut fonts);
+    assert_eq!(work, Work::default());
+    let changed: Vec<usize> = (0..12)
+        .filter(|&index| moved.tree.boxes()[index] != kept.tree.boxes()[index])
+        .collect();
+    assert_eq!(changed, [4]);
+    assert_eq!(moved.tree.boxes()[4].scroll, Point::new(Fx::ZERO, px(45)));
+}
+
+#[test]
+fn another_constraint_table_of_tokens_or_font_set_lays_out_the_whole_tree() {
+    let mut fonts = fonts();
+    let case = dashboard("1", 100, 0);
+    let tree = build(&case.spec);
+    let (first, _) = relayout(&tree, case.constraint, &TOKENS, &mut fonts, 0, None).unwrap();
+    let whole = Work { laid: 12, texts: 2 };
+    let wider = constraint(240, 100, 240, 100);
+    let lay = |constraint, tokens: &Tokens, fonts_id, fonts: &mut FontSet| {
+        relayout(&tree, constraint, tokens, fonts, fonts_id, Some(&first))
+            .unwrap()
+            .1
+    };
+    assert_eq!(lay(wider, &TOKENS, 0, &mut fonts), whole);
+    let tokens = Tokens {
+        space_s: px(5),
+        ..TOKENS
+    };
+    assert_eq!(lay(case.constraint, &tokens, 0, &mut fonts), whole);
+    // A colour too, though the layout does not read colours.
+    let tokens = Tokens {
+        accent: kosmo_render::Color::opaque(0xC0, 0, 0),
+        ..TOKENS
+    };
+    assert_eq!(lay(case.constraint, &tokens, 0, &mut fonts), whole);
+    let mut other = self::fonts();
+    assert_eq!(lay(case.constraint, &TOKENS, 1, &mut other), whole);
+    // The same three take the whole tree from the layout before.
+    assert_eq!(
+        lay(case.constraint, &TOKENS, 0, &mut fonts),
+        Work::default()
+    );
 }
