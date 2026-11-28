@@ -263,8 +263,8 @@ names that font set, the table of design tokens, `tokens`, the surfaces to
 lay out, `sizes`, each with its size, and `pending`, the regions that the
 drawing pass draws besides the update region of each surface;
 `LayoutInput::new(fonts, fonts_id, tokens)` builds it without surfaces, and
-`surface(surface, size)` adds one. The pass
-lays out the one control tree for each surface of `sizes`, in the order of
+`surface(surface, size)` adds one. The layout pass lays out the one control
+tree for each surface of `sizes`, in the order of
 the surfaces, with the surface's size as the tight constraint of the root,
 as the [layout pass](../../architecture.md#layout-pass) describes. The
 runtime keeps each surface's layout, and `Runtime::layout(surface)` gives
@@ -763,10 +763,11 @@ no wall-clock time; review checks these, as the
   driver of `Shell::run_round` destroys them before it calls `shutdown`;
   `run` calls `shutdown` itself, so the surfaces of an application that
   `run` drives are not destroyed before `shutdown`. A frame that fails to
-  present is drawn and presented again in every later round, which returns
-  the error again, also when nothing changed, and the frames of the
-  surfaces after it wait with it; so a driver runs no round after it
-  destroys a surface, which the shell still lays out and draws.
+  present is drawn and presented again in the next round, and one that
+  keeps failing in every later round, which returns the error again, also
+  when nothing changed, while the frames of the surfaces after it wait
+  with it; so a driver runs no round after it destroys a surface, which
+  the shell still lays out and draws.
 - A frame of a round for a surface whose buffer is presented and not
   released is not presented: the shell keeps only its damage region, and
   the first round after the release draws that region again from the
@@ -1132,7 +1133,8 @@ wall clock.
     `a_second_size_while_the_buffer_is_presented_draws_the_next_frame_whole`,
     `a_size_and_back_while_the_buffer_is_presented_draws_the_change`,
     `frames_that_fail_to_present_are_drawn_again_by_the_next_round`,
-    `a_frame_presented_before_one_that_fails_is_not_pending`.
+    `a_frame_presented_before_one_that_fails_is_not_pending`,
+    `a_frame_for_a_presented_buffer_after_one_that_fails_is_pending`.
 24. The groups of the drawing pass count toward the command limit of a
     round's frame: below a row, 56 chains of 63 levels, 3,529 controls and
     64 deep, whose 56 leaves draw 166 rectangles each, give one frame of

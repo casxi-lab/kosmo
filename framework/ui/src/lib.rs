@@ -120,9 +120,8 @@
 //! presents its frames, keeping the region of a frame for a surface whose
 //! buffer is still presented for the round after its release;
 //! [`Shell::present`] prepares the coverage masks of a display list's glyph
-//! runs in the glyph
-//! cache of the font set, draws the list into a surface's previous frame
-//! and presents its damage.
+//! runs in the glyph cache of the font set, draws the list into a surface's
+//! previous frame and presents its damage.
 //! [`run`] runs rounds until the platform disconnects and returns an
 //! [`ExitStatus`]. With the feature `call-probes`, off by default and
 //! turned on only from the command line, the single-round entry records

@@ -68,9 +68,10 @@ struct Surface {
     frame: Option<RenderTarget>,
     /// Its buffer is presented and not released yet.
     presented: bool,
-    /// The region of the frames of rounds that came while its buffer was
-    /// presented, and the whole surface after a new size or a dropped
-    /// frame, which the next round after the release draws again.
+    /// The region of the frames that it could not present, because its
+    /// buffer was presented or the presentation failed, and the whole
+    /// surface after a new size or a dropped frame, which the next round
+    /// in which its buffer is not presented draws again.
     pending: Option<Damage>,
 }
 
