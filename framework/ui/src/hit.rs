@@ -43,8 +43,10 @@ pub enum LayoutError {
     /// A position or an edge does not fit the numeric representation.
     Overflow,
     /// A layout input is out of its range: a constraint whose smallest
-    /// size exceeds its largest, or a constraint, a leaf or a scroll
-    /// request beyond `MAX_LAYOUT_INPUT`.
+    /// size exceeds its largest; a constraint, a fixed-size leaf, the size
+    /// of a paragraph or a scroll request beyond `MAX_LAYOUT_INPUT`; or a
+    /// table of design tokens with a spacing below zero or beyond
+    /// `MAX_LAYOUT_INPUT`, or a font size that `kosmo-text` does not lay out.
     InputOutOfRange,
 }
 

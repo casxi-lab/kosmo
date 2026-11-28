@@ -471,8 +471,9 @@ impl LayoutTree {
 /// a fixed-size leaf, the size of a paragraph or a scroll request beyond
 /// [`MAX_LAYOUT_INPUT`], and for a table of tokens with a negative spacing,
 /// a spacing beyond [`MAX_LAYOUT_INPUT`] or a font size that `kosmo-text`
-/// does not lay out; and [`LayoutError::Overflow`] when a sum of lengths
-/// does not fit the numeric representation. It never panics.
+/// does not lay out; and [`LayoutError::Overflow`] when a sum of lengths,
+/// or a position that the text layout gives, does not fit the numeric
+/// representation. It never panics.
 pub fn layout<A: App>(
     tree: &Tree<A>,
     constraint: Constraint,

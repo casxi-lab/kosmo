@@ -1035,11 +1035,14 @@ against the new version instead of being shown as current and at once as stale.
   natural size exceeds its maximum size, never clipped silently; the box then
   takes its maximum size, and its children keep theirs.
 - Coordinates use the [numeric representation](#numeric-representation). Its
-  bound on layout inputs applies to constraints, to the sizes that leaves give
-  and to scroll requests; the sizes that rows, columns and scroll containers
-  add up from their children are checked only for overflow. An input out of its
-  range, a constraint whose minimum exceeds its maximum, or a sum that does not
-  fit makes the whole layout return a distinct error.
+  bound on layout inputs applies to constraints, to the sizes that leaves give,
+  to scroll requests and to the spacings of the table of design tokens, whose
+  font sizes must be sizes that the text layout takes; the sizes that rows,
+  columns and scroll containers add up from their children are checked only
+  for overflow. An input out of its range, a constraint whose minimum exceeds
+  its maximum, a table of tokens out of its range, or a sum or a position of
+  the text layout that does not fit makes the whole layout return a distinct
+  error.
 - The first release has rows, columns and scrolling, written in kosmo without a
   general layout library.
 
