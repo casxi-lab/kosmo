@@ -972,14 +972,15 @@ wall clock.
     lays the tree out whole, and nothing changed lays nothing out. After
     random changes of a value, the children of a control, a scroll request
     or the root constraint, the layout against the one before is the whole
-    layout byte for byte, and a scroll request beyond its range in a
-    subtree taken whole fails both alike. The offsets are written back
-    along the axis of each container, the smallest of the surfaces', so
-    that requests beyond the range do not add up, and the kept layouts of
-    all surfaces follow the requests written back, also for nested
-    containers and for controls that do not write their offsets back; a
-    failed layout is recorded and leaves the surface without a layout. The
-    shell hands its own font set to the round. Tests:
+    layout byte for byte, and a scroll request whose absolute value
+    exceeds `MAX_LAYOUT_INPUT` in a subtree taken whole fails both alike.
+    The offsets are written back along the axis of each container, the
+    smallest of the surfaces', so that requests beyond the range of the
+    content do not add up, and the kept layouts of all surfaces follow the
+    requests as the round leaves them, also in nested containers and where
+    a control does not write its offset back; a failed layout is recorded
+    and leaves the surface without a layout. The shell hands its own font
+    set to the round. Tests:
     `round::tests::layout::`
     `each_surface_with_a_size_is_laid_out_under_it_in_the_order_of_the_surfaces`,
     `changing_one_text_leaf_lays_out_only_it_and_its_ancestors_up_to_the_boundary`,
