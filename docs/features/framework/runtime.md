@@ -1121,7 +1121,8 @@ wall clock.
     `a_frame_for_a_presented_buffer_is_drawn_again_after_the_release`,
     `a_second_size_while_the_buffer_is_presented_draws_the_next_frame_whole`,
     `a_size_and_back_while_the_buffer_is_presented_draws_the_change`,
-    `frames_that_fail_to_present_are_drawn_again_by_the_next_round`.
+    `frames_that_fail_to_present_are_drawn_again_by_the_next_round`,
+    `a_frame_presented_before_one_that_fails_is_not_pending`.
 24. The groups of the drawing pass count toward the command limit of a
     round's frame: below a row, 56 chains of 63 levels, 3,529 controls and
     64 deep, whose 56 leaves draw 166 rectangles each, give one frame of

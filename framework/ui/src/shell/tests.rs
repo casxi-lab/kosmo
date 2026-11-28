@@ -694,6 +694,47 @@ fn frames_that_fail_to_present_are_drawn_again_by_the_next_round() {
     );
 }
 
+/// A frame presented before the one that fails stays out of the pending
+/// regions: the fake has one buffer, so once the first frame is presented,
+/// the second surface asks for the buffer while it is in flight.
+#[test]
+fn a_frame_presented_before_one_that_fails_is_not_pending() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    let first = shell.run_round(&mut fake, None).unwrap();
+    release(&mut shell, &mut fake);
+    let second = SurfaceId::new(2);
+    let mut output = first.output.clone();
+    output.frames = vec![
+        (
+            SURFACE,
+            DisplayList::default(),
+            damage(&fake, &[(0, 0, 1, 1)]),
+        ),
+        (
+            second,
+            DisplayList::default(),
+            damage(&fake, &[(2, 0, 3, 1)]),
+        ),
+    ];
+    taken(&log);
+    assert_eq!(
+        shell.deliver(&mut fake, &output),
+        Err(ShellError::Platform(PlatformError::Busy))
+    );
+    assert_eq!(
+        presentations(&log),
+        ["buffer 1", "present 1 0,0 1x1", "buffer 2"]
+    );
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
+    assert_eq!(
+        shell.surfaces[&second].pending.unwrap().rects(),
+        [DamageRect::new(2, 0, 3, 1).unwrap()]
+    );
+}
+
 #[test]
 fn presenting_converts_only_the_damage_of_the_frame_into_the_buffer() {
     let log = Log::default();
