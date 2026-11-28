@@ -52,12 +52,13 @@ const RGBA8_PREMUL: u32 = 1;
 /// The bytes of the encoded description.
 pub const HEADER: usize = 16;
 
-/// A control of the scene: a column, a row, a text leaf or a rule.
+/// A control of the scene: a column, a row, a text leaf with a colour of
+/// its own or without one, or a rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Piece {
     Column(Column),
     Row(Row),
-    Label(&'static str, Font, FontSize, ColorToken),
+    Label(&'static str, Font, FontSize, Option<ColorToken>),
     Rule(i32, i32),
 }
 
@@ -82,7 +83,11 @@ impl Control<Scene> for Piece {
             Piece::Column(column) => Node::Column(*column),
             Piece::Row(row) => Node::Row(*row),
             Piece::Label(text, font, size, color) => {
-                Node::Text(Text::new(text, *font, *size).color(*color))
+                let text = Text::new(text, *font, *size);
+                Node::Text(match color {
+                    Some(color) => text.color(*color),
+                    None => text,
+                })
             }
             Piece::Rule(width, height) => {
                 let size = Size::new(Fx::from_units(width * 64), Fx::from_units(height * 64));
@@ -133,28 +138,16 @@ impl App for Scene {
             Key::new(0),
             Piece::Column(Column::new().padding(Space::L).spacing(Space::M)),
         )
-        .child(label(
-            0,
-            "Result",
-            Font::Sans,
-            FontSize::Large,
-            ColorToken::Text,
-        ))
+        .child(label(0, "Result", Font::Sans, FontSize::Large, None))
         .child(
             View::new(Key::new(1), Piece::Row(reading))
-                .child(label(
-                    0,
-                    "x = 1/3",
-                    Font::Mono,
-                    FontSize::Body,
-                    ColorToken::Text,
-                ))
+                .child(label(0, "x = 1/3", Font::Mono, FontSize::Body, None))
                 .child(label(
                     1,
                     "stale",
                     Font::Sans,
                     FontSize::Small,
-                    ColorToken::TextSecondary,
+                    Some(ColorToken::TextSecondary),
                 )),
         )
         .child(View::new(Key::new(2), Piece::Rule(208, 2)))
@@ -165,14 +158,14 @@ impl App for Scene {
                     "error:",
                     Font::Sans,
                     FontSize::Body,
-                    ColorToken::Error,
+                    Some(ColorToken::Error),
                 ))
                 .child(label(
                     1,
                     "division by zero",
                     Font::Sans,
                     FontSize::Body,
-                    ColorToken::Error,
+                    Some(ColorToken::Error),
                 )),
         )
     }

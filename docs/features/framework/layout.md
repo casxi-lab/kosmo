@@ -236,7 +236,8 @@ of "x = 1/3" in Fira Mono at `FontSize::Body` and "stale" at
 `FontSize::Small` in `ColorToken::TextSecondary`; a rule of 208 × 2 pixels
 in `ColorToken::Accent`; and a row with the spacing `Space::S` of "error:"
 and "division by zero" at `FontSize::Body` in `ColorToken::Error`; the
-other text is in `ColorToken::Text` and in Fira Sans. The first round of a
+other text has no colour of its own and takes the default,
+`ColorToken::Text`, and is in Fira Sans. The first round of a
 new runtime lays it out on a surface of 240 × 160 pixels and draws it, and
 vello_cpu draws a rectangle of the surface in `ColorToken::Background` and
 over it the round's frame from the coverage masks of the glyph cache, into
