@@ -6,6 +6,7 @@ use kosmo_types::{Damage, DamageRect, Fx, Point, Rect, Size};
 
 use crate::app::{App, Canvas, Control, DrawContext};
 use crate::hit::{LayoutError, LayoutResult, Placed, negate};
+use crate::tokens::Tokens;
 use crate::tree::{Tree, WidgetId};
 
 /// Why the drawing pass gave no display list.
@@ -19,6 +20,10 @@ pub enum PaintError {
     Layout(LayoutError),
     /// A box names a control that the tree does not hold.
     MissingControl(WidgetId),
+    /// This control drew a command with a colour that is not the value of
+    /// a colour token, or a glyph run at a size that is not the value of a
+    /// font size token.
+    Untokened(WidgetId),
 }
 
 impl From<ListError> for PaintError {
@@ -41,7 +46,8 @@ struct Open {
 }
 
 /// The display list of the controls of `layout`, the layout result that hit
-/// testing reads, for the region `damage` of their surface.
+/// testing reads, for the region `damage` of their surface, with the
+/// colours and font sizes of `tokens`.
 ///
 /// The boxes are visited in preorder, which is the drawing order. A box
 /// that is visible inside no rectangle of `damage`, moved by the scroll
@@ -61,14 +67,23 @@ struct Open {
 /// display list, and a frame beyond them makes the pass return
 /// [`PaintError::List`].
 ///
+/// Controls take their colours from `tokens` through
+/// [`DrawContext::color`]. Each command that a control draws is checked
+/// against `tokens`: a colour that is not the value of a colour token, or a
+/// glyph run at a size that is not the value of a font size token, makes
+/// the pass return [`PaintError::Untokened`]. The check compares values,
+/// not where they come from, so a literal equal to a token's value passes.
+///
 /// The pass reads only its input. It returns an error, and no list, when a
 /// visible box is out of preorder, when a position does not fit, when a box
-/// names no control of `tree`, and when the list refuses a command or a
-/// control leaves a group open.
+/// names no control of `tree`, when a control draws a value outside
+/// `tokens`, and when the list refuses a command or a control leaves a
+/// group open.
 pub fn paint<A: App>(
     tree: &Tree<A>,
     layout: &LayoutResult,
     damage: &Damage,
+    tokens: &Tokens,
 ) -> Result<DisplayList, PaintError> {
     let damage = damage
         .rects()
@@ -135,7 +150,7 @@ pub fn paint<A: App>(
             let (Some(control), Some(state)) = (tree.control(id), tree.state(id)) else {
                 return Err(PaintError::MissingControl(id));
             };
-            let canvas = Canvas::new(&mut list, layout_box.rect);
+            let canvas = Canvas::new(&mut list, tokens, id, layout_box.rect);
             let mut cx = DrawContext::new(id, state, layout_box.rect.size(), canvas);
             control.draw(&mut cx);
             cx.into_canvas().finish()?;

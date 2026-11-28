@@ -24,8 +24,8 @@ use kosmo_testkit::pixels::PixelDigest;
 use kosmo_text::{FontSet, MONO_FILE, SANS, SANS_FILE, TextStyle};
 use kosmo_types::{BufferDesc, Damage, DamageRect, Fx, PixelFormat, Point, Rect, Size};
 use kosmo_ui::{
-    App, Control, DrawContext, ExitReason, JobPort, Key, Kind, LayoutBox, LayoutResult, Message,
-    Out, Shell, ShellError, View, paint, run,
+    App, ColorToken, Control, DrawContext, ExitReason, JobPort, Key, Kind, LayoutBox, LayoutResult,
+    Message, Out, Shell, ShellError, TOKENS, View, paint, run,
 };
 
 /// The two fonts as resources, named by their files in the asset manifest
@@ -48,15 +48,13 @@ fn fonts() -> BTreeMap<ResourceId, Vec<u8>> {
     ])
 }
 
-const BLUE: Color = Color::opaque(0, 0, 255);
-const RED: Color = Color::opaque(255, 0, 0);
-
 /// An application of two controls, a root and its child, each of which
-/// fills its box with its color.
+/// fills its box with the colour of its token: the accent and the colour
+/// of errors.
 struct Boxes;
 
 #[derive(Clone, Debug, PartialEq)]
-struct Fill(Color);
+struct Fill(ColorToken);
 
 impl Control<Boxes> for Fill {
     type State = ();
@@ -68,7 +66,7 @@ impl Control<Boxes> for Fill {
     fn draw(&self, cx: &mut DrawContext<'_, ()>) {
         cx.draw(Command::FillRect {
             rect: Rect::new(Point::default(), cx.size()),
-            color: self.0,
+            color: cx.color(self.0),
         });
     }
 }
@@ -81,7 +79,8 @@ impl App for Boxes {
     fn update(&mut self, _: Message<Self>, _: &mut Out<Self>) {}
 
     fn view(&self) -> View<Fill> {
-        View::new(Key::new(0), Fill(BLUE)).child(View::new(Key::new(1), Fill(RED)))
+        View::new(Key::new(0), Fill(ColorToken::Accent))
+            .child(View::new(Key::new(1), Fill(ColorToken::Error)))
     }
 }
 
@@ -241,7 +240,7 @@ fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
     let frame = BufferDesc::new(8, 4, 32, PixelFormat::Rgba8Premul).unwrap();
     let mut whole = Damage::new(frame);
     whole.add(0, 0, 8, 4);
-    let list = paint(tree, &layout, &whole).unwrap();
+    let list = paint(tree, &layout, &whole, &TOKENS).unwrap();
     let work = shell.present(&mut backend, surface, &list, &whole).unwrap();
     assert_eq!(work.pixels, 32);
 
@@ -257,9 +256,9 @@ fn a_frame_that_the_shell_presents_is_what_the_backend_reads_back() {
     assert_eq!(read.desc, shown);
     assert_eq!(read.bytes, expected);
     assert_eq!(read.damage, whole.rects());
-    // B, G, R, X: blue at (0, 0), red at (2, 1).
-    assert_eq!(&read.bytes[..4], &[255, 0, 0, 255]);
-    assert_eq!(&read.bytes[40..44], &[0, 0, 255, 255]);
+    // B, G, R, X: the accent at (0, 0), the colour of errors at (2, 1).
+    assert_eq!(&read.bytes[..4], &[0xBF, 0x5F, 0x1F, 0xFF]);
+    assert_eq!(&read.bytes[40..44], &[0x1E, 0x26, 0xB3, 0xFF]);
 
     // Until a wait returns the release, the surface is not presented again.
     assert_eq!(
@@ -313,7 +312,7 @@ fn a_new_previous_frame_is_presented_whole_whatever_its_damage() {
     builder
         .push(Command::FillRect {
             rect: pixels(2, 1, 4, 2),
-            color: RED,
+            color: Color::opaque(255, 0, 0),
         })
         .unwrap();
     let list = builder.finish().unwrap();

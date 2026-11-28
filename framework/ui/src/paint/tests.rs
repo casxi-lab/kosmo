@@ -1,21 +1,25 @@
-use kosmo_render::{Color, Command, MAX_COMMANDS};
+use kosmo_render::{Color, Command, FontId, Glyph, GlyphId, MAX_COMMANDS};
 use kosmo_types::{BufferDesc, PixelFormat};
 
 use super::*;
 use crate::app::{Message, Out};
 use crate::hit::LayoutBox;
 use crate::testing::TestPort;
+use crate::tokens::{ColorToken, TOKENS};
 use crate::tree::{Key, Kind, View};
 
-/// A control that fills its box with a shade of red, fills it a number of
-/// times, draws nothing, or misuses groups.
+/// A control that fills its box with the colour of a token, fills it a
+/// number of times, draws nothing, misuses groups, fills its box with a
+/// colour given as a value, or draws a glyph run at a size.
 #[derive(Clone, Debug, PartialEq)]
 enum Painter {
-    Fill(u8),
+    Fill(ColorToken),
     Many(usize),
     Nothing,
     Pops,
     Opens,
+    Literal(Color),
+    Glyphs(Fx),
 }
 
 struct Painting;
@@ -41,15 +45,15 @@ impl Control<Painting> for Painter {
 
     fn draw(&self, cx: &mut DrawContext<'_, ()>) {
         match *self {
-            Painter::Fill(shade) => cx.draw(Command::FillRect {
+            Painter::Fill(token) => cx.draw(Command::FillRect {
                 rect: Rect::new(Point::default(), cx.size()),
-                color: Color::opaque(shade, 0, 0),
+                color: cx.color(token),
             }),
             Painter::Many(times) => {
                 for _ in 0..times {
                     cx.draw(Command::FillRect {
                         rect: Rect::new(Point::default(), cx.size()),
-                        color: Color::opaque(1, 0, 0),
+                        color: cx.color(ColorToken::Accent),
                     });
                 }
             }
@@ -58,6 +62,19 @@ impl Control<Painting> for Painter {
             Painter::Opens => cx.draw(Command::PushClip {
                 rect: Rect::new(Point::default(), cx.size()),
                 offset: Point::default(),
+            }),
+            Painter::Literal(color) => cx.draw(Command::FillRect {
+                rect: Rect::new(Point::default(), cx.size()),
+                color,
+            }),
+            Painter::Glyphs(size) => cx.draw(Command::Glyphs {
+                font: FontId::new(0),
+                size,
+                color: cx.color(ColorToken::Text),
+                glyphs: vec![Glyph {
+                    id: GlyphId::new(3),
+                    origin: Point::default(),
+                }],
             }),
         }
     }
@@ -89,13 +106,16 @@ fn build(controls: [Painter; 4]) -> (Tree<Painting>, [WidgetId; 4]) {
     (tree, [ids[0], ids[1], ids[2], ids[3]])
 }
 
+/// The colour tokens that `filling` fills the four boxes with.
+const FILLS: [ColorToken; 4] = [
+    ColorToken::Background,
+    ColorToken::Accent,
+    ColorToken::Text,
+    ColorToken::Error,
+];
+
 fn filling() -> (Tree<Painting>, [WidgetId; 4]) {
-    build([
-        Painter::Fill(1),
-        Painter::Fill(2),
-        Painter::Fill(3),
-        Painter::Fill(4),
-    ])
+    build(FILLS.map(Painter::Fill))
 }
 
 /// The boxes: the root of 100 by 80 pixels, `a` at 10, 10 scrolled down by
@@ -138,16 +158,26 @@ fn clip(rect: Rect, offset: Point) -> Command {
     Command::PushClip { rect, offset }
 }
 
-/// The commands of a control that fills its box `rect` with `shade`.
-fn filled(rect: Rect, shade: u8) -> [Command; 3] {
+/// The commands of a control that fills its box `rect` with the colour of
+/// `token`.
+fn filled(rect: Rect, token: ColorToken) -> [Command; 3] {
     [
         clip(rect, rect.origin()),
         Command::FillRect {
             rect: Rect::new(Point::default(), rect.size()),
-            color: Color::opaque(shade, 0, 0),
+            color: TOKENS.color(token),
         },
         Command::PopClip,
     ]
+}
+
+/// The drawing pass with `TOKENS`.
+fn paint<A: App>(
+    tree: &Tree<A>,
+    layout: &LayoutResult,
+    damage: &Damage,
+) -> Result<DisplayList, PaintError> {
+    super::paint(tree, layout, damage, &TOKENS)
 }
 
 #[test]
@@ -155,14 +185,14 @@ fn every_control_draws_in_preorder_relative_to_its_box() {
     let (tree, ids) = filling();
     let list = paint(&tree, &layout(&boxes(ids)), &damage(&[(0, 0, 100, 80)])).unwrap();
     let mut expected = Vec::new();
-    expected.extend(filled(rect(0, 0, 100, 80), 1));
+    expected.extend(filled(rect(0, 0, 100, 80), FILLS[0]));
     expected.push(clip(rect(0, 0, 100, 80), point(0, 0)));
-    expected.extend(filled(rect(10, 10, 40, 30), 2));
+    expected.extend(filled(rect(10, 10, 40, 30), FILLS[1]));
     // The children of `a` are moved by its position and its scroll offset.
     expected.push(clip(rect(10, 10, 40, 30), point(10, 5)));
-    expected.extend(filled(rect(0, 0, 20, 10), 3));
+    expected.extend(filled(rect(0, 0, 20, 10), FILLS[2]));
     expected.push(Command::PopClip);
-    expected.extend(filled(rect(60, 10, 30, 30), 4));
+    expected.extend(filled(rect(60, 10, 30, 30), FILLS[3]));
     expected.push(Command::PopClip);
     assert_eq!(list.commands(), expected);
 }
@@ -174,9 +204,9 @@ fn controls_outside_the_damage_are_skipped_with_their_descendants() {
     // Only the root and `b`.
     let list = paint(&tree, &layout, &damage(&[(70, 20, 5, 5)])).unwrap();
     let mut expected = Vec::new();
-    expected.extend(filled(rect(0, 0, 100, 80), 1));
+    expected.extend(filled(rect(0, 0, 100, 80), FILLS[0]));
     expected.push(clip(rect(0, 0, 100, 80), point(0, 0)));
-    expected.extend(filled(rect(60, 10, 30, 30), 4));
+    expected.extend(filled(rect(60, 10, 30, 30), FILLS[3]));
     expected.push(Command::PopClip);
     assert_eq!(list.commands(), expected);
     // `a1` is visible from 10, 10 to 30, 15 on the surface; below it only
@@ -198,9 +228,9 @@ fn controls_outside_the_damage_are_skipped_with_their_descendants() {
 fn a_control_that_draws_nothing_adds_no_group() {
     let (tree, ids) = build([
         Painter::Nothing,
-        Painter::Fill(2),
+        Painter::Fill(FILLS[1]),
         Painter::Nothing,
-        Painter::Fill(4),
+        Painter::Fill(FILLS[3]),
     ]);
     let mut boxes = boxes(ids);
     boxes[1].draws = false;
@@ -210,7 +240,7 @@ fn a_control_that_draws_nothing_adds_no_group() {
         clip(rect(10, 10, 40, 30), point(10, 5)),
         Command::PopClip,
     ];
-    expected.extend(filled(rect(60, 10, 30, 30), 4));
+    expected.extend(filled(rect(60, 10, 30, 30), FILLS[3]));
     expected.push(Command::PopClip);
     // `a` does not draw, `a1` draws nothing, and the group of `a`'s
     // children holds no command.
@@ -250,7 +280,7 @@ fn a_box_of_a_control_that_does_not_exist_is_refused() {
 #[test]
 fn a_control_ends_only_the_groups_it_starts() {
     let (tree, ids) = build([
-        Painter::Fill(1),
+        Painter::Fill(FILLS[0]),
         Painter::Pops,
         Painter::Nothing,
         Painter::Nothing,
@@ -260,7 +290,7 @@ fn a_control_ends_only_the_groups_it_starts() {
         Err(PaintError::List(ListError::UnpairedPopClip))
     );
     let (tree, ids) = build([
-        Painter::Fill(1),
+        Painter::Fill(FILLS[0]),
         Painter::Nothing,
         Painter::Opens,
         Painter::Nothing,
@@ -290,5 +320,77 @@ fn the_groups_count_toward_the_limit_of_the_list() {
             &damage(&[(0, 0, 100, 80)])
         ),
         Err(PaintError::List(ListError::TooManyCommands))
+    );
+}
+
+/// A colour that is the value of no colour token makes the pass return a
+/// distinct error and no display list; a control that takes its colour
+/// from a token beside it does not hide it.
+#[test]
+fn a_colour_outside_the_table_of_tokens_is_refused() {
+    let untokened = Color::opaque(1, 2, 3);
+    let (tree, ids) = build([
+        Painter::Fill(ColorToken::Background),
+        Painter::Literal(untokened),
+        Painter::Nothing,
+        Painter::Fill(ColorToken::Accent),
+    ]);
+    assert_eq!(
+        paint(&tree, &layout(&boxes(ids)), &damage(&[(0, 0, 100, 80)])),
+        Err(PaintError::Untokened(ids[1]))
+    );
+}
+
+/// A glyph run at a size that is the value of no font size token is
+/// refused like a colour outside the table; the sizes of the tokens pass.
+#[test]
+fn a_glyph_run_at_a_size_outside_the_font_size_tokens_is_refused() {
+    let glyphs = |size| {
+        let (tree, ids) = build([
+            Painter::Glyphs(size),
+            Painter::Nothing,
+            Painter::Nothing,
+            Painter::Nothing,
+        ]);
+        paint(
+            &tree,
+            &layout(&boxes(ids)[..1]),
+            &damage(&[(0, 0, 100, 80)]),
+        )
+        .map(|_| ids[0])
+    };
+    let root = glyphs(TOKENS.font_body).unwrap();
+    for size in [TOKENS.font_small, TOKENS.font_large] {
+        assert_eq!(glyphs(size), Ok(root));
+    }
+    for size in [px(10), px(14), Fx::from_units(TOKENS.font_body.units() + 1)] {
+        assert_eq!(glyphs(size), Err(PaintError::Untokened(root)));
+    }
+}
+
+/// The check compares values: a literal equal to the value of a token
+/// passes, and a table with another value refuses the literal.
+#[test]
+fn the_check_compares_values_not_where_they_come_from() {
+    let (tree, ids) = build([
+        Painter::Literal(Color::opaque(0x1F, 0x5F, 0xBF)),
+        Painter::Nothing,
+        Painter::Nothing,
+        Painter::Nothing,
+    ]);
+    let layout = layout(&boxes(ids)[..1]);
+    let whole = damage(&[(0, 0, 100, 80)]);
+    let list = paint(&tree, &layout, &whole).unwrap();
+    assert_eq!(
+        list.commands(),
+        filled(rect(0, 0, 100, 80), ColorToken::Accent)
+    );
+    let other = Tokens {
+        accent: Color::opaque(0xC0, 0, 0),
+        ..TOKENS
+    };
+    assert_eq!(
+        super::paint(&tree, &layout, &whole, &other),
+        Err(PaintError::Untokened(ids[0]))
     );
 }

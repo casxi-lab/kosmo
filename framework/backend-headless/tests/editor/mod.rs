@@ -30,14 +30,14 @@ use kosmo_math_model::version::Versions;
 use kosmo_platform::{
     PixelSize, PlatformCaps, PlatformError, ResourceId, Stamp, SurfaceId, WaitEnd,
 };
-use kosmo_render::{Color, Command, DisplayList};
+use kosmo_render::{Command, DisplayList};
 use kosmo_testkit::script::Driver;
 use kosmo_text::{MONO_FILE, SANS_FILE};
 use kosmo_types::{BufferDesc, Damage, Fx, MonoTime, PixelFormat, Point, Rect, Size};
 use kosmo_ui::{
-    App, CANCEL_JOB, Control, DELETE_BACKWARD, DrawContext, EVALUATE_SELECTION, INSERT_TEXT, Key,
-    Kind, LayoutBox, LayoutResult, MOVE_LEFT, MOVE_RIGHT, Message, Out, Shell, ShellError, View,
-    ViewPass, paint,
+    App, CANCEL_JOB, ColorToken, Control, DELETE_BACKWARD, DrawContext, EVALUATE_SELECTION,
+    INSERT_TEXT, Key, Kind, LayoutBox, LayoutResult, MOVE_LEFT, MOVE_RIGHT, Message, Out, Shell,
+    ShellError, TOKENS, View, ViewPass, paint,
 };
 
 /// The main surface of a script on a new headless backend, which numbers
@@ -99,32 +99,34 @@ impl Control<Editor> for Field {
 
     fn draw(&self, cx: &mut DrawContext<'_, ()>) {
         let background = if self.focused {
-            Color::opaque(32, 32, 48)
+            ColorToken::Text
         } else {
-            Color::opaque(16, 16, 16)
+            ColorToken::TextSecondary
         };
         let job = match self.job {
-            0 => Color::opaque(96, 96, 96),
-            1 => Color::opaque(224, 192, 0),
-            2 => Color::opaque(0, 96, 224),
-            3 => Color::opaque(0, 192, 64),
-            _ => Color::opaque(224, 0, 0),
+            0 => ColorToken::TextSecondary,
+            1 | 2 => ColorToken::Accent,
+            3 => ColorToken::Background,
+            _ => ColorToken::Error,
         };
         let mut fills = vec![
             (pixels(0, 0, 64, 8), background),
             (pixels(58, 1, 5, 6), job),
         ];
+        // Digits and other characters in two colours.
         for (at, cell) in (0..).zip(&self.cells) {
-            let shade = u8::try_from(u32::from(*cell) % 256).unwrap_or(0);
-            fills.push((
-                pixels(1 + at * 4, 2, 3, 4),
-                Color::opaque(shade, 160, 255 - shade),
-            ));
+            let color = if cell.is_ascii_digit() {
+                ColorToken::Background
+            } else {
+                ColorToken::Error
+            };
+            fills.push((pixels(1 + at * 4, 2, 3, 4), color));
         }
         let cursor = i32::try_from(self.cursor).unwrap_or(0);
-        fills.push((pixels(cursor * 4, 1, 1, 6), Color::opaque(255, 255, 255)));
-        for (rect, color) in fills {
+        fills.push((pixels(cursor * 4, 1, 1, 6), ColorToken::Accent));
+        for (rect, token) in fills {
             if let Some(rect) = rect {
+                let color = cx.color(token);
                 cx.draw(Command::FillRect { rect, color });
             }
         }
@@ -438,7 +440,7 @@ impl EditorDriver {
             .map_err(|error| format!("{error:?}"))?;
         let mut damage = Damage::new(frame);
         damage.add(0, 0, width, height);
-        let list = paint(tree, &layout, &damage).map_err(|error| format!("{error:?}"))?;
+        let list = paint(tree, &layout, &damage, &TOKENS).map_err(|error| format!("{error:?}"))?;
         match self.shell.present(platform, MAIN, &list, &damage) {
             Ok(_) => {
                 self.presented = Some(list);

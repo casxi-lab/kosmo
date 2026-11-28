@@ -442,13 +442,16 @@ in code.
 ## The drawing entry
 
 `Control::draw` takes the control and a `DrawContext`, which gives the
-control's identity and its presentation state, to read, and the size of its
-box, and appends commands of `kosmo-render`'s display lists with
-`DrawContext::draw`. The commands are relative to the control's box, whose
-top-left corner is (0, 0), and are clipped to the box. A control ends every
-group that it starts with `PushClip` and ends no other; a command that the
-display list refuses, or a group left open, makes the drawing pass return
-an error, and the control's later commands are dropped. Through its
+control's identity and its presentation state, to read, the size of its
+box and, with `DrawContext::color`, the colour of a `ColorToken` in the
+table of design tokens of the drawing pass, and appends commands of
+`kosmo-render`'s display lists with `DrawContext::draw`. The commands are
+relative to the control's box, whose top-left corner is (0, 0), and are
+clipped to the box. A control ends every group that it starts with
+`PushClip` and ends no other; a command that the display list refuses, a
+group left open, or a command whose colour or glyph size is not the value
+of a token makes the drawing pass return an error, and the control's later
+commands are dropped. Through its
 parameters the drawing entry reaches neither a mutable model, nor the
 execution port, nor a port of the platform interface. Three examples of the
 documentation of `Control` check this: each tries one of the three in the
@@ -460,8 +463,9 @@ examples state none.
 
 ## The drawing pass
 
-`paint(tree, layout, damage)` returns the display list of a surface's
-controls for the damage region `damage` of the surface. It visits the boxes
+`paint(tree, layout, damage, tokens)` returns the display list of a
+surface's controls for the damage region `damage` of the surface, with the
+table of design tokens `tokens`. It visits the boxes
 of the layout result in preorder, the drawing order, and skips a box that is
 visible inside no rectangle of the damage, together with its descendants;
 visibility is computed as hit testing computes it, with the scroll offsets
@@ -476,12 +480,16 @@ first child that is visible in the damage, and holds no command when none
 of them draws. Each control that draws adds a group of two commands around
 its commands, and each box with a child visible in the damage adds a group
 of two around its children; these count toward the limits of the display
-list, and a frame beyond them makes the pass return `PaintError::List`. The
-pass reads only its input. It returns a `PaintError` and
-no list when a visible box is out of preorder, when a position does not fit
-the numeric representation, when a box names a control that the tree does
-not hold, and when the display list refuses a command or a control leaves a
-group open.
+list, and a frame beyond them makes the pass return `PaintError::List`.
+Each command that a control draws is checked against `tokens`: every
+colour must be the value of a colour token, and the size of a glyph run
+the value of a font size token; any other value makes the pass return
+`PaintError::Untokened` with the control. The pass reads only its input.
+It returns a `PaintError` and no list when a visible box is out of
+preorder, when a position does not fit the numeric representation, when a
+box names a control that the tree does not hold, when a control draws a
+value outside `tokens`, and when the display list refuses a command or a
+control leaves a group open.
 
 ## The shell
 
@@ -559,8 +567,8 @@ bytes do not match its description, and `FrameTooLarge`, for a previous
 frame beyond the buffer limits. The headless backend keeps what is presented
 as its read-back. Until rounds draw, a driver takes a surface's layout
 result from `shell.runtime().layout(surface)`, or builds one in code, gets
-its display list with `paint(shell.runtime().tree(), &layout, &damage)` and
-presents it.
+its display list with
+`paint(shell.runtime().tree(), &layout, &damage, &TOKENS)` and presents it.
 
 With the feature `call-probes`, which is off by default and only the
 command line turns on, as `--features kosmo-ui/call-probes`, each call of
@@ -724,6 +732,10 @@ no wall-clock time; review checks these, as the
   an application's values is part of it.
 - The timer table holds 64 timers and refuses more.
 - Hit testing has no caller outside tests.
+- The drawing pass checks the values of colours and glyph sizes, not where
+  they come from: a literal equal to the value of a token passes, as one
+  taken with `DrawContext::color` does, and only a value outside the table
+  is refused.
 
 ## Requirements
 
@@ -875,7 +887,8 @@ wall clock.
     port, nor a port of the platform interface: three examples of the
     documentation of `Control` fail to compile, and the same three without
     the offending line compile; its context gives the control's identity,
-    presentation state and the size of its box. Tests: the examples of
+    presentation state, the size of its box and the colours of the
+    tokens. Tests: the examples of
     `Control`, which `cargo test` runs;
     `tree::tests::the_drawing_entry_gets_the_identity_and_presentation_state`.
 15. `kosmo-ui` is a core library: the layout step of `cargo xtask check`
@@ -998,3 +1011,14 @@ wall clock.
     `layout::tests::random::layouts_against_the_layout_before_equal_whole_layouts_after_random_changes`;
     `shell::tests::each_round_lays_out_the_configured_surfaces_with_the_shells_font_set`,
     `shell::tests::rounds_lay_text_out_with_the_font_set_that_the_shell_fetched`.
+21. Controls take their colours only from the design tokens: a control
+    that fills a rectangle with `Color::opaque(1, 2, 3)`, a colour of no
+    token, makes the drawing pass return `PaintError::Untokened` with the
+    control and no display list, and so does a glyph run at a size of no
+    font size token, while the three font sizes of the tokens pass; the
+    check compares values, so a literal equal to a token's colour passes
+    and is refused by a table in which that token has another value.
+    Tests: `paint::tests::`
+    `a_colour_outside_the_table_of_tokens_is_refused`,
+    `a_glyph_run_at_a_size_outside_the_font_size_tokens_is_refused`,
+    `the_check_compares_values_not_where_they_come_from`.
