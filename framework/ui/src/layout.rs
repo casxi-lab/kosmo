@@ -539,6 +539,23 @@ pub(crate) struct Kept {
 }
 
 impl Kept {
+    /// The layout tree.
+    pub(crate) fn tree(&self) -> &LayoutTree {
+        &self.tree
+    }
+
+    /// Each scroll container of the tree with its offset along its axis.
+    pub(crate) fn offsets(&self) -> impl Iterator<Item = (WidgetId, Fx)> + '_ {
+        self.tree
+            .boxes
+            .iter()
+            .zip(&self.shapes)
+            .filter_map(|(laid, shape)| match shape {
+                Shape::Scroll(axis) => Some((laid.widget, main_of(laid.scroll, *axis))),
+                _ => None,
+            })
+    }
+
     /// Whether the children of the box `at` are the controls `children`,
     /// in this order.
     fn children_are(&self, at: usize, children: &[WidgetId]) -> bool {
@@ -1239,6 +1256,14 @@ fn point(axis: Axis, along: Fx, across: Fx) -> Point {
     match axis {
         Axis::X => Point::new(along, across),
         Axis::Y => Point::new(across, along),
+    }
+}
+
+/// The coordinate of `point` along `axis`.
+fn main_of(point: Point, axis: Axis) -> Fx {
+    match axis {
+        Axis::X => point.x,
+        Axis::Y => point.y,
     }
 }
 

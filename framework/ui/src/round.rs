@@ -1,16 +1,24 @@
-//! The round function: the event and update passes, then the view pass.
+//! The round function: the event and update passes, then the view pass
+//! and the layout pass.
 
+use std::collections::BTreeMap;
+
+use kosmo_platform::PixelSize;
 use kosmo_platform::accesskit::TreeUpdate;
 use kosmo_render::DisplayList;
-use kosmo_types::{Damage, KeyAction, KeyEvent, KeyMeaning, MonoTime};
+use kosmo_text::FontSet;
+use kosmo_types::{Damage, Fx, KeyAction, KeyEvent, KeyMeaning, MonoTime, Size};
 
 use crate::JOB_POLL_INTERVAL;
 use crate::app::{App, Context, Control, Handling, Message, Out, Phase};
 use crate::command::{MINIMAL_KEY_MAP, resolve};
 use crate::focus::{Dropped, Event, FocusTable, Stamp, SurfaceId};
+use crate::hit::LayoutError;
+use crate::layout::{Constraint, Kept, LayoutTree, relayout};
 use crate::port::{Effect, JobPort, Receipt};
 use crate::record::Record;
 use crate::timer::{Requester, TimerTable};
+use crate::tokens::Tokens;
 use crate::tree::{MAX_DEPTH, RebuildError, Tree, WidgetId};
 
 /// The input of one round, in the order the event pass takes it.
@@ -42,6 +50,46 @@ impl<P: JobPort> Input<P> {
             reports: Vec::new(),
             unfinished_jobs: 0,
         }
+    }
+}
+
+/// What the layout pass of a round reads besides the control tree: the
+/// font set that lays text out, the number that names it, the table of
+/// design tokens, and the size of each surface to lay out.
+///
+/// The shell gives its own font set, which it builds once before its first
+/// round, the table [`TOKENS`](crate::TOKENS) and the size of each
+/// surface's latest `Configure`.
+#[non_exhaustive]
+pub struct LayoutInput<'f> {
+    /// The font set that lays text out.
+    pub fonts: &'f mut FontSet,
+    /// Which font set `fonts` is: a driver gives each font set that it
+    /// builds a number of its own. A round whose number differs from the
+    /// round before lays every surface out whole.
+    pub fonts_id: u64,
+    /// The table of design tokens.
+    pub tokens: Tokens,
+    /// The surfaces to lay out, each with its size.
+    pub sizes: BTreeMap<SurfaceId, PixelSize>,
+}
+
+impl<'f> LayoutInput<'f> {
+    /// The input that lays out with `fonts`, named `fonts_id`, and
+    /// `tokens`, without surfaces.
+    pub fn new(fonts: &'f mut FontSet, fonts_id: u64, tokens: Tokens) -> LayoutInput<'f> {
+        LayoutInput {
+            fonts,
+            fonts_id,
+            tokens,
+            sizes: BTreeMap::new(),
+        }
+    }
+
+    /// The input with `surface` of `size` to lay out too.
+    pub fn surface(mut self, surface: SurfaceId, size: PixelSize) -> LayoutInput<'f> {
+        self.sizes.insert(surface, size);
+        self
     }
 }
 
@@ -100,7 +148,8 @@ pub struct Counts {
 }
 
 /// The framework's state between rounds: the control tree, the focus of
-/// each surface, the timer table and the counts.
+/// each surface, the timer table, the counts and the latest layout of each
+/// surface.
 ///
 /// The runtime never reads a clock, never waits and never calls a port; it
 /// creates no threads. Every surface has one region, and every key event
@@ -112,6 +161,7 @@ pub struct Runtime<A: App> {
     counts: Counts,
     rounds: u64,
     built: bool,
+    layouts: BTreeMap<SurfaceId, Kept>,
 }
 
 impl<A: App> Default for Runtime<A> {
@@ -123,6 +173,7 @@ impl<A: App> Default for Runtime<A> {
             counts: Counts::default(),
             rounds: 0,
             built: false,
+            layouts: BTreeMap::new(),
         }
     }
 }
@@ -150,10 +201,45 @@ impl<A: App> Round<'_, A> {
         std::mem::take(&mut self.effects)
     }
 
-    /// The second step: calls `view` if the round handled a message, or if
-    /// the tree has not been built yet, and rebuilds the tree from it; then
-    /// gives the next deadline and the round's record.
+    /// The second step without a layout pass: calls `view` if the round
+    /// handled a message, or if the tree has not been built yet, and
+    /// rebuilds the tree from it; then gives the next deadline and the
+    /// round's record. The layouts of the surfaces stay as they were.
     pub fn finish(self, app: &A) -> Output {
+        self.end(app, None)
+    }
+
+    /// The second step with the layout pass: the view pass of
+    /// [`Round::finish`], then the layout pass, which lays out each surface
+    /// of `input` in the order of the surfaces, with the size of the surface
+    /// as the tight constraint of the root, the tokens and the font set of
+    /// `input`; then the next deadline and the round's record.
+    ///
+    /// The runtime keeps each surface's layout for the next round, which
+    /// lays out only dirty subtrees: a control is dirty when it is new,
+    /// when its layout node differs other than in a scroll request, or when
+    /// its children differ. A subtree without a dirty control under the
+    /// constraint of the round before keeps its layout; a box whose control
+    /// is not dirty keeps its size and its children's positions while its
+    /// children come out with the sizes and baselines of the round before,
+    /// so the work goes up from a dirty control only while sizes or
+    /// baselines change, and stops at the latest at a box under a tight
+    /// constraint, a layout boundary, whose baseline stays. A change of the
+    /// request of a scroll container alone moves only the container's
+    /// content. Another size, other tokens or another font set lays the
+    /// surface out whole. The result is that of [`layout`](crate::layout())
+    /// byte for byte.
+    ///
+    /// After the layout pass, each scroll container learns its offset
+    /// through [`Control::scrolled`]. A surface that `input` does not list
+    /// loses its layout, and so does a surface whose layout fails; the
+    /// record names the error.
+    pub fn finish_with(self, app: &A, input: LayoutInput<'_>) -> Output {
+        self.end(app, Some(input))
+    }
+
+    /// The second step, with the layout pass when there is `input`.
+    fn end(self, app: &A, input: Option<LayoutInput<'_>>) -> Output {
         let Round {
             runtime,
             mut record,
@@ -178,6 +264,9 @@ impl<A: App> Round<'_, A> {
             record.push("view skipped".to_string());
             ViewPass::Skipped
         };
+        if let Some(input) = input {
+            runtime.lay_out(input, &mut record);
+        }
         let polling = (unfinished_jobs > 0).then(|| time.saturating_add_nanos(JOB_POLL_INTERVAL));
         let next_deadline = match (runtime.timers.next_deadline(), polling) {
             (Some(timer), Some(polling)) => Some(timer.min(polling)),
@@ -215,6 +304,13 @@ impl<A: App> Runtime<A> {
     /// The control tree.
     pub fn tree(&self) -> &Tree<A> {
         &self.tree
+    }
+
+    /// The layout tree of `surface` from the latest layout pass that laid it
+    /// out, or `None` when none did or the latest failed. Its
+    /// [`LayoutTree::result`] is what hit testing reads.
+    pub fn layout(&self, surface: SurfaceId) -> Option<&LayoutTree> {
+        self.layouts.get(&surface).map(Kept::tree)
     }
 
     /// What the runtime dropped or refused so far.
@@ -312,6 +408,64 @@ impl<A: App> Runtime<A> {
             handled,
             time: input.time,
             unfinished_jobs: input.unfinished_jobs,
+        }
+    }
+
+    /// The layout pass: lays out each surface of `input` against its
+    /// layout of the round before, keeps the layouts, records each, and
+    /// tells each scroll container its offset.
+    fn lay_out(&mut self, input: LayoutInput<'_>, record: &mut Record) {
+        let LayoutInput {
+            fonts,
+            fonts_id,
+            tokens,
+            sizes,
+        } = input;
+        let mut before = std::mem::take(&mut self.layouts);
+        for (surface, size) in sizes {
+            let kept = before.remove(&surface);
+            let laid = surface_size(size)
+                .ok_or(LayoutError::InputOutOfRange)
+                .and_then(|size| {
+                    let constraint = Constraint::tight(size);
+                    relayout(
+                        &self.tree,
+                        constraint,
+                        &tokens,
+                        fonts,
+                        fonts_id,
+                        kept.as_ref(),
+                    )
+                });
+            match laid {
+                Ok((kept, work)) => {
+                    record.push(format!(
+                        "layout surface {} boxes {} laid {} texts {}",
+                        surface.get(),
+                        kept.tree().boxes().len(),
+                        work.laid,
+                        work.texts
+                    ));
+                    self.layouts.insert(surface, kept);
+                }
+                Err(error) => record.push(format!(
+                    "layout surface {} failed {}",
+                    surface.get(),
+                    describe_layout_error(error)
+                )),
+            }
+        }
+        let mut offsets: BTreeMap<WidgetId, Fx> = BTreeMap::new();
+        for (widget, offset) in self.layouts.values().flat_map(Kept::offsets) {
+            offsets
+                .entry(widget)
+                .and_modify(|smallest| *smallest = (*smallest).min(offset))
+                .or_insert(offset);
+        }
+        for (widget, offset) in offsets {
+            if let Some(node) = self.tree.node_mut(widget) {
+                node.control.scrolled(offset, &mut node.state);
+            }
         }
     }
 
@@ -535,6 +689,23 @@ fn describe(surface: SurfaceId, stamp: Stamp, event: &KeyEvent) -> String {
 /// region's root received it.
 fn no_region(reached: bool) -> &'static str {
     if reached { "" } else { " no-region" }
+}
+
+/// The size of a surface in `Fx`; `None` for a side that does not fit,
+/// which a surface's size never has.
+fn surface_size(size: PixelSize) -> Option<Size> {
+    let side = |pixels: u32| i32::try_from(pixels).ok().and_then(Fx::from_pixels);
+    Size::new(side(size.width())?, side(size.height())?)
+}
+
+/// The record form of a layout error.
+fn describe_layout_error(error: LayoutError) -> &'static str {
+    match error {
+        LayoutError::Order => "order",
+        LayoutError::TooManyBoxes => "too-many-boxes",
+        LayoutError::Overflow => "overflow",
+        LayoutError::InputOutOfRange => "input-out-of-range",
+    }
 }
 
 /// The record form of a surface and a stamp.

@@ -187,7 +187,7 @@ pub use layout::{
 pub use paint::{PaintError, paint};
 pub use port::{Effect, JobPort, Receipt, execute};
 pub use record::Record;
-pub use round::{Counts, Input, Output, Round, Runtime, ViewPass};
+pub use round::{Counts, Input, LayoutInput, Output, Round, Runtime, ViewPass};
 pub use shell::{ExitReason, ExitStatus, RoundEnd, Shell, ShellError, run};
 pub use slot::{Delivered, ResultSlot, Shown, Tagged};
 pub use timer::{TIMER_CAPACITY, TimerLabel};

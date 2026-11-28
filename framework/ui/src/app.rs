@@ -2,7 +2,7 @@
 //! event handlers of controls and the drawing entry receive.
 
 use kosmo_render::{ListBuilder, ListError};
-use kosmo_types::{MonoTime, Rect, Size};
+use kosmo_types::{Fx, MonoTime, Rect, Size};
 
 use crate::command::{Binding, Command};
 use crate::layout::Node;
@@ -329,6 +329,17 @@ pub trait Control<A: App>: Clone {
     fn layout(&self, state: &Self::State) -> Node<'_> {
         let _ = state;
         Node::Empty
+    }
+
+    /// Learns the offset that the layout pass of a round gave the
+    /// control's scroll container along its axis: the request of its node
+    /// brought into the range of its content. A control that keeps its
+    /// request in its presentation state writes the offset there, so that
+    /// requests beyond the range do not add up. When several surfaces lay
+    /// the container out, the offset is the smallest of theirs, which is
+    /// within the range of each. Does nothing by default.
+    fn scrolled(&self, offset: Fx, state: &mut Self::State) {
+        let _ = (offset, state);
     }
 
     /// The drawing entry. The drawing pass calls it in preorder; its

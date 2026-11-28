@@ -193,6 +193,13 @@ impl JobPort for TestPort {
 /// The surface of the tests.
 pub(crate) const SURFACE: SurfaceId = SurfaceId::new(1);
 
+/// A font set of the two fonts of the asset directory of `kosmo-text`.
+pub(crate) fn font_set() -> kosmo_text::FontSet {
+    const SANS: &[u8] = include_bytes!("../../text/assets/fonts/firasans/FiraSans-Regular.ttf");
+    const MONO: &[u8] = include_bytes!("../../text/assets/fonts/firamono/FiraMono-Regular.ttf");
+    kosmo_text::FontSet::new(SANS, MONO).unwrap()
+}
+
 /// The stamp of epoch `epoch` and focus generation `generation`.
 pub(crate) fn stamp(epoch: u64, generation: u64) -> Stamp {
     Stamp::new(Epoch::new(epoch), FocusGen::new(generation))
