@@ -257,6 +257,21 @@ fn rows_align_their_children_at_the_start_centre_or_end() {
 }
 
 #[test]
+fn a_centred_child_takes_half_its_free_room_rounded_up() {
+    let odd = Spec {
+        part: Part::Fixed(Size::new(px(20), Fx::from_units(10 * 64 + 1)).unwrap()),
+        children: Vec::new(),
+    };
+    let case = Case {
+        constraint: constraint(0, 0, 100, 100),
+        spec: row(Row::new().align(RowAlign::Center), vec![odd, fixed(20, 10)]),
+    };
+    let tree = lay_out(&case, &mut fonts());
+    // One unit of free room: half a unit, which rounds up to one.
+    assert_eq!(tree.boxes()[2].position.y.units(), 1);
+}
+
+#[test]
 fn a_row_keeps_its_padding_around_its_children() {
     let tree = lay_out(&row_padding(), &mut fonts());
     assert_eq!(
@@ -357,6 +372,14 @@ fn text_in_a_column_breaks_at_the_columns_width() {
     assert_eq!(
         lines_of(&tree),
         ["The result is 1/3 and ", "the error is 0"]
+    );
+}
+
+#[test]
+fn a_text_leaf_without_a_colour_takes_the_text_token() {
+    assert_eq!(
+        Text::new("a", Font::Sans, FontSize::Body).color,
+        ColorToken::Text
     );
 }
 
@@ -737,6 +760,18 @@ fn inputs_beyond_their_range_are_refused_distinctly() {
     ] {
         assert_eq!(lay(&small, up_to(size_px(1, 1)), &tokens), refused);
     }
+}
+
+#[test]
+fn a_paragraph_wider_than_the_largest_input_is_refused() {
+    // A row lays its text out at the largest width, and a word does not
+    // break: 20,000 letters W at the large size are wider than 2^18
+    // pixels.
+    let word = "W".repeat(20_000);
+    let spec = row(Row::new(), vec![text(&word, Font::Sans, FontSize::Large)]);
+    let up_to = Constraint::new(Size::ZERO, size_px(100, 100));
+    let laid = layout(&build(&spec), up_to, &TOKENS, &mut fonts());
+    assert_eq!(laid, Err(LayoutError::InputOutOfRange));
 }
 
 #[test]
