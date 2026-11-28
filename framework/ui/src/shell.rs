@@ -18,7 +18,8 @@ use kosmo_types::{BufferDesc, ConvertError, Damage, MonoTime, PixelFormat};
 use crate::app::App;
 use crate::focus::Event;
 use crate::port::{JobPort, Receipt, execute};
-use crate::round::{Input, Output, Runtime};
+use crate::round::{Input, LayoutInput, Output, Runtime};
+use crate::tokens::TOKENS;
 
 /// Fira Sans, the first resource that the shell fetches before its first
 /// round, named by its file in the asset manifest of `kosmo-text`.
@@ -28,10 +29,16 @@ const SANS_RESOURCE: ResourceId = ResourceId::new(SANS_FILE);
 /// round, named by its file in the asset manifest of `kosmo-text`.
 const MONO_RESOURCE: ResourceId = ResourceId::new(MONO_FILE);
 
+/// The number that names the shell's font set in the layout input of its
+/// rounds. A shell builds one font set and keeps it, so the number never
+/// changes.
+const FONTS_ID: u64 = 0;
+
 /// The shell of an application: its [`Runtime`], the application and its
 /// execution port, the receipts that wait for the next round, the font set
-/// of `kosmo-text`, which it builds before its first round, and the
-/// previous frame of each surface, which it keeps for presentation.
+/// of `kosmo-text`, which it builds before its first round and hands to the
+/// layout pass of each round, and the size and the previous frame of each
+/// surface, which it keeps for layout and presentation.
 ///
 /// [`Shell::run_round`], the single-round entry, runs one round through a
 /// platform, and [`run`] runs rounds until the platform disconnects. The
@@ -230,7 +237,11 @@ impl<A: App> Shell<A> {
     ///    later versions add are ignored;
     /// 5. hands the effects to the execution port, which keeps the
     ///    receipts for the next round;
-    /// 6. runs the second step;
+    /// 6. runs the second step with the layout pass, to which it hands its
+    ///    own font set, the table [`TOKENS`](crate::TOKENS) and the size of
+    ///    each surface whose `Configure` it took, so that each such surface
+    ///    is laid out under its size; the round builds no font set of its
+    ///    own, and [`Runtime::layout`] gives the layouts;
     /// 7. pushes the output's accessibility updates through
     ///    `AccessibilitySink`, in their order;
     /// 8. presents each frame of the output with [`Shell::present`].
@@ -300,7 +311,19 @@ impl<A: App> Shell<A> {
         }
         let mut round = self.runtime.round(&mut self.app, input);
         self.receipts = execute(&mut self.port, round.take_effects());
-        let output = round.finish(&self.app);
+        // The fonts exist once `start` has returned.
+        let output = match self.fonts.as_mut() {
+            Some(fonts) => {
+                let mut layout = LayoutInput::new(fonts, FONTS_ID, TOKENS);
+                for (&surface, known) in &self.surfaces {
+                    if let Some(size) = known.size {
+                        layout = layout.surface(surface, size);
+                    }
+                }
+                round.finish_with(&self.app, layout)
+            }
+            None => round.finish(&self.app),
+        };
         self.next_deadline = if self.receipts.is_empty() {
             output.next_deadline
         } else {
