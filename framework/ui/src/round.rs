@@ -240,9 +240,9 @@ impl<A: App> Round<'_, A> {
     /// brought into the range of its content, without laying anything out,
     /// so each is the layout of the tree as the round leaves it, unless
     /// `scrolled` changes a node in more than its request or to a request
-    /// beyond its bounds. A surface that `input` does not list loses its
-    /// layout, and so does a surface whose layout fails; the record names
-    /// the error.
+    /// whose absolute value exceeds `MAX_LAYOUT_INPUT`. A surface that
+    /// `input` does not list loses its layout, and so does a surface whose
+    /// layout fails; the record names the error.
     pub fn finish_with(self, app: &A, input: LayoutInput<'_>) -> Output {
         self.end(app, Some(input))
     }

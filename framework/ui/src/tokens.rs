@@ -48,8 +48,9 @@ pub enum ColorToken {
 /// colour token.
 ///
 /// [`TOKENS`] is kosmo's one table of design tokens: the crate defines no
-/// other and no way to switch tables while a program runs. The fields are
-/// public, so a test can build a changed copy, as in
+/// other, and the shell lays every round out with it; the table of a round
+/// comes from its `LayoutInput`, so that a test can lay out with a changed
+/// copy. The fields are public, so such a copy is written as
 /// `Tokens { space_m: Fx::from_units(640), ..TOKENS }`. Spacings and font
 /// sizes are `Fx` values in 1/64 pixel, and colours opaque 8-bit sRGB
 /// constants.

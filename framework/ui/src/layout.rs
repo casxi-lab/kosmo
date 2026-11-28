@@ -560,8 +560,9 @@ impl Kept {
     /// Gives each scroll container of the tree the offset that the
     /// request of its control's node in `tree` now gives, brought into the
     /// range of its content, without laying anything out: the layout of the
-    /// tree after a change of requests alone. A container whose node now
-    /// differs in more than its request keeps its offset.
+    /// tree after a change of requests alone, while each request is within
+    /// `MAX_LAYOUT_INPUT` either way. A container whose node now differs in
+    /// more than its request keeps its offset.
     pub(crate) fn follow_requests<A: App>(&mut self, tree: &Tree<A>) {
         for at in 0..self.tree.boxes.len() {
             let Some(&Shape::Scroll(axis)) = self.shapes.get(at) else {

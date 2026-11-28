@@ -300,11 +300,12 @@ the range of its content, without laying anything out and without counting
 it in the record. So a surface on which the offset was larger than the one
 written back follows the written one at once, and each kept layout is that
 of `layout` for the tree as the round leaves it, unless `scrolled` changes
-a node in more than its request or to a request beyond its bounds. A
-surface that `sizes` does not list loses its layout, and so does a surface
-whose layout fails; the record names the error,
-`LayoutError::InputOutOfRange` for an input beyond its range and `Overflow`
-for a sum of lengths that does not fit.
+a node in more than its request or to a request whose absolute value
+exceeds `MAX_LAYOUT_INPUT`. A surface that `sizes` does not list loses its
+layout, and so does a surface whose layout fails; the record names the
+error, `LayoutError::InputOutOfRange` for an input beyond its range and
+`Overflow` for a sum of lengths, or a position that the text layout gives,
+that does not fit.
 
 ## Effects and the execution port
 
@@ -975,9 +976,10 @@ wall clock.
     subtree taken whole fails both alike. The offsets are written back
     along the axis of each container, the smallest of the surfaces', so
     that requests beyond the range do not add up, and the kept layouts of
-    all surfaces follow the requests written back; a failed layout is
-    recorded and leaves the surface without a layout. The shell hands its
-    own font set to the round. Tests:
+    all surfaces follow the requests written back, also for nested
+    containers and for controls that do not write their offsets back; a
+    failed layout is recorded and leaves the surface without a layout. The
+    shell hands its own font set to the round. Tests:
     `round::tests::layout::`
     `each_surface_with_a_size_is_laid_out_under_it_in_the_order_of_the_surfaces`,
     `changing_one_text_leaf_lays_out_only_it_and_its_ancestors_up_to_the_boundary`,
@@ -986,6 +988,7 @@ wall clock.
     `a_changed_scroll_request_only_moves_its_container`,
     `the_round_writes_offsets_back_so_that_requests_beyond_the_range_do_not_add_up`,
     `a_horizontal_scroll_container_writes_its_offset_back_along_x`,
+    `every_scroll_container_on_every_surface_follows_the_requests_written_back`,
     `a_new_size_table_of_tokens_or_font_set_lays_the_whole_tree_out_again`,
     `a_failed_layout_is_recorded_and_leaves_the_surface_without_a_layout`;
     `layout::tests::a_layout_against_the_layout_before_lays_out_only_what_changed`,
