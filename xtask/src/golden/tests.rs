@@ -434,8 +434,10 @@ fn the_git_attributes_keep_the_files_of_every_kind_of_golden_as_they_are() {
     // give it another digest than MANIFEST lists, and so would a merge
     // of two changes of its text. Git takes the attributes of a path from
     // every `.gitattributes` on its way, a later line over an earlier one,
-    // so Git itself is asked, for MANIFEST and a file of each kind in each
-    // golden directory, whether such a file exists yet or not.
+    // so Git itself is asked, for MANIFEST, a file of each kind in each
+    // golden directory, whether such a file exists yet or not, and each
+    // file there now.
+    let tree = Tree::load(&repo::root()).expect("the repository is a Git working copy");
     let mut paths = Vec::new();
     for set in SETS {
         let dir = set.golden_dir();
@@ -445,11 +447,21 @@ fn the_git_attributes_keep_the_files_of_every_kind_of_golden_as_they_are() {
                 .iter()
                 .map(|extension| format!("{dir}/name{extension}")),
         );
+        // The files there now, too, since a rule can name some files alone.
+        paths.extend(
+            tree.entries()
+                .map(|(path, _)| path)
+                .filter(|path| repo::is_within(path, &dir) && !path.ends_with("/MANIFEST"))
+                .map(str::to_string),
+        );
     }
     let mut git = std::process::Command::new("git");
     for variable in repo::REDIRECTS {
         git.env_remove(variable);
     }
+    // GIT_ATTR_SOURCE would make Git read the attributes from a tree
+    // instead of the work tree.
+    git.env_remove("GIT_ATTR_SOURCE");
     let output = git
         .args(["check-attr", "text", "eol", "merge", "--"])
         .args(&paths)
