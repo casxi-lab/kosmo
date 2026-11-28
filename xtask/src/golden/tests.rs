@@ -346,7 +346,6 @@ fn a_missing_manifest_lists_no_goldens() {
 #[test]
 fn other_files_and_golden_directories_elsewhere_are_reported() {
     let mut tree = valid();
-    let other = "is not a golden: a golden directory holds MANIFEST and a regular file `<name>.px` for each golden";
     for path in ["README.md", "Fill.px", "sub/fill-rect.px", "link.px"] {
         let entry = match path {
             "link.px" => Entry::Symlink("fill-rect.px".to_string()),
@@ -364,10 +363,10 @@ fn other_files_and_golden_directories_elsewhere_are_reported() {
     assert_eq!(
         problems(&tree).0,
         [
-            format!("{DIR}/Fill.px: {other}"),
-            format!("{DIR}/README.md: {other}"),
-            format!("{DIR}/link.px: {other}"),
-            format!("{DIR}/sub/fill-rect.px: {other}"),
+            format!("{DIR}/Fill.px: {NOT_A_GOLDEN}"),
+            format!("{DIR}/README.md: {NOT_A_GOLDEN}"),
+            format!("{DIR}/link.px: {NOT_A_GOLDEN}"),
+            format!("{DIR}/sub/fill-rect.px: {NOT_A_GOLDEN}"),
             "framework/ui/tests/golden/button.px: is in a golden directory that `cargo xtask golden` does not write".to_string(),
             "tests/golden/MANIFEST: is in a golden directory that `cargo xtask golden` does not write".to_string(),
         ]
@@ -601,7 +600,7 @@ fn the_command_writes_every_golden_again_and_fails_without_any() {
 
 #[test]
 fn a_directory_with_another_file_gives_no_manifest() {
-    for other in ["notes.txt", "Fill.px", "sub.px/"] {
+    for other in ["notes.txt", "Fill.px", "sub.px/", "Fill.tree", "sub.tree/"] {
         let dir = scratch("other");
         fs::write(dir.join("fill-rect.px"), bytes_of("fill-rect")).unwrap();
         match other.strip_suffix('/') {
@@ -611,7 +610,9 @@ fn a_directory_with_another_file_gives_no_manifest() {
         let error = digests_in(&dir).unwrap_err();
         let file = other.trim_end_matches('/');
         assert!(
-            error.ends_with(&format!("/{file} is not a golden `<name>.px`")),
+            error.ends_with(&format!(
+                "/{file} is not a golden `<name>.px` or `<name>.tree`"
+            )),
             "{error}"
         );
         fs::remove_dir_all(&dir).unwrap();
@@ -714,4 +715,199 @@ fn verify_compares_each_golden_drawn_or_listed_by_name() {
         compare_digests(&BTreeMap::new(), &BTreeMap::new()),
         (Vec::new(), 0)
     );
+}
+
+/// The bytes of the layout tree golden `name` in the fixtures.
+fn tree_bytes_of(name: &str) -> Vec<u8> {
+    format!("layout-tree 1\n0 parent - kind \"{name}\"\n").into_bytes()
+}
+
+/// The manifest line of the layout tree golden `name` with the bytes of
+/// the fixtures.
+fn tree_line_of(name: &str) -> String {
+    format!("{}  {name}\n", digest(&tree_bytes_of(name)))
+}
+
+/// The tree of [`valid`] with the layout tree golden `layout-row` too: its
+/// file, its line and a test.
+fn valid_with_a_tree() -> Tree {
+    let manifest = line_of("fill-rect") + &line_of("glyphs") + &tree_line_of("layout-row");
+    let mut tree = tree(
+        &["fill-rect", "glyphs"],
+        &manifest,
+        &["fill-rect", "glyphs", "layout-row"],
+    );
+    tree.insert(
+        &format!("{DIR}/layout-row.tree"),
+        Entry::File(tree_bytes_of("layout-row")),
+    );
+    tree
+}
+
+#[test]
+fn layout_tree_goldens_with_their_files_lines_and_tests_pass() {
+    assert_eq!(problems(&valid_with_a_tree()), (Vec::new(), 3));
+}
+
+#[test]
+fn a_hand_edited_layout_tree_golden_is_reported() {
+    let mut tree = valid_with_a_tree();
+    let mut bytes = tree_bytes_of("layout-row");
+    bytes.extend_from_slice(b"1 parent 0\n");
+    let changed = digest(&bytes);
+    tree.insert(&format!("{DIR}/layout-row.tree"), Entry::File(bytes));
+    assert_eq!(
+        problems(&tree).0,
+        [format!(
+            "{DIR}/layout-row.tree: SHA-256 {changed} differs from MANIFEST; goldens change only through cargo xtask golden"
+        )]
+    );
+}
+
+#[test]
+fn a_layout_tree_file_that_the_manifest_lacks_is_reported() {
+    let mut tree = valid_with_a_tree();
+    tree.insert(
+        &format!("{DIR}/layout-extra.tree"),
+        Entry::File(tree_bytes_of("layout-extra")),
+    );
+    assert_eq!(
+        problems(&tree).0,
+        [format!(
+            "{DIR}/layout-extra.tree: golden layout-extra is not in MANIFEST"
+        )]
+    );
+}
+
+#[test]
+fn a_layout_tree_golden_that_no_test_references_is_reported() {
+    let manifest = line_of("fill-rect") + &tree_line_of("layout-row");
+    let mut tree = tree(&["fill-rect"], &manifest, &["fill-rect"]);
+    tree.insert(
+        &format!("{DIR}/layout-row.tree"),
+        Entry::File(tree_bytes_of("layout-row")),
+    );
+    assert_eq!(
+        problems(&tree).0,
+        [format!(
+            "{MANIFEST}:2: golden layout-row is not referenced by any test"
+        )]
+    );
+}
+
+#[test]
+fn a_layout_tree_golden_without_a_file_is_reported() {
+    let manifest = line_of("fill-rect") + &line_of("glyphs") + &tree_line_of("layout-row");
+    let tree = tree(
+        &["fill-rect", "glyphs"],
+        &manifest,
+        &["fill-rect", "glyphs", "layout-row"],
+    );
+    assert_eq!(
+        problems(&tree).0,
+        [format!("{MANIFEST}:3: golden layout-row has no file")]
+    );
+}
+
+#[test]
+fn a_golden_with_a_pixel_file_and_a_tree_file_is_reported() {
+    let mut tree = valid_with_a_tree();
+    tree.insert(
+        &format!("{DIR}/layout-row.px"),
+        Entry::File(bytes_of("layout-row")),
+    );
+    // The `.px` file comes first by path, so the `.tree` file is the second;
+    // the manifest's digest is that of the first.
+    let (found, count) = problems(&tree);
+    assert_eq!(
+        found,
+        [
+            format!(
+                "{DIR}/layout-row.px: SHA-256 {} differs from MANIFEST; goldens change only through cargo xtask golden",
+                digest(&bytes_of("layout-row"))
+            ),
+            format!(
+                "{DIR}/layout-row.tree: golden layout-row has a second file; one name has one file"
+            ),
+        ]
+    );
+    assert_eq!(count, 3);
+}
+
+#[test]
+fn other_files_beside_layout_tree_goldens_are_reported() {
+    let mut tree = valid_with_a_tree();
+    for path in [
+        "Layout-Row.tree",
+        "layout-row.tree.orig",
+        "sub/layout-row.tree",
+        "link.tree",
+        ".tree",
+    ] {
+        let entry = match path {
+            "link.tree" => Entry::Symlink("layout-row.tree".to_string()),
+            _ => Entry::File(Vec::new()),
+        };
+        tree.insert(&format!("{DIR}/{path}"), entry);
+    }
+    tree.insert(
+        "framework/ui/tests/golden/layout-row.tree",
+        Entry::File(Vec::new()),
+    );
+    assert_eq!(
+        problems(&tree).0,
+        [
+            format!("{DIR}/.tree: {NOT_A_GOLDEN}"),
+            format!("{DIR}/Layout-Row.tree: {NOT_A_GOLDEN}"),
+            format!("{DIR}/layout-row.tree.orig: {NOT_A_GOLDEN}"),
+            format!("{DIR}/link.tree: {NOT_A_GOLDEN}"),
+            format!("{DIR}/sub/layout-row.tree: {NOT_A_GOLDEN}"),
+            "framework/ui/tests/golden/layout-row.tree: is in a golden directory that `cargo xtask golden` does not write".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn the_manifest_lists_layout_tree_goldens_beside_pixel_goldens() {
+    let dir = scratch("manifest-trees");
+    fs::write(dir.join("glyphs.px"), bytes_of("glyphs")).unwrap();
+    fs::write(dir.join("layout-row.tree"), tree_bytes_of("layout-row")).unwrap();
+    let text = manifest_text(&digests_in(&dir).unwrap());
+    assert_eq!(text, line_of("glyphs") + &tree_line_of("layout-row"));
+    // A second file of one name gives no manifest.
+    fs::write(dir.join("glyphs.tree"), tree_bytes_of("glyphs")).unwrap();
+    let error = digests_in(&dir).unwrap_err();
+    assert!(
+        error.ends_with("/glyphs.tree is a second file of the golden glyphs, beside glyphs.px"),
+        "{error}"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn the_command_writes_layout_tree_goldens_again() {
+    let root = scratch("update-trees");
+    let set = Goldens {
+        workspace: "w",
+        package: "p",
+        dir: "c",
+    };
+    let dir = root.join(set.golden_dir());
+    fs::create_dir_all(&dir).unwrap();
+    for name in ["layout-row", "layout-gone"] {
+        fs::write(dir.join(format!("{name}.tree")), tree_bytes_of(name)).unwrap();
+    }
+    fs::write(dir.join("glyphs.px"), bytes_of("glyphs")).unwrap();
+    // The files of every golden go before the writer runs, so the file of
+    // a layout tree that the writer no longer writes goes too.
+    let write = || {
+        assert!(!dir.join("layout-row.tree").exists() && !dir.join("glyphs.px").exists());
+        fs::write(dir.join("layout-row.tree"), tree_bytes_of("layout-row"))
+            .map_err(|error| error.to_string())
+    };
+    assert_eq!(write_set(&root, &set, write), Ok(1));
+    assert!(!dir.join("layout-gone.tree").exists());
+    let manifest = fs::read_to_string(dir.join("MANIFEST")).unwrap();
+    assert_eq!(manifest, tree_line_of("layout-row"));
+    fs::remove_dir_all(&root).unwrap();
 }

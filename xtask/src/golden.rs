@@ -1,15 +1,17 @@
-//! Pixel goldens: the goldens step of `cargo xtask check` and the command
+//! Goldens: the goldens step of `cargo xtask check` and the command
 //! `cargo xtask golden`, which writes them. The goldens step also compares
 //! the font assets of `kosmo-text` with their asset manifest, as
 //! [`crate::assets`] describes.
 //!
 //! The goldens of a crate are in its directory `tests/golden/`: one file
-//! `<name>.px` for each golden, holding a drawn buffer as its crate's tests
-//! encode it, and `MANIFEST`, with one line `<digest>  <name>` for each
-//! golden: the SHA-256 of the file in 64 lowercase hexadecimal digits, two
-//! spaces and the name, sorted by name. Names are lowercase letters, digits
-//! and `-`. A test of the crate refers to a golden by calling
-//! `matches_golden` with its name as a string literal. The crate's
+//! for each golden, `<name>.px` for a pixel golden, holding a drawn buffer
+//! as its crate's tests encode it, or `<name>.tree` for a layout tree
+//! golden, holding a layout tree as its crate's tests write it, and
+//! `MANIFEST`, with one line `<digest>  <name>` for each golden: the
+//! SHA-256 of the file in 64 lowercase hexadecimal digits, two spaces and
+//! the name, sorted by name. Names are lowercase letters, digits and `-`,
+//! and one name has one file. A test of the crate refers to a golden by
+//! calling `matches_golden` with its name as a string literal. The crate's
 //! integration test `tests/golden.rs` holds the ignored tests
 //! `write_goldens` and `redraw_goldens`, which the command runs, no other
 //! ignored test, and no `cfg` or `cfg_attr` attribute on itself, its
@@ -37,7 +39,7 @@ use crate::assets::{self, Assets};
 use crate::check::{self, Cmd, Facts};
 use crate::repo::{self, Entry, Tree};
 
-/// A crate whose tests compare drawings with goldens.
+/// A crate whose tests compare drawings or layout trees with goldens.
 #[derive(Debug, Clone, Copy)]
 pub struct Goldens {
     /// The directory of its workspace.
@@ -74,6 +76,13 @@ const REDRAW: &str = "redraw_goldens";
 
 /// The function through which a test refers to a golden.
 const REFERENCE: &str = "matches_golden";
+
+/// The extensions of the files of goldens: `.px` for a pixel golden and
+/// `.tree` for a layout tree golden.
+const EXTENSIONS: [&str; 2] = [".px", ".tree"];
+
+/// What a file that is not a golden is told, in a golden directory.
+const NOT_A_GOLDEN: &str = "is not a golden: a golden directory holds MANIFEST and a regular file `<name>.px` or `<name>.tree` for each golden";
 
 impl Goldens {
     /// The golden directory.
@@ -126,6 +135,15 @@ fn is_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
+
+/// The name of the golden whose file is `file`, `<name>.px` or
+/// `<name>.tree`; `None` for any other file.
+fn golden_name(file: &str) -> Option<&str> {
+    EXTENSIONS
+        .iter()
+        .find_map(|extension| file.strip_suffix(extension))
+        .filter(|name| is_name(name))
 }
 
 /// Whether `digest` is written as `MANIFEST` writes digests: 64 lowercase
@@ -320,16 +338,16 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
         else {
             continue;
         };
-        let name = file.strip_suffix(".px").filter(|name| is_name(name));
-        match (name, entry) {
+        match (golden_name(file), entry) {
             _ if path == manifest => {}
+            (Some(name), Entry::File(_)) if files.contains_key(name) => {
+                let message = format!("golden {name} has a second file; one name has one file");
+                problems.add(path, 0, message);
+            }
             (Some(name), Entry::File(bytes)) => {
                 files.insert(name, (path, bytes.as_slice()));
             }
-            _ => {
-                let message = "is not a golden: a golden directory holds MANIFEST and a regular file `<name>.px` for each golden";
-                problems.add(path, 0, message.to_string());
-            }
+            _ => problems.add(path, 0, NOT_A_GOLDEN.to_string()),
         }
     }
     let listed = match tree.entry(&manifest) {
@@ -415,8 +433,8 @@ fn check_set(tree: &Tree, set: &Goldens, problems: &mut Problems) -> usize {
     listed.len()
 }
 
-/// The goldens step on the tracked files: the pixel goldens and the font
-/// assets of `kosmo-text`.
+/// The goldens step on the tracked files: the goldens and the font assets
+/// of `kosmo-text`.
 pub fn run(root: &Path, facts: &mut Facts) -> Result<(), String> {
     report(&Tree::load(root)?, &SETS, Some(&assets::FONTS), facts)
 }
@@ -449,13 +467,13 @@ pub fn report(
     }
 }
 
-/// The digests of the goldens in the directory `dir` on disk, by name.
+/// The files of the goldens in the directory `dir` on disk, by name.
 /// Files whose names start with `.`, such as `.DS_Store`, are left out; any
-/// other file but `MANIFEST` is an error.
-pub fn digests_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+/// other file but `MANIFEST`, and a second file of one name, is an error.
+fn files_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
     let shown = dir.display();
     let entries = fs::read_dir(dir).map_err(|error| format!("cannot read {shown}: {error}"))?;
-    let mut digests = BTreeMap::new();
+    let mut files = BTreeMap::new();
     for entry in entries {
         let entry = entry.map_err(|error| format!("cannot read {shown}: {error}"))?;
         let file = entry.file_name();
@@ -463,14 +481,30 @@ pub fn digests_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
         if file == "MANIFEST" || file.starts_with('.') {
             continue;
         }
-        let name = file.strip_suffix(".px").filter(|name| is_name(name));
         let is_file = entry.file_type().is_ok_and(|kind| kind.is_file());
-        let Some(name) = name.filter(|_| is_file) else {
-            return Err(format!("{shown}/{file} is not a golden `<name>.px`"));
+        let Some(name) = golden_name(&file).filter(|_| is_file) else {
+            return Err(format!(
+                "{shown}/{file} is not a golden `<name>.px` or `<name>.tree`"
+            ));
         };
-        let bytes = fs::read(entry.path())
+        if let Some(first) = files.insert(name.to_string(), file.to_string()) {
+            return Err(format!(
+                "{shown}/{file} is a second file of the golden {name}, beside {first}"
+            ));
+        }
+    }
+    Ok(files)
+}
+
+/// The digests of the goldens in the directory `dir` on disk, by name,
+/// with the files that [`files_in`] finds.
+pub fn digests_in(dir: &Path) -> Result<BTreeMap<String, String>, String> {
+    let shown = dir.display();
+    let mut digests = BTreeMap::new();
+    for (name, file) in files_in(dir)? {
+        let bytes = fs::read(dir.join(&file))
             .map_err(|error| format!("cannot read {shown}/{file}: {error}"))?;
-        digests.insert(name.to_string(), digest(&bytes));
+        digests.insert(name, digest(&bytes));
     }
     Ok(digests)
 }
@@ -507,8 +541,8 @@ fn write_set(
     let dir = set.golden_dir();
     let path = root.join(&dir);
     if path.is_dir() {
-        for name in digests_in(&path)?.keys() {
-            let file = format!("{dir}/{name}.px");
+        for file in files_in(&path)?.values() {
+            let file = format!("{dir}/{file}");
             fs::remove_file(root.join(&file))
                 .map_err(|error| format!("cannot remove {file}: {error}"))?;
         }
