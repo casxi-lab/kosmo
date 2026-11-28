@@ -1,7 +1,7 @@
 //! The layout tree of each layout case matches its golden byte for byte,
 //! and so do the layout tree and the drawing of the scene of the design
-//! tokens. The ignored tests write the goldens; `cargo xtask golden` runs
-//! them.
+//! tokens; a changed table of tokens changes both. The ignored tests write
+//! the goldens; `cargo xtask golden` runs them.
 
 mod support;
 
@@ -12,7 +12,7 @@ use kosmo_types::Fx;
 use kosmo_ui::{TOKENS, Tokens};
 use support::golden::{self, matches_golden};
 use support::layout::{CASES, Checked, failed, font_set, lay_out_case};
-use support::tokens;
+use support::tokens::{self, PIXELS, TREE};
 
 #[test]
 fn a_row_with_spacing_matches_its_golden() -> Checked {
@@ -177,6 +177,49 @@ fn every_case_has_a_golden_of_its_name() -> Checked {
     names.sort();
     assert_eq!(files, names);
     assert_eq!(names.len(), CASES.len() + 2);
+    Ok(())
+}
+
+#[test]
+fn a_changed_table_of_tokens_changes_the_layout_tree_and_the_drawing_of_the_scene() -> Checked {
+    // The spacing `M` of 10 pixels instead of 8 and the accent colour
+    // #C00000 instead of #1F5FBF.
+    let changed = Tokens {
+        space_m: Fx::from_units(10 * 64),
+        accent: Color::opaque(0xC0, 0x00, 0x00),
+        ..TOKENS
+    };
+    let tree = fs::read(golden::file_in(golden::GOLDENS, TREE)).map_err(failed)?;
+    let pixels = fs::read(golden::file_in(golden::GOLDENS, PIXELS)).map_err(failed)?;
+    let mut fonts = font_set()?;
+    let (laid, drawn) = tokens::scene(changed, &mut fonts)?;
+    assert_ne!(laid.text().as_bytes(), tree.as_slice());
+    assert_ne!(drawn, pixels);
+    // With the table of design tokens, both are the goldens.
+    let (same, same_drawn) = tokens::scene(TOKENS, &mut fonts)?;
+    golden::compare(TREE, &tree, &same.text())?;
+    golden::compare_pixels(PIXELS, &pixels, &same_drawn)?;
+    // The rule lies below two spacings of the column, each 2 pixels
+    // wider, and it is drawn in the changed accent colour.
+    let rule = |laid: &kosmo_ui::LayoutTree| {
+        laid.boxes()
+            .iter()
+            .find(|laid| laid.kind.name() == "rule")
+            .map(|rule| rule.position)
+            .unwrap()
+    };
+    let (old, new) = (rule(&same), rule(&laid));
+    assert_eq!(new.y.units() - old.y.units(), 4 * 64);
+    // A pixel that the rule covers whole, one pixel in from its corner.
+    let (x, y) = (
+        u32::try_from(new.x.units().div_euclid(64) + 1).unwrap(),
+        u32::try_from(new.y.units().div_euclid(64) + 1).unwrap(),
+    );
+    assert_eq!(tokens::pixel(&drawn, x, y), Some([0xC0, 0x00, 0x00, 0xFF]));
+    assert_eq!(
+        tokens::pixel(&same_drawn, x, y),
+        Some([0xFF, 0xFF, 0xFF, 0xFF])
+    );
     Ok(())
 }
 
