@@ -251,7 +251,9 @@ holds receipts of the round's effects runs the next round at once, without
 waiting for the deadline. Its `accessibility` and `frames`, the tree updates
 and the display lists with their damage regions of each surface, which the
 [shell](#the-shell) hands to the platform, are empty until rounds run the
-accessibility and drawing passes. `Round::finish` runs no layout pass.
+accessibility and drawing passes. `Round::finish` runs no layout pass,
+and the layouts that the runtime keeps stay as they were, also when its
+view pass rebuilt the tree.
 
 `Round::finish_with(app, input)` runs the view pass of `Round::finish` and
 then the layout pass, before the deadline. Its `LayoutInput` holds the font
@@ -632,7 +634,10 @@ escapes such as `'\''` and `'\u{301}'`. A requester is `app` or
 `control <slot>:<generation>`, a view error is `too-many-controls`,
 `too-deep`, `duplicate-key <key>`, `second-focus`, `second-region` or
 `focus-outside-region`, and a layout error is `input-out-of-range`,
-`overflow`, `too-many-boxes` or `order`. For example:
+`overflow`, `too-many-boxes` or `order`. In a layout line, `laid` and
+`texts` count the work of the incremental layout, not its result, so they
+change with how the layout pass finds what to lay out again, while the
+layout trees stay the same. For example:
 
 ```text
 round 8 time 8000000
@@ -692,7 +697,8 @@ no wall-clock time; review checks these, as the
   find the dirty ones; only the laying out is limited to dirty subtrees. A
   change of a control's value that its layout node does not show lays
   nothing out. The runtime tells font sets apart only by the `fonts_id`
-  that its driver gives; the shell builds one font set and keeps it.
+  that its driver gives, and takes unchanged text from the layout before
+  while the number stays; the shell builds one font set and keeps it.
 - With a backend that never blocks, such as the headless backend, a wait
   without events returns at once, so `run` keeps running rounds until the
   platform disconnects or fails; drivers of such a backend use

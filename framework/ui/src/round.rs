@@ -64,9 +64,13 @@ impl<P: JobPort> Input<P> {
 pub struct LayoutInput<'f> {
     /// The font set that lays text out.
     pub fonts: &'f mut FontSet,
-    /// Which font set `fonts` is: a driver gives each font set that it
-    /// builds a number of its own. A round whose number differs from the
-    /// round before lays every surface out whole.
+    /// Which font set `fonts` is. Font sets that do not hold the same two
+    /// fonts in the same places need different numbers: a round whose
+    /// number equals the round before takes the subtrees that did not
+    /// change, their text included, from the layout before, which the font
+    /// set before laid out. A round whose number differs from the round
+    /// before lays every surface out whole. The shell builds one font set
+    /// and always gives it the number 0.
     pub fonts_id: u64,
     /// The table of design tokens.
     pub tokens: Tokens,
