@@ -1,4 +1,4 @@
-use kosmo_render::{Color, Command, FontId, Glyph, GlyphId, MAX_COMMANDS};
+use kosmo_render::{Cap, Color, Command, FontId, Glyph, GlyphId, Join, MAX_COMMANDS, Path};
 use kosmo_types::{BufferDesc, PixelFormat};
 
 use super::*;
@@ -393,4 +393,107 @@ fn the_check_compares_values_not_where_they_come_from() {
         super::paint(&tree, &layout, &whole, &other),
         Err(PaintError::Untokened(ids[0]))
     );
+}
+
+/// A control that draws the command it holds.
+#[derive(Clone, Debug, PartialEq)]
+struct Draws(Command);
+
+/// An application of controls that draw the commands they hold.
+struct Kinds;
+
+impl Control<Kinds> for Draws {
+    type State = ();
+
+    fn kind(&self) -> Kind {
+        Kind::new("draws")
+    }
+
+    fn draw(&self, cx: &mut DrawContext<'_, ()>) {
+        cx.draw(self.0.clone());
+    }
+}
+
+impl App for Kinds {
+    type Message = ();
+    type Control = Draws;
+    type Port = TestPort;
+
+    fn update(&mut self, _: Message<Self>, _: &mut Out<Self>) {}
+
+    fn view(&self) -> View<Draws> {
+        unreachable!()
+    }
+}
+
+/// The drawing pass over a tree of one control that draws `command` in a
+/// box of 100 by 80 pixels, which gives that control when it passes.
+fn painted(command: Command) -> Result<WidgetId, PaintError> {
+    let mut tree: Tree<Kinds> = Tree::new();
+    tree.rebuild(&View::new(Key::new(0), Draws(command)))
+        .unwrap();
+    let id = tree.preorder()[0];
+    let at = LayoutBox {
+        widget: id,
+        parent: None,
+        rect: rect(0, 0, 100, 80),
+        scroll: Point::default(),
+        draws: true,
+    };
+    paint(&tree, &layout(&[at]), &damage(&[(0, 0, 100, 80)])).map(|_| id)
+}
+
+/// A command of each kind that has a colour, in `color`; the glyph run
+/// is at a size of the tokens.
+fn kinds(color: Color) -> [Command; 5] {
+    let mut path = Path::new(point(1, 1));
+    path.line_to(point(9, 1)).line_to(point(9, 9)).close();
+    [
+        Command::FillRoundedRect {
+            rect: rect(0, 0, 10, 10),
+            radius: px(2),
+            color,
+        },
+        Command::FillPath {
+            path: path.clone(),
+            color,
+        },
+        Command::StrokePath {
+            path,
+            width: px(1),
+            join: Join::Miter,
+            cap: Cap::Butt,
+            color,
+        },
+        Command::Glyphs {
+            font: FontId::new(0),
+            size: TOKENS.font_body,
+            color,
+            glyphs: vec![Glyph {
+                id: GlyphId::new(3),
+                origin: Point::default(),
+            }],
+        },
+        Command::FillRect {
+            rect: rect(0, 0, 10, 10),
+            color,
+        },
+    ]
+}
+
+/// Each kind of command with a colour passes in the colour of a token and
+/// is refused in a colour of no token, the glyph run at a size of the
+/// tokens too.
+#[test]
+fn every_kind_of_command_with_a_colour_is_checked() {
+    for command in kinds(TOKENS.accent) {
+        assert!(painted(command.clone()).is_ok(), "{command:?}");
+    }
+    for command in kinds(Color::opaque(1, 2, 3)) {
+        let refused = painted(command.clone());
+        assert!(
+            matches!(refused, Err(PaintError::Untokened(_))),
+            "{command:?}: {refused:?}"
+        );
+    }
 }

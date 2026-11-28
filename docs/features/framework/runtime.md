@@ -1077,11 +1077,13 @@ wall clock.
     token, makes the drawing pass return `PaintError::Untokened` with the
     control and no display list, and so does a glyph run at a size of no
     font size token, while the three font sizes of the tokens pass; the
-    check compares values, so a literal equal to a token's colour passes
-    and is refused by a table in which that token has another value.
-    Tests: `paint::tests::`
+    colour of every kind of command that has one, a glyph run's among
+    them, is checked; the check compares values, so a literal equal to a
+    token's colour passes and is refused by a table in which that token
+    has another value. Tests: `paint::tests::`
     `a_colour_outside_the_table_of_tokens_is_refused`,
     `a_glyph_run_at_a_size_outside_the_font_size_tokens_is_refused`,
+    `every_kind_of_command_with_a_colour_is_checked`,
     `the_check_compares_values_not_where_they_come_from`.
 22. The drawing pass of a round draws each surface with a layout, in the
     order of the surfaces: the first frame of each surface is whole, and
