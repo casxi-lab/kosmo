@@ -235,8 +235,10 @@ application with the stop and switch entries of the graphical shell, whose
 wording the planned crate `kosmo-shell` fixes. The Fira Sans group holds 257
 distinct characters and the Fira Mono group 255. The test also fails when the
 group of a font lacks one of the four strings by Unicode block or holds fewer
-distinct characters than these, so a string that is removed or cut short is
-reported.
+distinct characters than these, so one of the four strings that is removed or
+cut short is reported. The other strings of the Fira Sans group hold only
+characters of its `ascii` string, so removing one of them, or cutting it
+short, is not reported.
 
 A change that adds a string to the interface, or a character to a string,
 also adds the string to the group of the font that shows it in this file,
@@ -451,8 +453,9 @@ runtime](runtime.md#requirements) lists them.
    `an_error_of_a_key_comes_before_any_fill_and_before_the_bytes`,
    `a_mask_that_the_rasterizer_cannot_fill_leaves_the_cache_as_it_was`.
 9. The bundled fonts cover every interface string, and the group of each
-   font holds the four strings by Unicode block and at least 257 and 255
-   distinct characters; a hole `□` in a string of Fira Sans fails the check, which lists every missing character once
+   font holds the four strings by Unicode block and at least 257 distinct
+   characters for Fira Sans and 255 for Fira Mono; a hole `□` in a string
+   of Fira Sans fails the check, which lists every missing character once
    for each string; the file's format groups strings by font, reads
    escapes and rejects what it does not define. Tests: `tests/coverage.rs`:
    `the_bundled_fonts_cover_every_interface_string`,
