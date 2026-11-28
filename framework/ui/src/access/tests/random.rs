@@ -27,9 +27,9 @@
 //! information when it was the first, came after a dropped one or had
 //! another root, was left out when no node and not the focus changed, and
 //! otherwise held exactly the nodes that changed. A rejected view leaves
-//! the control tree as it was and gives no update. Each group runs twice
-//! and gives the same updates, in their debug form, byte for byte. A
-//! failure names the seed, the group and the round.
+//! the control tree as it was and, when nothing else changes, gives no
+//! update. Each group runs twice and gives the same updates, in their debug
+//! form, byte for byte. A failure names the seed, the group and the round.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -590,10 +590,17 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
             }
         }
         app.too_deep = !dropped_last && rng.below(TOO_DEEP_EVERY) == 0;
+        // Half the rejected rounds change nothing else; the others give the
+        // surfaces new sizes.
+        let pure = !app.too_deep || rng.below(2) == 0;
         if app.too_deep {
-            // Nothing else changes in a round whose view is rejected.
             app.next = None;
             input.events.push(char_press('m'));
+            if !pure {
+                for surface in &mut kept {
+                    surface.size = random_size(&mut rng);
+                }
+            }
         } else {
             app.next = Some(change(&app.root, &mut rng, &mut keys));
             for _ in 0..rng.below(3) {
@@ -640,7 +647,7 @@ fn run_group(group: u64, fonts: &mut FontSet) -> String {
                 fail(round, "a rejected view changed the tree")
             );
             assert!(
-                output.accessibility.is_empty(),
+                !pure || output.accessibility.is_empty(),
                 "{}",
                 fail(round, "a rejected view gave an update")
             );
