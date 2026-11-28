@@ -130,9 +130,10 @@ application's [control tree](docs/features/framework/runtime.md) and runs
 the rounds of its event loop with result slots, timers, focus checks and
 the dispatch of commands, with a shell that fetches the two fonts through
 the platform interface, drives rounds through it and presents frames,
-drawing text from the glyph cache of its font set, with a layout of rows,
-columns and scroll containers and a drawing pass that each round runs,
-whose controls take their colours from a table of design tokens, the
+drawing text from the glyph cache of its font set, with a
+[layout](docs/features/framework/layout.md) of rows, columns and scroll
+containers and a drawing pass that each round runs, whose controls take
+their spacings, font sizes and colours from a table of design tokens, the
 headless backend `kosmo-backend-headless`, which implements the platform
 interface without threads or a display, with a clock and input that only
 its driver gives it, `kosmo-testkit`, test support with the conformance
@@ -178,13 +179,13 @@ transcendental functions, of the text crate, with its font set, shaping,
 line breaking, glyph cache, pixel goldens and the coverage of the interface
 strings, of the platform interface
 with its test hooks, of formula conversion with the kalyx runner, of the
-Scratchpad, of the framework core, of the headless
-backend with its test hooks, the conformance suite, the shell and the
-script runner, of the event scripts, the pixel digests and the call probes
-of the test support, of the facade and of the shared types, and the last
-runs the repository checks. No version has been released yet: a release is
-a tagged commit, and the version that `main` shows is not a release until
-it is tagged.
+Scratchpad, of the framework core, with its layout tree and pixel
+goldens, of the headless backend with its test hooks, the conformance
+suite, the shell and the script runner, of the event scripts, the pixel
+digests and the call probes of the test support, of the facade and of the
+shared types, and the last runs the repository checks. No version has
+been released yet: a release is a tagged commit, and the version that
+`main` shows is not a release until it is tagged.
 
 kosmo is written in Rust: its programs use the standard library, and its
 pure-core crates use only `core` and `alloc`. Its first releases will run

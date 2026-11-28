@@ -8,10 +8,11 @@ slot, keeps one-shot timers, checks the focus stamps of key events,
 dispatches commands from the focused control to its ancestors and the
 application, resolves keys with binding tables and the minimal key map,
 lays out the control tree of each surface in each round, laying out again
-only what changed, finds the control at a point of a layout result, builds
-the display list of a damage region from a layout result with its drawing
-pass, and drives rounds through the platform interface with its shell,
-which presents frames.
+only what changed, as [layout](layout.md) describes with the rows, columns,
+scroll containers and design tokens, finds the control at a point of a
+layout result, builds the display list of a damage region from a layout
+result with its drawing pass, and drives rounds through the platform
+interface with its shell, which presents frames.
 
 The round function covers the event, update, view, layout and drawing
 passes; the drawing pass draws from the layout that the layout pass keeps
