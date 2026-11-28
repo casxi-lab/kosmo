@@ -577,7 +577,10 @@ fonts again. Then each round:
    `Damage` of at most 16 rectangles, beyond which they merge into their
    bounding rectangle, and its display list is dropped. The first round
    after the `Released` draws the pending region together with its own
-   update region, and a presented frame empties the pending region.
+   update region, and a presented frame empties the pending region. A
+   frame that fails to present, and the frames after it, join their
+   surfaces' pending regions before `run_round` returns the error, so
+   that the next round draws them again.
 
 `run_round` returns a `RoundEnd` with how the wait ended, `WaitEnd::Events`,
 `Deadline` or `Idle`, and the round's `Output`, whose `frames` are those
@@ -1109,11 +1112,14 @@ wall clock.
     pending region, in which nothing else changed, and presents it; a
     driver that presents directly is refused with `Busy`, and once a
     presented frame emptied the pending region, nothing more is presented;
-    a new size while the buffer is presented makes the next frame whole.
+    a new size while the buffer is presented makes the next frame whole;
+    a frame that fails to present, and the frames after it, join the
+    pending regions of their surfaces, and the next round draws them again.
     Tests: `shell::tests::`
     `a_frame_for_a_presented_buffer_is_drawn_again_after_the_release`,
     `a_second_size_while_the_buffer_is_presented_draws_the_next_frame_whole`,
-    `a_size_and_back_while_the_buffer_is_presented_draws_the_change`.
+    `a_size_and_back_while_the_buffer_is_presented_draws_the_change`,
+    `frames_that_fail_to_present_are_drawn_again_by_the_next_round`.
 24. The groups of the drawing pass count toward the command limit of a
     round's frame: below a row, 56 chains of 63 levels, 3,529 controls and
     64 deep, whose 56 leaves draw 166 rectangles each, give one frame of

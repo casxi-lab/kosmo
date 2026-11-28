@@ -258,7 +258,10 @@ impl<A: App> Shell<A> {
     ///    region of the surface, at most 16 rectangles and beyond them
     ///    their bounding rectangle, and the first round after the release
     ///    draws that region together with its own update region and
-    ///    presents it. A presented frame ends the pending region.
+    ///    presents it. A presented frame ends the pending region. A frame
+    ///    that fails to present, and the frames after it, join the pending
+    ///    regions of their surfaces, so that the next round draws them
+    ///    again.
     ///
     /// Rounds have no accessibility pass yet, so their outputs hold no
     /// accessibility updates.
@@ -271,8 +274,10 @@ impl<A: App> Shell<A> {
     ///
     /// A port's error, [`PlatformError::Disconnected`] among them, and the
     /// errors of presentation, as [`ShellError`] states; an error of
-    /// presentation comes after both steps. A frame for a surface whose
-    /// buffer is presented and not released gives no error.
+    /// presentation comes after both steps, and the frames that it leaves
+    /// unpresented wait in the pending regions of their surfaces. A frame
+    /// for a surface whose buffer is presented and not released gives no
+    /// error.
     pub fn run_round<P: Platform>(
         &mut self,
         platform: &mut P,
@@ -376,7 +381,10 @@ impl<A: App> Shell<A> {
     /// Pushes the accessibility updates of `output` and presents its
     /// frames. A frame for a surface whose buffer is presented and not
     /// released is not presented: its damage joins the surface's pending
-    /// region, which the next round after the release draws again.
+    /// region, which the next round after the release draws again. When a
+    /// frame fails to present, its damage and that of the frames after it
+    /// join the pending regions of their surfaces before the error
+    /// returns, so that the next round draws them again.
     fn deliver<P: Platform>(
         &mut self,
         platform: &mut P,
@@ -385,26 +393,41 @@ impl<A: App> Shell<A> {
         for (surface, update) in &output.accessibility {
             platform.update(*surface, update.clone())?;
         }
-        for (surface, list, damage) in &output.frames {
-            let known = self.surfaces.entry(*surface).or_default();
-            if known.presented {
-                match &mut known.pending {
-                    Some(pending) => {
-                        for rect in damage.rects() {
-                            pending.add(rect.x(), rect.y(), rect.width(), rect.height());
-                        }
-                    }
-                    None => known.pending = Some(*damage),
-                }
+        for (index, (surface, list, damage)) in output.frames.iter().enumerate() {
+            if self
+                .surfaces
+                .get(surface)
+                .is_some_and(|known| known.presented)
+            {
+                self.defer(*surface, damage);
                 continue;
             }
-            self.present(platform, *surface, list, damage)?;
+            if let Err(error) = self.present(platform, *surface, list, damage) {
+                for (surface, _, damage) in output.frames.get(index..).unwrap_or(&[]) {
+                    self.defer(*surface, damage);
+                }
+                return Err(error);
+            }
             // The frame drew the pending region too.
             if let Some(known) = self.surfaces.get_mut(surface) {
                 known.pending = None;
             }
         }
         Ok(())
+    }
+
+    /// Joins `damage` to the pending region of `surface`, at most 16
+    /// rectangles and beyond them their bounding rectangle.
+    fn defer(&mut self, surface: SurfaceId, damage: &Damage) {
+        let known = self.surfaces.entry(surface).or_default();
+        match &mut known.pending {
+            Some(pending) => {
+                for rect in damage.rects() {
+                    pending.add(rect.x(), rect.y(), rect.width(), rect.height());
+                }
+            }
+            None => known.pending = Some(*damage),
+        }
     }
 
     /// Presents `list` on `surface` inside `damage`, and returns the work

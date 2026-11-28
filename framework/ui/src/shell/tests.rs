@@ -630,6 +630,70 @@ fn a_size_and_back_while_the_buffer_is_presented_draws_the_change() {
     assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
 }
 
+/// A frame that fails to present, here because the platform still holds a
+/// buffer that the shell saw released, waits in the pending region of its
+/// surface, and the next round, in which nothing else changed, draws it
+/// again and presents it; the frames after it in the output wait in the
+/// pending regions of their surfaces too.
+#[test]
+fn frames_that_fail_to_present_are_drawn_again_by_the_next_round() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    release(&mut shell, &mut fake);
+    taken(&log);
+    // The first tile handles MoveLeft, and the platform refuses the buffer.
+    fake.in_flight = true;
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    assert_eq!(presentations(&log), ["buffer 1"]);
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.in_flight = false;
+    let next = shell.run_round(&mut fake, None).unwrap();
+    assert!(is_whole(&next.output.frames[0].2, 32));
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
+
+    // The frame of the second surface comes after the one that fails.
+    release(&mut shell, &mut fake);
+    fake.in_flight = true;
+    let second = SurfaceId::new(2);
+    let mut output = next.output.clone();
+    output.frames = vec![
+        (
+            SURFACE,
+            DisplayList::default(),
+            damage(&fake, &[(0, 0, 1, 1)]),
+        ),
+        (
+            second,
+            DisplayList::default(),
+            damage(&fake, &[(2, 0, 3, 1)]),
+        ),
+    ];
+    taken(&log);
+    assert_eq!(
+        shell.deliver(&mut fake, &output),
+        Err(ShellError::Platform(PlatformError::Busy))
+    );
+    assert_eq!(presentations(&log), ["buffer 1"]);
+    let pending = |surface| shell.surfaces[&surface].pending.unwrap();
+    assert_eq!(
+        pending(SURFACE).rects(),
+        [DamageRect::new(0, 0, 1, 1).unwrap()]
+    );
+    assert_eq!(
+        pending(second).rects(),
+        [DamageRect::new(2, 0, 3, 1).unwrap()]
+    );
+}
+
 #[test]
 fn presenting_converts_only_the_damage_of_the_frame_into_the_buffer() {
     let log = Log::default();
