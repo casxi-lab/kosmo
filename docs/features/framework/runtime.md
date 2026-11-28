@@ -964,12 +964,13 @@ wall clock.
     table of tokens or font set lays the tree out whole, and nothing changed
     lays nothing out. After random changes of a value, the children of a
     control, a scroll request or the root constraint, the layout against the
-    one before is the whole layout byte for byte. The offsets are written
-    back along the axis of each container, the smallest of the surfaces',
-    so that requests beyond the range do not add up, and the kept layouts
-    of all surfaces follow the requests written back; a failed layout is
-    recorded and leaves the surface without a layout. The shell hands its
-    own font set to the round. Tests:
+    one before is the whole layout byte for byte, and a scroll request
+    beyond its range in a subtree taken whole fails both alike. The offsets
+    are written back along the axis of each container, the smallest of the
+    surfaces', so that requests beyond the range do not add up, and the
+    kept layouts of all surfaces follow the requests written back; a failed
+    layout is recorded and leaves the surface without a layout. The shell
+    hands its own font set to the round. Tests:
     `round::tests::layout::`
     `each_surface_with_a_size_is_laid_out_under_it_in_the_order_of_the_surfaces`,
     `changing_one_text_leaf_lays_out_only_it_and_its_ancestors_up_to_the_boundary`,
@@ -981,6 +982,7 @@ wall clock.
     `a_new_size_table_of_tokens_or_font_set_lays_the_whole_tree_out_again`,
     `a_failed_layout_is_recorded_and_leaves_the_surface_without_a_layout`;
     `layout::tests::a_layout_against_the_layout_before_lays_out_only_what_changed`,
+    `layout::tests::a_request_beyond_its_range_in_a_subtree_taken_whole_fails_as_the_whole_layout`,
     `layout::tests::another_constraint_table_of_tokens_or_font_set_lays_out_the_whole_tree`,
     `layout::tests::random::layouts_against_the_layout_before_equal_whole_layouts_after_random_changes`;
     `shell::tests::each_round_lays_out_the_configured_surfaces_with_the_shells_font_set`,

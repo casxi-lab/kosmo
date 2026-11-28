@@ -864,6 +864,30 @@ fn a_layout_against_the_layout_before_lays_out_only_what_changed() {
 }
 
 #[test]
+fn a_request_beyond_its_range_in_a_subtree_taken_whole_fails_as_the_whole_layout() {
+    let mut fonts = fonts();
+    let spec = column(
+        Column::new(),
+        vec![
+            scroll(Axis::Y, 0, column(Column::new(), vec![fixed(10, 80)])),
+            fixed(10, 10),
+        ],
+    );
+    let up_to = constraint(0, 0, 100, 50);
+    let mut tree = build(&spec);
+    let (kept, _) = relayout(&tree, up_to, &TOKENS, &mut fonts, 0, None).unwrap();
+    // Only the request changes, so no control is dirty and the whole tree
+    // would be taken from the layout before.
+    let scroll = tree.preorder()[1];
+    tree.node_mut(scroll).unwrap().state = Fx::from_units((1 << 24) + 1);
+    let refused = Some(LayoutError::InputOutOfRange);
+    let again = relayout(&tree, up_to, &TOKENS, &mut fonts, 0, Some(&kept));
+    assert_eq!(again.err(), refused);
+    let whole = relayout(&tree, up_to, &TOKENS, &mut fonts, 0, None);
+    assert_eq!(whole.err(), refused);
+}
+
+#[test]
 fn another_constraint_table_of_tokens_or_font_set_lays_out_the_whole_tree() {
     let mut fonts = fonts();
     let case = dashboard("1", 100, 0);
