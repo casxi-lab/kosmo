@@ -3,13 +3,14 @@
 //! versions, the latest accepted submission and the result slot. Its
 //! controls handle the commands that the test gives them, and its view is
 //! either a line under a root, or a chain of four controls. The modules
-//! `layout` and `golden` hold the layout cases and their layout tree
-//! goldens.
+//! `layout`, `tokens` and `golden` hold the layout cases, the scene of the
+//! design tokens and their goldens.
 
 #![allow(dead_code, reason = "each test file uses part of the support")]
 
 pub mod golden;
 pub mod layout;
+pub mod tokens;
 
 use kosmo_math_model::version::{ContextVersion, SettingsVersion, Versions};
 use kosmo_math_model::{EditBuffer, Item};

@@ -1,12 +1,18 @@
-//! The layout tree of each layout case matches its golden byte for byte.
-//! The ignored tests write the goldens; `cargo xtask golden` runs them.
+//! The layout tree of each layout case matches its golden byte for byte,
+//! and so do the layout tree and the drawing of the scene of the design
+//! tokens. The ignored tests write the goldens; `cargo xtask golden` runs
+//! them.
 
 mod support;
 
 use std::fs;
 
+use kosmo_render::Color;
+use kosmo_types::Fx;
+use kosmo_ui::{TOKENS, Tokens};
 use support::golden::{self, matches_golden};
 use support::layout::{CASES, Checked, failed, font_set, lay_out_case};
+use support::tokens;
 
 #[test]
 fn a_row_with_spacing_matches_its_golden() -> Checked {
@@ -99,6 +105,16 @@ fn text_of_several_lines_on_one_baseline_matches_its_golden() -> Checked {
 }
 
 #[test]
+fn the_layout_tree_of_the_scene_of_the_design_tokens_matches_its_golden() -> Checked {
+    matches_golden("layout-tokens")
+}
+
+#[test]
+fn the_scene_of_the_design_tokens_matches_its_pixel_golden() -> Checked {
+    matches_golden("tokens")
+}
+
+#[test]
 #[ignore = "writes the goldens; cargo xtask golden runs it and then writes MANIFEST"]
 fn write_goldens() -> Checked {
     golden::write(golden::GOLDENS)
@@ -143,18 +159,89 @@ fn a_second_font_set_of_the_same_bytes_writes_the_same_goldens() -> Checked {
 
 #[test]
 fn every_case_has_a_golden_of_its_name() -> Checked {
-    let mut names: Vec<String> = fs::read_dir(golden::GOLDENS)
+    // The cases and the scene of the tokens, each golden in its file.
+    let mut files: Vec<String> = fs::read_dir(golden::GOLDENS)
         .map_err(failed)?
         .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let file = entry.file_name().to_string_lossy().into_owned();
-            file.strip_suffix(".tree").map(str::to_string)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|file| file.ends_with(".tree") || file.ends_with(".px"))
+        .collect();
+    files.sort();
+    let mut names: Vec<String> = golden::names()
+        .into_iter()
+        .map(|name| {
+            let path = golden::file_in(golden::GOLDENS, name);
+            path.rsplit('/').next().unwrap_or_default().to_string()
         })
         .collect();
     names.sort();
-    let mut cases: Vec<&str> = CASES.iter().map(|(name, _)| *name).collect();
-    cases.sort_unstable();
-    assert_eq!(names, cases);
+    assert_eq!(files, names);
+    assert_eq!(names.len(), CASES.len() + 2);
+    Ok(())
+}
+
+#[test]
+fn each_token_of_the_table_changes_the_scene_of_the_design_tokens() -> Checked {
+    let px = |pixels: i32| Fx::from_units(pixels * 64);
+    let changes = [
+        Tokens {
+            space_xs: px(3),
+            ..TOKENS
+        },
+        Tokens {
+            space_s: px(5),
+            ..TOKENS
+        },
+        Tokens {
+            space_m: px(9),
+            ..TOKENS
+        },
+        Tokens {
+            space_l: px(17),
+            ..TOKENS
+        },
+        Tokens {
+            font_small: px(13),
+            ..TOKENS
+        },
+        Tokens {
+            font_body: px(17),
+            ..TOKENS
+        },
+        Tokens {
+            font_large: px(25),
+            ..TOKENS
+        },
+        Tokens {
+            background: Color::opaque(0xF0, 0xF0, 0xF0),
+            ..TOKENS
+        },
+        Tokens {
+            text: Color::opaque(0x40, 0x00, 0x40),
+            ..TOKENS
+        },
+        Tokens {
+            text_secondary: Color::opaque(0x00, 0x40, 0x40),
+            ..TOKENS
+        },
+        Tokens {
+            accent: Color::opaque(0x00, 0x80, 0x00),
+            ..TOKENS
+        },
+        Tokens {
+            error: Color::opaque(0x80, 0x40, 0x00),
+            ..TOKENS
+        },
+    ];
+    let mut fonts = font_set()?;
+    let (tree, pixels) = tokens::scene(TOKENS, &mut fonts)?;
+    for (index, changed) in changes.into_iter().enumerate() {
+        let (laid, drawn) = tokens::scene(changed, &mut fonts)?;
+        assert!(
+            laid.text() != tree.text() || drawn != pixels,
+            "the change {index} of the table leaves the scene as it was"
+        );
+    }
     Ok(())
 }
 
