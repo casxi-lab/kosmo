@@ -32,7 +32,7 @@ order and stops at the first one that fails:
 
 1. `layout`: the source layout, as [the layout step](#the-layout-step)
    describes;
-2. `goldens`: the pixel goldens against their manifests, as
+2. `goldens`: the pixel and layout tree goldens against their manifests, as
    [the goldens step](#the-goldens-step-and-cargo-xtask-golden) describes,
    and the fonts of `kosmo-text` against their asset manifest, as
    [the font assets](#the-font-assets) describes;
@@ -478,23 +478,36 @@ The first crate of a workspace also adds the workspace's root manifest,
 
 ### The goldens step and `cargo xtask golden`
 
-A crate with pixel goldens, so far `kosmo-render` and `kosmo-text`, as
-`SETS` in `xtask/src/golden.rs` lists them, keeps them in its directory
-`tests/golden/`: a file `<name>.px` for each golden, which holds a drawn
-buffer as the [digests rule](docs/architecture.md#determinism-rules)
-encodes it, and `MANIFEST`, with one line `<digest>  <name>` for each
-golden: the SHA-256 of the file in 64 lowercase hexadecimal digits, two
+A crate with goldens, so far `kosmo-render`, `kosmo-text` and `kosmo-ui`,
+as `SETS` in `xtask/src/golden.rs` lists them, keeps them in its directory
+`tests/golden/`: one file for each golden, `<name>.px` for a pixel golden,
+which holds a drawn buffer as the [digests
+rule](docs/architecture.md#determinism-rules) encodes it, or `<name>.tree`
+for a layout tree golden, which holds a layout tree as text, and
+`MANIFEST`, with one line `<digest>  <name>` for each golden of either
+kind: the SHA-256 of the file in 64 lowercase hexadecimal digits, two
 spaces and the name, sorted by name. The goldens of `kosmo-render` hold a
 scene of each kind of command. Those of `kosmo-text` hold the strings whose
 glyphs its tests pin, each laid out by the font set and drawn by vello_cpu
 from the coverage masks of the glyph cache, in opaque black on transparent
 black, on a canvas of its layout box rounded outwards to whole pixels with
 a margin of 2 pixels on each side; its line breaks are pinned as text in
-its tests and have no goldens. Names are lowercase letters, digits and
-`-`. A test refers to a golden by calling `matches_golden` with the name as
-a string literal; the call draws the golden's scene, encodes it in memory and
-compares it with the file byte for byte. These commands write and verify the
-goldens:
+its tests and have no goldens. Those of `kosmo-ui` hold the layout trees
+of its layout cases, each a control tree of rows, columns, scroll
+containers, text leaves and fixed-size leaves laid out under the
+constraint of its root with the table of design tokens and the font set of
+the two bundled fonts. A layout tree is UTF-8 text as `LayoutTree::text`
+writes it: the line `layout-tree 1`, the format and its version, and then
+one line for each box in preorder, with its index, its parent's index,
+the kind and key of its control, the smallest and largest size of its
+constraint, its position, its size, its baseline, its scroll offset, the
+axes along which it overflows and whether it draws, every number an
+integer, a count, a key or a value in 1/64 pixel. Names are lowercase
+letters, digits and `-`, and one name has one file. A test refers to a
+golden by calling `matches_golden` with the name as a string literal; the
+call draws the golden's scene and encodes it in memory, or lays out the
+golden's case and writes its layout tree as text, and compares the result
+with the file byte for byte. These commands write and verify the goldens:
 
 ```sh
 cargo xtask golden
@@ -502,17 +515,20 @@ cargo xtask golden --verify
 ```
 
 The first runs the ignored test `write_goldens` of each crate with goldens,
-which writes its `.px` files, and then writes `MANIFEST` from the `.px`
-files in `tests/golden/`; run without a change to the drawing code, it
-leaves every file as it was. It removes the `.px` files of the goldens
-before it runs the test, so the file of a golden whose scene is gone goes
-too, and it fails when the test writes no golden. When it fails, `MANIFEST`
+which writes its `.px` and `.tree` files, and then writes `MANIFEST` from
+the `.px` and `.tree` files in `tests/golden/`; run without a change to the
+drawing or layout code, it leaves every file as it was. It removes the
+`.px` and `.tree` files of the goldens before it runs the test, so the file
+of a golden whose scene or case is gone goes too, and it fails when the
+test writes no golden, and writes no `MANIFEST` when the directory holds
+another file or a `.px` and a `.tree` file of one name. When it fails, `MANIFEST`
 is as it was, the files it removed stay removed and those that the test
 wrote stay written, until it runs again without failing or
 `git checkout -- <crate>/tests/golden` restores them. Add a new golden's
 file with `git add`. The second runs the ignored test `redraw_goldens`, which
-draws the goldens again into `target/golden/<package>/` of the workspace,
-and prints for each golden the new digest and the digest in `MANIFEST`. It
+draws or lays out the goldens again into `target/golden/<package>/` of the
+workspace, and prints for each golden the new digest and the digest in
+`MANIFEST`. It
 fails when one differs and changes no tracked file. Both leave out files
 whose names start with `.`, such as `.DS_Store`. The ignored tests are run
 only through these commands.
@@ -524,8 +540,9 @@ by line number:
 
 - a golden whose file has another SHA-256 than `MANIFEST` lists;
 - a golden of `MANIFEST` without a file, or that no test refers to;
-- a `.px` file that `MANIFEST` does not list, and any other file in a golden
-  directory but `MANIFEST`;
+- a `.px` or `.tree` file that `MANIFEST` does not list, a second file of
+  one name, such as `<name>.tree` beside `<name>.px`, and any other file in
+  a golden directory but `MANIFEST`;
 - a line of `MANIFEST` that is not a digest of 64 lowercase hexadecimal
   digits, two spaces and a name, a name listed twice and lines out of order;
 - a call of `matches_golden` with a name that `MANIFEST` does not list, and
@@ -545,9 +562,12 @@ whose first argument is not a string literal. A golden directory without
 or checks the result of each call, nor that the crate's manifest runs
 `tests/golden.rs`, which `autotests = false` without a `[[test]]` table
 for it would turn off; review covers these. In CI, the goldens step
-compares every file with `MANIFEST` and the test step every drawing with
-its file, byte for byte, so the digests of what CI draws are those of
-`MANIFEST`.
+compares every file with `MANIFEST` and the test step every drawing and
+layout tree with its file, byte for byte, so the digests of what CI draws
+and lays out are those of `MANIFEST`. A change to a golden is a change of
+its file that `cargo xtask golden` writes, which review reads beside the
+change of code that caused it; for a layout tree golden the difference is
+readable line by line.
 
 ### The font assets
 
@@ -1199,9 +1219,9 @@ separate authorized action.
 
 ### Golden images and determinism
 
-Rendering is tested against pixel goldens, and code on the deterministic
-path keeps to these rules, each following the paragraph of the
-architecture that it links:
+Rendering is tested against pixel goldens and layout against layout tree
+goldens, and code on the deterministic path keeps to these rules, each
+following the paragraph of the architecture that it links:
 
 1. Deterministic code calls transcendental functions only through
    `det_math` in `kosmo-render`, which calls `libm` 0.2.16, uses otherwise
@@ -1269,8 +1289,8 @@ architecture that it links:
     category with `cargo xtask golden` and, for the toolchain, generates the
     lists of the determinism lints again
     ([pinning](docs/architecture.md#determinism-rules)).
-12. Pixel goldens have zero tolerance, and the check on GitHub-hosted runners
-    is authoritative: the digests that `cargo xtask golden --verify` prints
+12. Pixel and layout tree goldens have zero tolerance, and the check on
+    GitHub-hosted runners is authoritative: the digests that `cargo xtask golden --verify` prints
     on a local host, run with a fresh `CARGO_HOME` and reported with whether
     the volume of the checkout is case-sensitive, are compared with those of
     CI one by one, which are those of `MANIFEST`, as
