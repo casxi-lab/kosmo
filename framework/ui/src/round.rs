@@ -231,9 +231,14 @@ impl<A: App> Round<'_, A> {
     /// byte for byte.
     ///
     /// After the layout pass, each scroll container learns its offset
-    /// through [`Control::scrolled`]. A surface that `input` does not list
-    /// loses its layout, and so does a surface whose layout fails; the
-    /// record names the error.
+    /// through [`Control::scrolled`]. Then the kept layouts take each
+    /// container's offset from the request that its node gives after that,
+    /// brought into the range of its content, without laying anything out,
+    /// so each is the layout of the tree as the round leaves it, unless
+    /// `scrolled` changes a node in more than its request or to a request
+    /// beyond its bounds. A surface that `input` does not list loses its
+    /// layout, and so does a surface whose layout fails; the record names
+    /// the error.
     pub fn finish_with(self, app: &A, input: LayoutInput<'_>) -> Output {
         self.end(app, Some(input))
     }
@@ -412,8 +417,9 @@ impl<A: App> Runtime<A> {
     }
 
     /// The layout pass: lays out each surface of `input` against its
-    /// layout of the round before, keeps the layouts, records each, and
-    /// tells each scroll container its offset.
+    /// layout of the round before, keeps the layouts, records each, tells
+    /// each scroll container its offset, and lets the kept layouts follow
+    /// the requests that the controls wrote back.
     fn lay_out(&mut self, input: LayoutInput<'_>, record: &mut Record) {
         let LayoutInput {
             fonts,
@@ -462,10 +468,20 @@ impl<A: App> Runtime<A> {
                 .and_modify(|smallest| *smallest = (*smallest).min(offset))
                 .or_insert(offset);
         }
+        if offsets.is_empty() {
+            return;
+        }
         for (widget, offset) in offsets {
             if let Some(node) = self.tree.node_mut(widget) {
                 node.control.scrolled(offset, &mut node.state);
             }
+        }
+        // A surface whose range was larger laid a container out with a
+        // larger offset than the one written back; its kept layout follows
+        // the request now, without laying anything out, so that it is the
+        // layout of the tree as the round leaves it.
+        for kept in self.layouts.values_mut() {
+            kept.follow_requests(&self.tree);
         }
     }
 

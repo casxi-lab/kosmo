@@ -556,6 +556,36 @@ impl Kept {
             })
     }
 
+    /// Gives each scroll container of the tree the offset that the
+    /// request of its control's node in `tree` now gives, brought into the
+    /// range of its content, without laying anything out: the layout of the
+    /// tree after a change of requests alone. A container whose node now
+    /// differs in more than its request keeps its offset.
+    pub(crate) fn follow_requests<A: App>(&mut self, tree: &Tree<A>) {
+        for at in 0..self.tree.boxes.len() {
+            let Some(&Shape::Scroll(axis)) = self.shapes.get(at) else {
+                continue;
+            };
+            let Some(laid) = self.tree.boxes.get(at) else {
+                continue;
+            };
+            let Some(node) = tree.node(laid.widget) else {
+                continue;
+            };
+            let (shape, request) = Shape::of(node.control.layout(&node.state));
+            if shape != Shape::Scroll(axis) {
+                continue;
+            }
+            let content = self.children(at).next();
+            let content = content
+                .and_then(|child| self.tree.boxes.get(child))
+                .map_or(Size::ZERO, |child| child.size);
+            if let Some(laid) = self.tree.boxes.get_mut(at) {
+                laid.scroll = offset(axis, request, content, laid.size);
+            }
+        }
+    }
+
     /// Whether the children of the box `at` are the controls `children`,
     /// in this order.
     fn children_are(&self, at: usize, children: &[WidgetId]) -> bool {

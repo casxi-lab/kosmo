@@ -170,8 +170,14 @@ fn tight(size: PixelSize) -> Constraint {
 /// Checks that the layout that the round kept for the test surface is
 /// that of the whole tree at `size`.
 fn assert_whole(runtime: &Runtime<Board>, fonts: &mut FontSet, size: PixelSize) {
-    let whole = layout(runtime.tree(), tight(size), &TOKENS, fonts).unwrap();
-    let kept = runtime.layout(SURFACE).unwrap();
+    assert_whole_on(runtime, fonts, (SURFACE, size));
+}
+
+/// Checks that the layout that the round kept for the surface of
+/// `surface` is that of the whole tree at its size.
+fn assert_whole_on(runtime: &Runtime<Board>, fonts: &mut FontSet, surface: (SurfaceId, PixelSize)) {
+    let whole = layout(runtime.tree(), tight(surface.1), &TOKENS, fonts).unwrap();
+    let kept = runtime.layout(surface.0).unwrap();
     assert_eq!(kept.text(), whole.text());
     assert_eq!(*kept, whole);
 }
@@ -461,13 +467,17 @@ fn the_round_writes_offsets_back_so_that_requests_beyond_the_range_do_not_add_up
     // Five steps of 30 pixels went beyond both ranges. Each round laid
     // the surfaces out with the request of the round, each bringing it
     // into its own range, and then wrote back the smaller offset, so the
-    // request is the end of the smaller range and not 150 pixels.
+    // request is the end of the smaller range and not 150 pixels. The
+    // layouts that the round kept follow the request written back, also
+    // on the surface whose range is larger, and are those of the tree.
     assert_eq!(runtime.tree().state(scroll), Some(&smaller));
     let offset =
         |runtime: &Runtime<Board>, surface| runtime.layout(surface).unwrap().boxes()[0].scroll.y;
     assert_eq!(offset(&runtime, second), smaller);
-    let request = smaller.checked_add(px(30)).unwrap();
-    assert_eq!(offset(&runtime, SURFACE), request.min(larger));
+    assert_eq!(offset(&runtime, SURFACE), smaller);
+    for surface in surfaces {
+        assert_whole_on(&runtime, &mut fonts, surface);
+    }
     // One step back moves the content of both at once.
     laid_out(
         &mut runtime,
@@ -479,6 +489,9 @@ fn the_round_writes_offsets_back_so_that_requests_beyond_the_range_do_not_add_up
     assert_eq!(offset(&runtime, SURFACE), back);
     assert_eq!(offset(&runtime, second), back);
     assert_eq!(runtime.tree().state(scroll), Some(&back));
+    for surface in surfaces {
+        assert_whole_on(&runtime, &mut fonts, surface);
+    }
 }
 
 #[test]

@@ -291,10 +291,18 @@ the request of its node brought into the range of its content, along its
 axis, and when several surfaces lay it out, the smallest of their offsets,
 which is within the range of each. A control that keeps its request in its
 presentation state writes the offset back there, so that requests beyond
-the range do not add up. The default does nothing. A surface that `sizes`
-does not list loses its layout, and so does a surface whose layout fails;
-the record names the error, `LayoutError::InputOutOfRange` for an input
-beyond its range and `Overflow` for a sum of lengths that does not fit.
+the range do not add up. The default does nothing. Then each layout that
+the runtime keeps takes the offset of each scroll container from the
+request that the container's node gives after the write-back, brought into
+the range of its content, without laying anything out and without counting
+it in the record. So a surface on which the offset was larger than the one
+written back follows the written one at once, and each kept layout is that
+of `layout` for the tree as the round leaves it, unless `scrolled` changes
+a node in more than its request or to a request beyond its bounds. A
+surface that `sizes` does not list loses its layout, and so does a surface
+whose layout fails; the record names the error,
+`LayoutError::InputOutOfRange` for an input beyond its range and `Overflow`
+for a sum of lengths that does not fit.
 
 ## Effects and the execution port
 
@@ -958,7 +966,8 @@ wall clock.
     control, a scroll request or the root constraint, the layout against the
     one before is the whole layout byte for byte. The offsets are written
     back, the smallest of the surfaces', so that requests beyond the range
-    do not add up; a failed layout is recorded and leaves the surface
+    do not add up, and the kept layouts of all surfaces follow the requests
+    written back; a failed layout is recorded and leaves the surface
     without a layout. The shell hands its own font set to the round. Tests:
     `round::tests::layout::`
     `each_surface_with_a_size_is_laid_out_under_it_in_the_order_of_the_surfaces`,
