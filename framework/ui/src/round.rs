@@ -426,7 +426,9 @@ impl<A: App> Runtime<A> {
     /// Tells the runtime that the platform did not take the latest
     /// accessibility update of `surface`, so that the next update for the
     /// surface holds the whole tree with the tree information. The shell
-    /// calls it when pushing an update fails.
+    /// calls it when pushing an update fails, for that update's surface and
+    /// for the surfaces of the updates after it; a driver that pushes
+    /// [`Output::accessibility`] itself calls it in the same way.
     pub fn push_failed(&mut self, surface: SurfaceId) {
         self.pushed.remove(&surface);
     }

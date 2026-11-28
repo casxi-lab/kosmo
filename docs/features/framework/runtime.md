@@ -758,9 +758,9 @@ crate of the product workspaces, and the layout step rejects an attribute
 in it that turns these lints off, within the limits that [the layout
 step](../../../CONTRIBUTING.md#the-layout-step) states for macros. It uses
 no floating-point arithmetic other than the exact conversion of
-coordinates into the bounding boxes and scroll offsets of accessibility
-nodes, and no locale, and its record holds no wall-clock time; review
-checks these, as the
+coordinates into the bounding boxes, scroll offsets and scroll ranges of
+accessibility nodes, and no locale, and its record holds no wall-clock
+time; review checks these, as the
 [determinism rules](../../architecture.md#determinism-rules) describe.
 
 ## Limits
