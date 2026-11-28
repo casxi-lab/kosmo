@@ -5,12 +5,13 @@
 //! another kind or other values, names and scroll requests, reordered, and
 //! focused and made the region's root or not; now and then the view is too
 //! deep to be built. A bound command flips the state flags of the focused
-//! control or an ancestor. Each group lays out one or two surfaces, whose
-//! sizes change, and now and then leaves a surface without a size. The
-//! updates of each round are applied in order to an `AccessibilityTree` of
-//! their surface, as the headless backend keeps it, except in one group of
-//! `DROP_EVERY`, where one update of one surface is dropped and the runtime
-//! is told so.
+//! control or an ancestor. The entries of the rows and columns write what
+//! the pass sets or clears, which it replaces. Each group lays out one or
+//! two surfaces, whose sizes change, and now and then leaves a surface
+//! without a size. The updates of each round are applied in order to an
+//! `AccessibilityTree` of their surface, as the headless backend keeps it,
+//! except in one group of `DROP_EVERY`, where one update of one surface is
+//! dropped and the runtime is told so.
 //!
 //! After every round nothing has panicked, every update was taken, and the
 //! tree of each surface with a layout has a node for each control and no
@@ -19,20 +20,24 @@
 //! of its control, in order; the tree equals the whole tree that the pass
 //! builds for the control tree, the layouts and the focus; its focus is
 //! the focused control or the root; each bounding box is the control's box
-//! in the coordinates of the surface, and each scroll container has the
-//! request brought into its range as its offset; and the round's update
-//! held every node and the tree information when it was the first, came
-//! after a dropped one or had another root, was left out when no node and
-//! not the focus changed, and otherwise held exactly the nodes that
-//! changed. A rejected view leaves the control tree as it was and gives no
-//! update. Each group runs twice and gives the same updates, in their debug
-//! form, byte for byte. A failure names the seed, the group and the round.
+//! in the coordinates of the surface, no node has a transform, actions or
+//! a tree identifier, each scroll container has the request brought into
+//! its range as its offset, and no other node scrolls or clips its
+//! children; and the round's update held every node and the tree
+//! information when it was the first, came after a dropped one or had
+//! another root, was left out when no node and not the focus changed, and
+//! otherwise held exactly the nodes that changed. A rejected view leaves
+//! the control tree as it was and gives no update. Each group runs twice
+//! and gives the same updates, in their debug form, byte for byte. A
+//! failure names the seed, the group and the round.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use kosmo_platform::accesskit::{Node, NodeId, Rect, Role, TreeInfo, TreeUpdate};
+use kosmo_platform::accesskit::{
+    Action, Affine, Node, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate, Uuid,
+};
 use kosmo_platform::{AccessibilityTree, PixelSize};
 use kosmo_text::FontSet;
 use kosmo_types::{Fx, KeyAction, KeyMeaning, MonoTime, Point, Size};
@@ -232,7 +237,23 @@ impl Control<Model> for Part {
                     node.set_disabled();
                 }
             }
-            Sort::Row | Sort::Column => {}
+            Sort::Row | Sort::Column => {
+                // What the pass sets or clears, whatever the entry writes.
+                node.set_children(vec![NodeId(u64::MAX)]);
+                node.set_bounds(Rect {
+                    x0: -1.0,
+                    y0: -1.0,
+                    x1: 1.0,
+                    y1: 1.0,
+                });
+                node.set_transform(Affine::scale(2.0));
+                node.set_scroll_y(1.0);
+                node.set_scroll_x_max(1.0);
+                node.set_clips_children();
+                node.add_action(Action::Click);
+                node.add_child_action(Action::Focus);
+                node.set_tree_id(TreeId(Uuid::from_u128(1)));
+            }
         }
     }
 
@@ -801,8 +822,26 @@ fn check_tree(
         let part = controls
             .control(laid.widget)
             .ok_or("a box without a control")?;
+        let mut plain = node.clone();
+        plain.clear_transform();
+        plain.clear_actions();
+        plain.clear_child_actions();
+        plain.clear_tree_id();
+        if &plain != node {
+            return Err(format!(
+                "{} has a transform, actions or a tree identifier",
+                laid.widget
+            ));
+        }
         if part.sort != Sort::Scroller {
-            if node.scroll_x().is_some() || node.scroll_y().is_some() || node.clips_children() {
+            if node.scroll_x().is_some()
+                || node.scroll_x_min().is_some()
+                || node.scroll_x_max().is_some()
+                || node.scroll_y().is_some()
+                || node.scroll_y_min().is_some()
+                || node.scroll_y_max().is_some()
+                || node.clips_children()
+            {
                 return Err(format!("{} scrolls", laid.widget));
             }
             continue;

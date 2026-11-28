@@ -52,9 +52,9 @@ pub(crate) struct Pushed {
 /// `Role::Label` named by its text, a scroll container a `Role::ScrollView`,
 /// and any other node a `Role::GenericContainer` without a name. The
 /// control's entry may change it; then its children are those of the
-/// control in the tree, in order, and the transform, the actions and every
-/// property that the layout of a surface gives are cleared, whatever the
-/// entry wrote there.
+/// control in the tree, in order, and the transform, the actions, the tree
+/// identifier and every property that the layout of a surface gives are
+/// cleared, whatever the entry wrote there.
 pub(crate) fn controls<A: App>(tree: &Tree<A>) -> Controls {
     let mut nodes = BTreeMap::new();
     for id in tree.preorder() {
@@ -76,6 +76,7 @@ pub(crate) fn controls<A: App>(tree: &Tree<A>) -> Controls {
         node.clear_transform();
         node.clear_actions();
         node.clear_child_actions();
+        node.clear_tree_id();
         node.clear_bounds();
         node.clear_scroll_x();
         node.clear_scroll_x_min();

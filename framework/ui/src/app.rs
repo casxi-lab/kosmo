@@ -354,9 +354,9 @@ pub trait Control<A: App>: Clone {
     /// role, the name (`label`), the value, the description and the state
     /// flags of `node`, such as `disabled`. Afterwards the pass sets the
     /// children, the bounding box, the scroll offset and range and whether
-    /// the node clips its children, and clears the transform and the
-    /// actions, whatever the control wrote there: there are no action
-    /// requests. Changes nothing by default.
+    /// the node clips its children, and clears the transform, the actions
+    /// and the tree identifier, whatever the control wrote there: there are
+    /// no action requests and no subtrees. Changes nothing by default.
     fn accessibility(&self, state: &Self::State, node: &mut accesskit::Node) {
         let _ = (state, node);
     }
