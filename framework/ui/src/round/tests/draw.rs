@@ -26,14 +26,20 @@ fn px(pixels: i32) -> Fx {
     Fx::from_pixels(pixels).unwrap()
 }
 
-/// A control of the scene: a row; a column; a fixed-size leaf of 4 by 4
-/// pixels that fills its box with the colour of a token, handles
-/// `MoveLeft` by counting it in its presentation state, `MoveRight` by
-/// reading the count only and `DeleteBackward` by taking the count
-/// mutably and leaving it as it was; a text leaf that
-/// draws the text that the layout laid out; a fixed-size leaf that fills
-/// its box with a colour given as a value; or a fixed-size leaf of 1 by 1
-/// pixel that fills its box a number of times.
+/// A control of the scene: a row, which handles `CancelJob` by counting
+/// it in its presentation state; a column, which counts each focus
+/// change in its presentation state when it is the region's root; a
+/// fixed-size leaf of 4 by 4 pixels that fills its box with the colour
+/// of a token, handles `MoveLeft` by counting it in its presentation
+/// state, `MoveRight` by reading the count only, `DeleteBackward` by
+/// taking the count mutably and leaving it as it was, declines the
+/// character `d` after taking its count mutably, and `InsertText`
+/// by requesting a timer due at time zero, labelled 2 for the character
+/// `t` and 1 for any other, and counts a due timer labelled 2 while it
+/// only reads the count for one labelled 1; a text leaf that draws the
+/// text that the layout laid out; a fixed-size leaf that fills its box
+/// with a colour given as a value; or a fixed-size leaf of 1 by 1 pixel
+/// that fills its box a number of times.
 #[derive(Clone, Debug, PartialEq)]
 enum Part {
     Row,
@@ -64,6 +70,10 @@ impl Control<Scene> for Part {
             }
             (Part::Swatch(_), DELETE_BACKWARD) => {
                 let _count: &mut u32 = cx.state_mut();
+            }
+            (Part::Swatch(_), INSERT_TEXT) if command.text == Some('d') => {
+                let _count: &mut u32 = cx.state_mut();
+                return Handling::Unhandled;
             }
             (Part::Swatch(_), INSERT_TEXT) => {
                 let label = if command.text == Some('t') { 2 } else { 1 };
@@ -461,8 +471,10 @@ fn typed(c: char) -> Event {
 
 /// Every kind of handler follows the rule: a handler that takes its state
 /// before one that only reads it in the same round, a control's on a
-/// command that bubbles to it, a control's due timer and a region's root
-/// on a focus change.
+/// command that bubbles to it, a control's that declines the command after
+/// taking its state, a control's due timer and a region's root on a focus
+/// change draw the surface whole, while a request for a timer and a due
+/// timer whose handler only reads its state give no frame.
 #[test]
 fn every_kind_of_handler_that_takes_its_state_draws_the_surface_again() {
     let mut fonts = font_set();
@@ -482,16 +494,18 @@ fn every_kind_of_handler_that_takes_its_state_draws_the_surface_again() {
     };
     assert_eq!(regions(&run(&mut runtime, &mut app, vec![focus_in])), all);
 
-    // A handler that takes its state, then one that only reads it.
+    // Two handlers that take their states, then one that only reads it.
     let output = run(
         &mut runtime,
         &mut app,
         vec![
             press(NamedKey::DELETE, stamp(1, 1)),
+            press(NamedKey::DELETE, stamp(1, 1)),
             press(NamedKey::RIGHT, stamp(1, 1)),
         ],
     );
-    assert_eq!(keys(&output).len(), 2);
+    assert_eq!(keys(&output).len(), 3);
+    assert_eq!(output.view, ViewPass::Skipped);
     assert_eq!(regions(&output), all);
 
     // The swatch declines `CancelJob`, and the row takes its state on it.
@@ -502,6 +516,14 @@ fn every_kind_of_handler_that_takes_its_state_draws_the_surface_again() {
         vec![press(NamedKey::CANCEL, stamp(1, 1))],
     );
     assert!(keys(&output)[0].ends_with(&format!(" handled kosmo.CancelJob by control {row}")));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(regions(&output), all);
+
+    // The swatch takes its state on `d` and declines it, and nothing
+    // else handles it: the take still draws the surface whole.
+    let output = run(&mut runtime, &mut app, vec![typed('d')]);
+    assert!(keys(&output)[0].ends_with(" unhandled kosmo.InsertText 'd'"));
+    assert_eq!(output.view, ViewPass::Skipped);
     assert_eq!(regions(&output), all);
 
     // A due timer whose handler only reads its state gives no frame; one
@@ -515,6 +537,7 @@ fn every_kind_of_handler_that_takes_its_state_draws_the_surface_again() {
             "{}",
             output.record.text()
         );
+        assert_eq!(output.view, ViewPass::Skipped);
         assert_eq!(regions(&output), expected);
     }
 

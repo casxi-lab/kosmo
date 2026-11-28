@@ -354,6 +354,7 @@ fn bound_commands_scroll_in_rounds_and_hit_testing_reads_the_layout_of_the_round
         // through `Control::scrolled` and draws nothing.
         let idle = round(&mut runtime, &mut app, &mut fonts, Vec::new())?;
         assert!(idle.frames.is_empty());
+        assert_eq!(runtime.tree().state(ids.scroll), Some(&px(70)));
     }
     Ok(())
 }
