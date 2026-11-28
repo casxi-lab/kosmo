@@ -183,8 +183,9 @@ pub struct Runtime<A: App> {
     layouts: BTreeMap<SurfaceId, Kept>,
     /// The layout tree of each surface's latest frame.
     drawn: BTreeMap<SurfaceId, LayoutTree>,
-    /// Whether a view rebuilt the tree, or a handler of a control ran,
-    /// since the latest drawing pass.
+    /// Whether a view rebuilt the tree, or a handler of a control took its
+    /// presentation state through `Context::state_mut`, since the latest
+    /// drawing pass.
     changed: bool,
 }
 
@@ -272,14 +273,18 @@ impl<A: App> Round<'_, A> {
     /// of the output hold the display lists. The update region of a
     /// surface is the whole surface on its first frame and whenever its
     /// layout tree differs from that of its latest frame, which covers a
-    /// new size, and whenever a view rebuilt the tree or a handler of a
-    /// control ran since the drawing pass before, since a control's value
-    /// or presentation state may have changed; otherwise it is empty. The
-    /// pass draws the update region together with the pending region of
-    /// the surface in `input`, and a surface with neither has no frame. A
-    /// drawing pass that fails gives the surface no frame; the record and
-    /// [`Output::paint_errors`] name the error, and the next frame of the
-    /// surface is whole.
+    /// new size and a scroll offset that changed, also through what
+    /// [`Control::scrolled`] writes back; and whenever, since the drawing
+    /// pass before, a view rebuilt the tree, which may change any
+    /// control's value, or a handler of a control took its presentation
+    /// state through [`Context::state_mut`]. Controls and their states are
+    /// not compared, so a handler that only reads its state, or declines a
+    /// command without taking it, changes nothing. Otherwise the update
+    /// region is empty. The pass draws the update region together with the
+    /// pending region of the surface in `input`, and a surface with neither
+    /// has no frame. A drawing pass that fails gives the surface no frame;
+    /// the record and [`Output::paint_errors`] name the error, and the next
+    /// frame of the surface is whole.
     pub fn finish_with(self, app: &A, input: LayoutInput<'_>) -> Output {
         self.end(app, Some(input))
     }
@@ -781,15 +786,19 @@ impl<A: App> Runtime<A> {
         f: impl FnOnce(&A::Control, &mut Context<'_, A, crate::app::StateOf<A>>) -> R,
     ) -> Option<R> {
         let node = self.tree.node_mut(id)?;
-        // The handler may change the control's presentation state.
-        self.changed = true;
         let mut cx = Context {
             id,
             state: &mut node.state,
             messages,
             out,
+            state_taken: false,
         };
-        Some(f(&node.control, &mut cx))
+        let result = f(&node.control, &mut cx);
+        // Only a handler that took its presentation state mutably counts
+        // as a change of it; one that only read it, or declined without
+        // taking it, does not.
+        self.changed |= cx.state_taken;
+        Some(result)
     }
 }
 

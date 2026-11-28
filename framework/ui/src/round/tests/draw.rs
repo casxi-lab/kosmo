@@ -254,8 +254,8 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
     );
     assert!(output.frames.is_empty());
 
-    // A handler of a control ran: its presentation state may have changed,
-    // so both surfaces are drawn whole.
+    // A handler of a control took its presentation state mutably, so both
+    // surfaces are drawn whole.
     let events = vec![
         Event::FocusIn {
             surface: SURFACE,

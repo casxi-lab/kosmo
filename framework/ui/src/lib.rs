@@ -24,10 +24,12 @@
 //! surface sizes of its [`LayoutInput`]: it lays out each surface under its
 //! size against the layout that the runtime kept from the round before,
 //! laying out again only dirty subtrees, and [`Runtime::layout`] gives each
-//! surface's [`LayoutTree`]; then it draws each surface whose layout or
-//! controls changed since its latest frame, or that has a pending region,
-//! and the [`Output`] holds the frames, each a display list with its
-//! damage region. Between the two steps, whoever drives the rounds hands
+//! surface's [`LayoutTree`]; then it draws each surface whose layout tree
+//! changed since its latest frame, every surface after a view rebuilt the
+//! tree or a handler of a control took its presentation state through
+//! [`Context::state_mut`], and the pending region of each surface, and the
+//! [`Output`] holds the frames, each a display list with its damage
+//! region. Between the two steps, whoever drives the rounds hands
 //! the effects to the execution port, a [`JobPort`], for example with
 //! [`execute`], and passes the receipts to the next round.
 //!
