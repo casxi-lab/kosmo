@@ -42,7 +42,7 @@ use kosmo_platform::{AccessibilityTree, PixelSize};
 use kosmo_text::FontSet;
 use kosmo_types::{Fx, KeyAction, KeyMeaning, MonoTime, Point, Size};
 
-use crate::access::{controls, node_id, surface};
+use crate::access::{controls, surface};
 use crate::app::{App, Context, Control, DrawContext, Handling, Message, Out, Phase};
 use crate::command::{Binding, Command, CommandId, INSERT_TEXT, Mods, Trigger};
 use crate::focus::{Event, SurfaceId};
@@ -758,6 +758,8 @@ fn check_tree(
     left: &BTreeSet<WidgetId>,
 ) -> Result<(), String> {
     let controls: &Tree<Model> = runtime.tree();
+    // The identifier of a control's node, worked out apart from the pass.
+    let node_id = |id: WidgetId| NodeId(id.to_bits());
     let order = controls.preorder();
     let root = controls.root().ok_or("a tree without controls")?;
     // One node for each control, with the root of the control tree.
