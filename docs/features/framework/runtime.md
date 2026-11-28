@@ -958,23 +958,24 @@ wall clock.
     testing reads; it lays out again only what changed. A longer text lays
     out the leaf and its ancestors up to the root under the surface's tight
     constraint, and neither the leaf beside it nor the other subtree; a text
-    under a box with a tight constraint lays out only that text; the work
-    stops at a box whose size and baseline stay; a changed scroll request
-    lays nothing out and changes only its container's offset; another size,
-    table of tokens or font set lays the tree out whole, and nothing changed
-    lays nothing out. After random changes of a value, the children of a
-    control, a scroll request or the root constraint, the layout against the
-    one before is the whole layout byte for byte, and a scroll request
-    beyond its range in a subtree taken whole fails both alike. The offsets
-    are written back along the axis of each container, the smallest of the
-    surfaces', so that requests beyond the range do not add up, and the
-    kept layouts of all surfaces follow the requests written back; a failed
-    layout is recorded and leaves the surface without a layout. The shell
-    hands its own font set to the round. Tests:
+    that a leaf holds, laid out under the tight constraint of size zero,
+    lays out only that text; the work stops at a box whose size and
+    baseline stay; a changed scroll request lays nothing out and changes
+    only its container's offset; another size, table of tokens or font set
+    lays the tree out whole, and nothing changed lays nothing out. After
+    random changes of a value, the children of a control, a scroll request
+    or the root constraint, the layout against the one before is the whole
+    layout byte for byte, and a scroll request beyond its range in a
+    subtree taken whole fails both alike. The offsets are written back
+    along the axis of each container, the smallest of the surfaces', so
+    that requests beyond the range do not add up, and the kept layouts of
+    all surfaces follow the requests written back; a failed layout is
+    recorded and leaves the surface without a layout. The shell hands its
+    own font set to the round. Tests:
     `round::tests::layout::`
     `each_surface_with_a_size_is_laid_out_under_it_in_the_order_of_the_surfaces`,
     `changing_one_text_leaf_lays_out_only_it_and_its_ancestors_up_to_the_boundary`,
-    `a_box_under_a_tight_constraint_bounds_the_work_below_it`,
+    `a_text_that_a_leaf_holds_lays_out_only_itself`,
     `the_work_stops_at_a_box_whose_size_and_baseline_stay`,
     `a_changed_scroll_request_only_moves_its_container`,
     `the_round_writes_offsets_back_so_that_requests_beyond_the_range_do_not_add_up`,

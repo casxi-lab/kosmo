@@ -284,7 +284,7 @@ fn changing_one_text_leaf_lays_out_only_it_and_its_ancestors_up_to_the_boundary(
 }
 
 #[test]
-fn a_box_under_a_tight_constraint_bounds_the_work_below_it() {
+fn a_text_that_a_leaf_holds_lays_out_only_itself() {
     // The text leaf under the fixed-size leaf is laid out with the tight
     // constraint of size zero: its size depends only on that constraint.
     let view = |first| {
