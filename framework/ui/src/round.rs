@@ -280,10 +280,10 @@ impl<A: App> Round<'_, A> {
     /// state through [`Context::state_mut`]. Controls and their states are
     /// not compared, so a handler that only reads its state, or declines a
     /// command without taking it, counts as no change of its presentation
-    /// state. Otherwise the update
-    /// region is empty. The pass draws the update region together with the
-    /// pending region of the surface in `input`, and a surface with neither
-    /// has no frame. A drawing pass that fails gives the surface no frame;
+    /// state. Otherwise the update region is empty. The pass draws the
+    /// update region together with the pending region of the surface in
+    /// `input`, and a surface with neither has no frame. A drawing pass that
+    /// fails gives the surface no frame;
     /// the record and [`Output::paint_errors`] name the error, and the next
     /// frame of the surface is whole.
     pub fn finish_with(self, app: &A, input: LayoutInput<'_>) -> Output {

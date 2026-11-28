@@ -293,8 +293,8 @@ against it:
 The result is that of `layout` byte for byte. Then each scroll container's
 control learns its offset through `Control::scrolled`, and the drawing pass
 draws each surface whose layout tree changed since its latest frame, and
-every surface after a view rebuilt the tree or a handler of a control took
-its presentation state through `Context::state_mut`.
+every surface that has a layout after a view rebuilt the tree or a handler
+of a control took its presentation state through `Context::state_mut`.
 [Rounds](runtime.md#rounds) describes the pass, its records and its
 errors.
 
@@ -507,8 +507,8 @@ is tested in `xtask/`. No test sleeps or reads the wall clock.
     a command that its binding table binds to a key, the round lays it out
     with the request and writes the offset back, hit testing on the
     round's layout finds the same rows as on the layout of the layout
-    function, and a further request beyond the range leaves the request at
-    its end, and a round after it in which nothing changed writes the same
+    function, a further request beyond the range leaves the request at its
+    end, and a round after it in which nothing changed writes the same
     offset back and draws nothing. Test: `tests/scroll.rs`:
     `bound_commands_scroll_in_rounds_and_hit_testing_reads_the_layout_of_the_round`.
 

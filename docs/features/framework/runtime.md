@@ -1178,10 +1178,11 @@ wall clock.
     focused control on a command that it handles by reading its state,
     give no frame either; a handler that takes its presentation state
     through `Context::state_mut` draws the surface whole, also when it
-    leaves the value as it was, also when a later handler of the round
-    only reads its own, and so do a control on a command that bubbles to
-    it, a control on a due timer and the region's root on a focus change,
-    while a due timer whose handler only reads its state gives no frame.
+    leaves the value as it was, also when it then declines the command,
+    also when a later handler of the round only reads its own, and so do a
+    control on a command that bubbles to it, a control on a due timer and
+    the region's root on a focus change, while a due timer whose handler
+    only reads its state gives no frame.
     Tests: `round::tests::draw::`
     `a_key_that_no_control_handles_gives_no_frame`,
     `only_a_handler_that_takes_its_state_mutably_draws_the_surface_again`,
