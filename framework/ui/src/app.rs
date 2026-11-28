@@ -413,11 +413,20 @@ impl<A: App> Out<A> {
 /// What the event handlers of a control reach: its identity and
 /// presentation state, and the messages, effects and timer requests that it
 /// outputs as values.
+///
+/// A handler reads the presentation state with [`Context::state`] and
+/// changes it through [`Context::state_mut`]; only taking it through
+/// `state_mut` counts as a change of the presentation state, after which
+/// the next drawing pass of the rounds draws every surface that has a
+/// layout whole.
 pub struct Context<'a, A: App, S> {
     pub(crate) id: WidgetId,
     pub(crate) state: &'a mut S,
     pub(crate) messages: &'a mut Vec<Message<A>>,
     pub(crate) out: &'a mut Out<A>,
+    /// Whether the handler took the presentation state through
+    /// [`Context::state_mut`].
+    pub(crate) state_taken: bool,
 }
 
 impl<A: App, S> Context<'_, A, S> {
@@ -426,13 +435,20 @@ impl<A: App, S> Context<'_, A, S> {
         self.id
     }
 
-    /// The control's presentation state.
+    /// The control's presentation state. Reading it is no change of it.
     pub fn state(&self) -> &S {
         self.state
     }
 
     /// The control's presentation state, to change it.
+    ///
+    /// Taking it counts as a change of the presentation state, also when
+    /// the handler leaves its value as it was, since states are not
+    /// compared: the next drawing pass of the rounds draws every surface
+    /// that has a layout whole. A control that changes its state through
+    /// interior mutability without taking it here gives no frame.
     pub fn state_mut(&mut self) -> &mut S {
+        self.state_taken = true;
         self.state
     }
 

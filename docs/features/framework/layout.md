@@ -292,8 +292,10 @@ against it:
 
 The result is that of `layout` byte for byte. Then each scroll container's
 control learns its offset through `Control::scrolled`, and the drawing pass
-draws each surface whose layout tree or controls changed since its latest
-frame. [Rounds](runtime.md#rounds) describes the pass, its records and its
+draws each surface whose layout tree changed since its latest frame, and
+every surface that has a layout after a view rebuilt the tree or a handler
+of a control took its presentation state through `Context::state_mut`.
+[Rounds](runtime.md#rounds) describes the pass, its records and its
 errors.
 
 ## Limits
@@ -328,7 +330,13 @@ errors.
   [rounds](runtime.md#rounds) state.
 - The update region of a surface is the whole surface or nothing: rounds
   do not work out which part of a surface changed, so a change of one
-  control draws the whole surface again.
+  control draws the whole surface again. A presentation state counts as
+  changed only when a handler takes it through `Context::state_mut`, and
+  what `Control::scrolled` writes back only through the layout tree, as
+  [rounds](runtime.md#rounds) state; so a control that changes its
+  presentation state through interior mutability, such as a `Cell` in its
+  value or its state, without taking it through `Context::state_mut` gives
+  no frame, as the [limits of the runtime](runtime.md#limits) state.
 - The layout pass takes the layout node of every control in every round to
   find the dirty ones; only the laying out is limited to dirty subtrees.
 - Text is laid out from left to right in the two bundled fonts, without
@@ -499,8 +507,9 @@ is tested in `xtask/`. No test sleeps or reads the wall clock.
     a command that its binding table binds to a key, the round lays it out
     with the request and writes the offset back, hit testing on the
     round's layout finds the same rows as on the layout of the layout
-    function, and a further request beyond the range leaves the request at
-    its end. Test: `tests/scroll.rs`:
+    function, a further request beyond the range leaves the request at its
+    end, and a round after it in which nothing changed writes the same
+    offset back and draws nothing. Test: `tests/scroll.rs`:
     `bound_commands_scroll_in_rounds_and_hit_testing_reads_the_layout_of_the_round`.
 
 ## Running the tests

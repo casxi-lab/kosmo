@@ -1,5 +1,7 @@
 //! The drawing pass of a round: each surface with a layout is drawn whole
-//! when its layout or its controls changed since its latest frame, a
+//! when its layout changed since its latest frame, a view rebuilt the tree
+//! or a handler took its presentation state mutably; a key that no control
+//! handles and a handler that only reads its state give no frame; a
 //! pending region is drawn by itself, and a drawing pass that fails, also
 //! beyond the command limit of the display list, gives no frame and is
 //! recorded.
@@ -11,9 +13,12 @@ use kosmo_types::{BufferDesc, DamageRect, Fx, MonoTime, NamedKey, PixelFormat, P
 
 use super::super::*;
 use crate::app::{Context, DrawContext, Handling, Message, Out, Phase};
-use crate::command::{Command as KeyCommand, MOVE_LEFT};
+use crate::command::{
+    CANCEL_JOB, Command as KeyCommand, DELETE_BACKWARD, INSERT_TEXT, MOVE_LEFT, MOVE_RIGHT,
+};
 use crate::layout::{Column, Font, Node, Row, Text};
-use crate::testing::{SURFACE, TestPort, font_set, press, stamp};
+use crate::testing::{SURFACE, TestPort, font_set, key_event, press, stamp};
+use crate::timer::TimerLabel;
 use crate::tokens::{ColorToken, FontSize, TOKENS};
 use crate::tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, View};
 
@@ -21,12 +26,20 @@ fn px(pixels: i32) -> Fx {
     Fx::from_pixels(pixels).unwrap()
 }
 
-/// A control of the scene: a row; a column; a fixed-size leaf of 4 by 4
-/// pixels that fills its box with the colour of a token and handles
-/// `MoveLeft` by counting it in its presentation state; a text leaf that
-/// draws the text that the layout laid out; a fixed-size leaf that fills
-/// its box with a colour given as a value; or a fixed-size leaf of 1 by 1
-/// pixel that fills its box a number of times.
+/// A control of the scene: a row, which handles `CancelJob` by counting
+/// it in its presentation state; a column, which counts each focus
+/// change in its presentation state when it is the region's root; a
+/// fixed-size leaf of 4 by 4 pixels that fills its box with the colour
+/// of a token, handles `MoveLeft` by counting it in its presentation
+/// state, `MoveRight` by reading the count only, `DeleteBackward` by
+/// taking the count mutably and leaving it as it was, and `InsertText`
+/// by requesting a timer due at time zero, labelled 2 for the character
+/// `t` and 1 for any other but `d`, which it declines after taking its
+/// count mutably, and counts a due timer labelled 2 while it only reads
+/// the count for one labelled 1; a text leaf that draws the
+/// text that the layout laid out; a fixed-size leaf that fills its box
+/// with a colour given as a value; or a fixed-size leaf of 1 by 1 pixel
+/// that fills its box a number of times.
 #[derive(Clone, Debug, PartialEq)]
 enum Part {
     Row,
@@ -50,11 +63,39 @@ impl Control<Scene> for Part {
     }
 
     fn handle(&self, _: Phase, command: &KeyCommand, cx: &mut Context<'_, Scene, u32>) -> Handling {
-        if matches!(self, Part::Swatch(_)) && command.id == MOVE_LEFT {
+        match (self, command.id) {
+            (Part::Swatch(_), MOVE_LEFT) => *cx.state_mut() += 1,
+            (Part::Swatch(_), MOVE_RIGHT) => {
+                let _count: u32 = *cx.state();
+            }
+            (Part::Swatch(_), DELETE_BACKWARD) => {
+                let _count: &mut u32 = cx.state_mut();
+            }
+            (Part::Swatch(_), INSERT_TEXT) if command.text == Some('d') => {
+                let _count: &mut u32 = cx.state_mut();
+                return Handling::Unhandled;
+            }
+            (Part::Swatch(_), INSERT_TEXT) => {
+                let label = if command.text == Some('t') { 2 } else { 1 };
+                cx.timer(MonoTime::ZERO, TimerLabel::new(label));
+            }
+            (Part::Row, CANCEL_JOB) => *cx.state_mut() += 1,
+            _ => return Handling::Unhandled,
+        }
+        Handling::Handled
+    }
+
+    fn focus(&self, _: bool, cx: &mut Context<'_, Scene, u32>) {
+        if matches!(self, Part::Column) {
             *cx.state_mut() += 1;
-            Handling::Handled
+        }
+    }
+
+    fn timer(&self, label: TimerLabel, cx: &mut Context<'_, Scene, u32>) {
+        if label.get() == 2 {
+            *cx.state_mut() += 1;
         } else {
-            Handling::Unhandled
+            let _count: u32 = *cx.state();
         }
     }
 
@@ -254,8 +295,8 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
     );
     assert!(output.frames.is_empty());
 
-    // A handler of a control ran: its presentation state may have changed,
-    // so both surfaces are drawn whole.
+    // A handler of a control took its presentation state mutably, so both
+    // surfaces are drawn whole.
     let events = vec![
         Event::FocusIn {
             surface: SURFACE,
@@ -269,7 +310,13 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
         events,
         both(&mut fonts, first, second),
     );
-    assert_eq!(output.frames.len(), 2);
+    assert_eq!(
+        regions(&output),
+        [
+            (SURFACE, vec![rect(0, 0, 40, 20)]),
+            (SECOND, vec![rect(0, 0, 30, 20)])
+        ]
+    );
     assert_eq!(
         runtime.tree().state(runtime.tree().focused().unwrap()),
         Some(&1)
@@ -316,6 +363,195 @@ fn each_surface_is_drawn_whole_when_its_layout_or_its_controls_changed() {
         rect: Rect::new(Point::default(), Size::new(px(4), px(4)).unwrap()),
         color: TOKENS.error,
     }));
+}
+
+/// The key lines of the record of `output`.
+fn keys(output: &Output) -> Vec<&str> {
+    output
+        .record
+        .lines()
+        .iter()
+        .map(String::as_str)
+        .filter(|line| line.starts_with("key "))
+        .collect()
+}
+
+/// A surface that has a frame, keeps its size and has no pending region
+/// gets no frame from a round with only a key that no control handles:
+/// the swatch, the focused control, and the row decline its command, the
+/// application does not handle it, so the round rebuilds no view, and the
+/// layout tree stays as it was.
+#[test]
+fn a_key_that_no_control_handles_gives_no_frame() {
+    let mut fonts = font_set();
+    let mut app = Scene {
+        view: swatch_and_label(),
+    };
+    let mut runtime = Runtime::new();
+    let whole = size(40, 20);
+    let focus_in = Event::FocusIn {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+    };
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, vec![focus_in], input);
+    assert_eq!(regions(&output), [(SURFACE, vec![rect(0, 0, 40, 20)])]);
+    let before = runtime.layout(SURFACE).unwrap().clone();
+
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let events = vec![press(NamedKey::EXECUTE, stamp(1, 1))];
+    let output = drawn(&mut runtime, &mut app, events, input);
+    let unhandled = keys(&output);
+    assert_eq!(unhandled.len(), 1);
+    assert!(unhandled[0].ends_with(" unhandled kosmo.EvaluateSelection"));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(runtime.layout(SURFACE), Some(&before));
+    assert!(output.frames.is_empty());
+    assert!(output.paint_errors.is_empty());
+}
+
+/// Handlers that run without taking their presentation states mutably,
+/// the row's on a focus change and the swatch's on `MoveRight`, which it
+/// handles by reading its count, give no frame; the swatch's handler of
+/// `DeleteBackward`, which takes its count mutably and leaves it as it
+/// was, draws the surface whole, since states are not compared.
+#[test]
+fn only_a_handler_that_takes_its_state_mutably_draws_the_surface_again() {
+    let mut fonts = font_set();
+    let mut app = Scene {
+        view: swatch_and_label(),
+    };
+    let mut runtime = Runtime::new();
+    let whole = size(40, 20);
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, Vec::new(), input);
+    assert_eq!(output.frames.len(), 1);
+
+    let events = vec![
+        Event::FocusIn {
+            surface: SURFACE,
+            stamp: stamp(1, 1),
+        },
+        press(NamedKey::RIGHT, stamp(1, 1)),
+    ];
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, events, input);
+    let swatch = runtime.tree().focused().unwrap();
+    assert!(
+        output
+            .record
+            .lines()
+            .iter()
+            .any(|line| line.starts_with("focus-in ") && !line.ends_with(" no-region"))
+    );
+    assert!(keys(&output)[0].ends_with(&format!(" handled kosmo.MoveRight by control {swatch}")));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert!(output.frames.is_empty());
+    assert!(output.paint_errors.is_empty());
+
+    let events = vec![press(NamedKey::DELETE, stamp(1, 1))];
+    let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+    let output = drawn(&mut runtime, &mut app, events, input);
+    assert!(keys(&output)[0].ends_with(&format!(
+        " handled kosmo.DeleteBackward by control {swatch}"
+    )));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(runtime.tree().state(swatch), Some(&0));
+    assert_eq!(regions(&output), [(SURFACE, vec![rect(0, 0, 40, 20)])]);
+}
+
+/// A key press of the character `c` on the test surface.
+fn typed(c: char) -> Event {
+    Event::Key {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+        event: key_event(KeyMeaning::Char(c), KeyAction::Press),
+    }
+}
+
+/// Every kind of handler follows the rule: a handler that takes its state
+/// before one that only reads it in the same round, a control's on a
+/// command that bubbles to it, a control's that declines the command after
+/// taking its state, a control's due timer and a region's root on a focus
+/// change draw the surface whole, while a request for a timer and a due
+/// timer whose handler only reads its state give no frame.
+#[test]
+fn every_kind_of_handler_that_takes_its_state_draws_the_surface_again() {
+    let mut fonts = font_set();
+    let mut app = Scene {
+        view: swatch_and_label(),
+    };
+    let mut runtime = Runtime::new();
+    let whole = size(40, 20);
+    let mut run = |runtime: &mut Runtime<Scene>, app: &mut Scene, events: Vec<Event>| {
+        let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, whole);
+        drawn(runtime, app, events, input)
+    };
+    let all = [(SURFACE, vec![rect(0, 0, 40, 20)])];
+    let focus_in = Event::FocusIn {
+        surface: SURFACE,
+        stamp: stamp(1, 1),
+    };
+    assert_eq!(regions(&run(&mut runtime, &mut app, vec![focus_in])), all);
+
+    // Two handlers that take their states, then one that only reads it.
+    let output = run(
+        &mut runtime,
+        &mut app,
+        vec![
+            press(NamedKey::DELETE, stamp(1, 1)),
+            press(NamedKey::DELETE, stamp(1, 1)),
+            press(NamedKey::RIGHT, stamp(1, 1)),
+        ],
+    );
+    assert_eq!(keys(&output).len(), 3);
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(regions(&output), all);
+
+    // The swatch declines `CancelJob`, and the row takes its state on it.
+    let row = runtime.tree().region().unwrap();
+    let output = run(
+        &mut runtime,
+        &mut app,
+        vec![press(NamedKey::CANCEL, stamp(1, 1))],
+    );
+    assert!(keys(&output)[0].ends_with(&format!(" handled kosmo.CancelJob by control {row}")));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(regions(&output), all);
+
+    // The swatch takes its state on `d` and declines it, and nothing
+    // else handles it: the take still draws the surface whole.
+    let output = run(&mut runtime, &mut app, vec![typed('d')]);
+    assert!(keys(&output)[0].ends_with(" unhandled kosmo.InsertText 'd'"));
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(regions(&output), all);
+
+    // A due timer whose handler only reads its state gives no frame; one
+    // whose handler takes it draws the surface whole.
+    for (c, expected) in [('r', vec![]), ('t', all.to_vec())] {
+        let output = run(&mut runtime, &mut app, vec![typed(c)]);
+        assert!(output.frames.is_empty());
+        let output = run(&mut runtime, &mut app, Vec::new());
+        assert!(
+            output.record.text().contains("timer due"),
+            "{}",
+            output.record.text()
+        );
+        assert_eq!(output.view, ViewPass::Skipped);
+        assert_eq!(regions(&output), expected);
+    }
+
+    // A region's root that takes its state on a focus change.
+    let mut app = Scene {
+        view: View::new(Key::new(0), Part::Column)
+            .region()
+            .child(View::new(Key::new(1), Part::Swatch(ColorToken::Accent)).focused()),
+    };
+    let mut runtime = Runtime::new();
+    assert_eq!(regions(&run(&mut runtime, &mut app, Vec::new())), all);
+    let output = run(&mut runtime, &mut app, vec![focus_in]);
+    assert_eq!(output.view, ViewPass::Skipped);
+    assert_eq!(regions(&output), all);
 }
 
 #[test]
