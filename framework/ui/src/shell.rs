@@ -69,7 +69,8 @@ struct Surface {
     /// Its buffer is presented and not released yet.
     presented: bool,
     /// The region of the frames of rounds that came while its buffer was
-    /// presented, which the next round after the release draws again.
+    /// presented, and the whole surface after a new size, which the next
+    /// round after the release draws again.
     pending: Option<Damage>,
 }
 
@@ -235,8 +236,9 @@ impl<A: App> Shell<A> {
     /// 4. runs the first step of the round, with the receipts of the last
     ///    round, the events and the reports: `Key`, `FocusIn` and
     ///    `FocusOut` become the round's [`Event`]s in their order, while
-    ///    the shell handles `Configure`, which sets the surface's size and
-    ///    drops a previous frame and a pending region of another size, and
+    ///    the shell handles `Configure`, which sets the surface's size,
+    ///    drops a previous frame of another size and, when the size
+    ///    changes, makes the whole surface its pending region, and
     ///    `Released`, which makes the surface's buffer available again;
     ///    kinds of events that later versions add are ignored;
     /// 5. hands the effects to the execution port, which keeps the
@@ -304,14 +306,21 @@ impl<A: App> Shell<A> {
                 }
                 PlatformEvent::Configure { surface, size } => {
                     let known = self.surfaces.entry(surface).or_default();
+                    let resized = known.size.is_some_and(|old| old != size);
                     known.size = Some(size);
                     let other = |frame: &RenderTarget| {
                         (frame.desc().width(), frame.desc().height())
                             != (size.width(), size.height())
                     };
-                    if known.frame.as_ref().is_some_and(other) {
+                    let dropped = known.frame.as_ref().is_some_and(other);
+                    if dropped {
                         known.frame = None;
-                        known.pending = None;
+                    }
+                    // A region of another size is clipped wrongly, and a
+                    // dropped one is drawn by no round: the next frame
+                    // after a new size is whole.
+                    if resized || dropped {
+                        known.pending = whole(size);
                     }
                 }
                 PlatformEvent::Released { surface } => {
@@ -492,6 +501,22 @@ impl<A: App> Shell<A> {
         known.presented = true;
         Ok(work)
     }
+}
+
+/// The whole of a surface of `size` as a damage region of a frame of 4
+/// bytes per pixel; `None` beyond the buffer limits.
+fn whole(size: PixelSize) -> Option<Damage> {
+    let stride = size.width().checked_mul(4)?;
+    let desc = BufferDesc::new(
+        size.width(),
+        size.height(),
+        stride,
+        PixelFormat::Rgba8Premul,
+    )
+    .ok()?;
+    let mut damage = Damage::new(desc);
+    damage.add(0, 0, size.width(), size.height());
+    Some(damage)
 }
 
 /// A new previous frame for a buffer of `desc`: transparent black, tightly

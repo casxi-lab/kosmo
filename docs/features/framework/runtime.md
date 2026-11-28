@@ -556,10 +556,11 @@ fonts again. Then each round:
 4. runs `Runtime::round` with the receipts of the last round, the events and
    the reports. `Key`, `FocusIn` and `FocusOut` become the round's `Event`s
    in their order. The shell handles `Configure` itself, which sets the
-   surface's size, `Shell::size`, and drops a previous frame and a pending
-   region of another size, and `Released`, which makes the surface's
-   buffer available again; kinds of events that later versions add are
-   ignored;
+   surface's size, `Shell::size`, drops a previous frame of another size
+   and, when the size changes, makes the whole surface its pending region,
+   so that the next frame after the release is whole, and `Released`,
+   which makes the surface's buffer available again; kinds of events that
+   later versions add are ignored;
 5. hands the effects to the execution port, which keeps the receipts for
    the next round;
 6. runs `Round::finish_with` with a `LayoutInput` of its own font set, the
@@ -1107,8 +1108,12 @@ wall clock.
     bounding rectangle, and the first round after the release draws the
     pending region, in which nothing else changed, and presents it; a
     driver that presents directly is refused with `Busy`, and once a
-    presented frame emptied the pending region, nothing more is presented.
-    Test: `shell::tests::a_frame_for_a_presented_buffer_is_drawn_again_after_the_release`.
+    presented frame emptied the pending region, nothing more is presented;
+    a new size while the buffer is presented makes the next frame whole.
+    Tests: `shell::tests::`
+    `a_frame_for_a_presented_buffer_is_drawn_again_after_the_release`,
+    `a_second_size_while_the_buffer_is_presented_draws_the_next_frame_whole`,
+    `a_size_and_back_while_the_buffer_is_presented_draws_the_change`.
 24. The groups of the drawing pass count toward the command limit of a
     round's frame: below a row, 56 chains of 63 levels, 3,529 controls and
     64 deep, whose 56 leaves draw 166 rectangles each, give one frame of

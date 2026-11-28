@@ -12,11 +12,11 @@ use kosmo_text::{GlyphError, MONO, SANS};
 use kosmo_types::{DamageRect, Fx, KeyAction, KeyMeaning, NamedKey, Point, Rect, Size, convert};
 
 use super::*;
-use crate::app::{Control, DrawContext, Message, Out};
+use crate::app::{Context, Control, DrawContext, Handling, Message, Out, Phase};
 use crate::command::{EVALUATE_SELECTION, MOVE_LEFT};
-use crate::layout::{self, Column, Constraint, Font, Text};
+use crate::layout::{self, Column, Constraint, Font, Row, Text};
 use crate::testing::{SURFACE, TestApp, TestPort, Widget, key_event, node, stamp};
-use crate::tokens::FontSize;
+use crate::tokens::{ColorToken, FontSize};
 use crate::tree::{Key, View};
 
 type Log = Rc<RefCell<Vec<String>>>;
@@ -201,10 +201,23 @@ fn focus_in() -> PlatformEvent {
 }
 
 fn execute_key() -> PlatformEvent {
+    key(NamedKey::EXECUTE)
+}
+
+/// A press of the key `named` on the surface.
+fn key(named: NamedKey) -> PlatformEvent {
     PlatformEvent::Key {
         surface: SURFACE,
         stamp: stamp(1, 1),
-        event: key_event(KeyMeaning::Named(NamedKey::EXECUTE), KeyAction::Press),
+        event: key_event(KeyMeaning::Named(named), KeyAction::Press),
+    }
+}
+
+/// A `Configure` of the surface to `width` by `height` pixels.
+fn configure(width: u32, height: u32) -> PlatformEvent {
+    PlatformEvent::Configure {
+        surface: SURFACE,
+        size: PixelSize::new(width, height).unwrap(),
     }
 }
 
@@ -234,12 +247,12 @@ fn damage(fake: &Fake, rects: &[(u32, u32, u32, u32)]) -> Damage {
 }
 
 /// Returns the release of the surface's buffer through a round, so that the
-/// shell presents on it again.
-fn release(shell: &mut Shell<TestApp>, fake: &mut Fake) {
+/// shell presents on it again, and returns how that round ended.
+fn release<A: App>(shell: &mut Shell<A>, fake: &mut Fake) -> RoundEnd {
     fake.in_flight = false;
     fake.batches
         .push_back(vec![PlatformEvent::Released { surface: SURFACE }]);
-    shell.run_round(fake, None).unwrap();
+    shell.run_round(fake, None).unwrap()
 }
 
 #[test]
@@ -420,11 +433,7 @@ fn a_frame_for_a_presented_buffer_is_drawn_again_after_the_release() {
     let log = Log::default();
     let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
     let mut shell = calculator(&log, 0);
-    let configure = PlatformEvent::Configure {
-        surface: SURFACE,
-        size: PixelSize::new(32, 2).unwrap(),
-    };
-    fake.batches.push_back(vec![configure, focus_in()]);
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
     // The first frame of the configured surface is presented whole.
     let first = shell.run_round(&mut fake, None).unwrap();
     assert_eq!(first.output.frames.len(), 1);
@@ -470,6 +479,155 @@ fn a_frame_for_a_presented_buffer_is_drawn_again_after_the_release() {
     // Then nothing is pending, and nothing is presented.
     release(&mut shell, &mut fake);
     assert!(presentations(&log).is_empty());
+}
+
+/// A control of the tiles: a row, or a leaf of 8 by 2 pixels that counts
+/// the `MoveLeft` commands it handles in its presentation state and fills
+/// its box in the accent before the first and in the colour of errors
+/// after it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Tile {
+    Row,
+    Leaf,
+}
+
+impl Control<Tiles> for Tile {
+    type State = u32;
+
+    fn kind(&self) -> crate::tree::Kind {
+        crate::tree::Kind::new(match self {
+            Tile::Row => "row",
+            Tile::Leaf => "tile",
+        })
+    }
+
+    fn handle(
+        &self,
+        _: Phase,
+        command: &crate::command::Command,
+        cx: &mut Context<'_, Tiles, u32>,
+    ) -> Handling {
+        if *self == Tile::Leaf && command.id == MOVE_LEFT {
+            *cx.state_mut() += 1;
+            Handling::Handled
+        } else {
+            Handling::Unhandled
+        }
+    }
+
+    fn layout(&self, _: &u32) -> layout::Node<'_> {
+        let px = |pixels| Fx::from_pixels(pixels).unwrap();
+        match self {
+            Tile::Row => layout::Node::Row(Row::new()),
+            Tile::Leaf => layout::Node::Fixed(Size::new(px(8), px(2)).unwrap()),
+        }
+    }
+
+    fn draw(&self, cx: &mut DrawContext<'_, u32>) {
+        if *self == Tile::Leaf {
+            let token = match cx.state() {
+                0 => ColorToken::Accent,
+                _ => ColorToken::Error,
+            };
+            let color = cx.color(token);
+            cx.draw(Command::FillRect {
+                rect: Rect::new(Point::default(), cx.size()),
+                color,
+            });
+        }
+    }
+}
+
+/// An application whose view is a row of four tiles, the first of them
+/// focused, which fill a surface of 32 by 2 pixels.
+struct Tiles;
+
+impl App for Tiles {
+    type Message = ();
+    type Control = Tile;
+    type Port = TestPort;
+
+    fn update(&mut self, _: Message<Self>, _: &mut Out<Self>) {}
+
+    fn view(&self) -> View<Tile> {
+        let mut row = View::new(Key::new(0), Tile::Row)
+            .region()
+            .child(View::new(Key::new(1), Tile::Leaf).focused());
+        for key in 2..5 {
+            row = row.child(View::new(Key::new(key), Tile::Leaf));
+        }
+        row
+    }
+}
+
+/// The bytes of a pixel in the colour of `token` in an `Rgba8Premul`
+/// buffer.
+fn tile(token: ColorToken) -> [u8; 4] {
+    TOKENS.color(token).to_bytes()
+}
+
+/// Whether `damage` holds rectangles, each the whole surface of `width`
+/// by 2 pixels.
+fn is_whole(damage: &Damage, width: u32) -> bool {
+    let whole = DamageRect::new(0, 0, width, 2).unwrap();
+    !damage.is_empty() && damage.rects().iter().all(|rect| *rect == whole)
+}
+
+/// A `Configure` while the buffer is presented, and a second one to the
+/// size of the buffer again, make the whole surface the pending region, so
+/// that the frame after the release, a new previous frame, draws every
+/// tile and not only those inside the region of the smaller size.
+#[test]
+fn a_second_size_while_the_buffer_is_presented_draws_the_next_frame_whole() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    // The third tile, at x = 20.
+    assert_eq!(&fake.bytes[80..84], &tile(ColorToken::Accent));
+    // Smaller, then the size of the buffer again, while presented.
+    fake.batches.push_back(vec![configure(16, 2)]);
+    let small = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(small.output.frames.len(), 1);
+    fake.batches.push_back(vec![configure(32, 2)]);
+    let back = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(back.output.frames.len(), 1);
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    let after = release(&mut shell, &mut fake);
+    assert!(is_whole(&after.output.frames[0].2, 32));
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Accent));
+    assert_eq!(&fake.bytes[80..84], &tile(ColorToken::Accent));
+}
+
+/// A `Configure` to another size and back to the old one in one batch,
+/// while the buffer is presented, keeps the change that waits for the
+/// release: the layout is as before, and the round after the release
+/// still draws the first tile in the colour of its new state.
+#[test]
+fn a_size_and_back_while_the_buffer_is_presented_draws_the_change() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Accent));
+    // The first tile handles MoveLeft while the buffer is presented, so
+    // its whole frame waits.
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    let changed = shell.run_round(&mut fake, None).unwrap();
+    assert_eq!(changed.output.frames.len(), 1);
+    assert!(shell.surfaces[&SURFACE].pending.is_some());
+    fake.batches
+        .push_back(vec![configure(16, 2), configure(32, 2)]);
+    let resized = shell.run_round(&mut fake, None).unwrap();
+    assert!(resized.output.frames.is_empty());
+    assert!(shell.surfaces[&SURFACE].pending.is_some());
+    let after = release(&mut shell, &mut fake);
+    assert_eq!(after.output.frames.len(), 1);
+    let first = shell.runtime().tree().focused().unwrap();
+    assert_eq!(shell.runtime().tree().state(first), Some(&1));
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
 }
 
 #[test]
@@ -699,10 +857,6 @@ fn a_configure_with_a_new_size_drops_the_previous_frame() {
     let whole = damage(&fake, &[(0, 0, 4, 2)]);
     let red = fill(0, 0, 4, 2, Color::opaque(255, 0, 0));
     shell.present(&mut fake, SURFACE, &red, &whole).unwrap();
-    let configure = |width, height| PlatformEvent::Configure {
-        surface: SURFACE,
-        size: PixelSize::new(width, height).unwrap(),
-    };
     let frame = |shell: &Shell<TestApp>| {
         shell.surfaces[&SURFACE]
             .frame
