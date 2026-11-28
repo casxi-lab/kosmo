@@ -24,7 +24,10 @@ type Log = Rc<RefCell<Vec<String>>>;
 /// A platform that logs its calls, in the log that the test port shares,
 /// and returns the event batches that the test gives it, one for each
 /// wait, then `Disconnected` once they are gone and `disconnect` is set.
-/// Its clock stays at `clock`, and it has one buffer for every surface.
+/// Its clock stays at `clock`, and it has one buffer for every surface. It
+/// keeps the accessibility updates that it takes; it refuses with `Busy`
+/// every update while `refuse_updates` is set, and the updates of
+/// `refuse_surface`.
 struct Fake {
     log: Log,
     batches: VecDeque<Vec<PlatformEvent>>,
@@ -34,6 +37,9 @@ struct Fake {
     desc: BufferDesc,
     bytes: Vec<u8>,
     in_flight: bool,
+    updates: Vec<(SurfaceId, TreeUpdate)>,
+    refuse_updates: bool,
+    refuse_surface: Option<SurfaceId>,
 }
 
 impl Fake {
@@ -54,6 +60,9 @@ impl Fake {
             desc,
             bytes: vec![0x11; desc.byte_len() as usize],
             in_flight: false,
+            updates: Vec::new(),
+            refuse_updates: false,
+            refuse_surface: None,
         }
     }
 
@@ -142,8 +151,12 @@ impl ResourceProvider for Fake {
 }
 
 impl AccessibilitySink for Fake {
-    fn update(&mut self, surface: SurfaceId, _: TreeUpdate) -> Result<(), PlatformError> {
+    fn update(&mut self, surface: SurfaceId, update: TreeUpdate) -> Result<(), PlatformError> {
         self.log(format!("update {}", surface.get()));
+        if self.refuse_updates || self.refuse_surface == Some(surface) {
+            return Err(PlatformError::Busy);
+        }
+        self.updates.push((surface, update));
         Ok(())
     }
 }
@@ -482,9 +495,9 @@ fn a_frame_for_a_presented_buffer_is_drawn_again_after_the_release() {
 }
 
 /// A control of the tiles: a row, or a leaf of 8 by 2 pixels that counts
-/// the `MoveLeft` commands it handles in its presentation state and fills
+/// the `MoveLeft` commands it handles in its presentation state, fills
 /// its box in the accent before the first and in the colour of errors
-/// after it.
+/// after it, and has the count as the value of its accessibility node.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Tile {
     Row,
@@ -520,6 +533,12 @@ impl Control<Tiles> for Tile {
         match self {
             Tile::Row => layout::Node::Row(Row::new()),
             Tile::Leaf => layout::Node::Fixed(Size::new(px(8), px(2)).unwrap()),
+        }
+    }
+
+    fn accessibility(&self, count: &u32, node: &mut Node) {
+        if *self == Tile::Leaf {
+            node.set_value(count.to_string());
         }
     }
 
@@ -692,6 +711,151 @@ fn frames_that_fail_to_present_are_drawn_again_by_the_next_round() {
         pending(second).rects(),
         [DamageRect::new(2, 0, 3, 1).unwrap()]
     );
+}
+
+/// When the platform refuses an accessibility update, the round's frame
+/// is not presented but waits in the pending region of its surface, and
+/// the next round pushes the whole tree with the tree information and
+/// presents the frame.
+#[test]
+fn a_push_that_fails_keeps_the_frames_and_the_next_push_is_whole() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    release(&mut shell, &mut fake);
+    let (_, first) = fake.updates.pop().unwrap();
+    assert_eq!(first.nodes.len(), 5);
+    assert!(first.tree.is_some());
+    taken(&log);
+    // The first tile handles MoveLeft, which changes its value.
+    fake.refuse_updates = true;
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    assert_eq!(presentations(&log), Vec::<String>::new());
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.refuse_updates = false;
+    let next = shell.run_round(&mut fake, None).unwrap();
+    let [(surface, whole)] = fake.updates.as_slice() else {
+        panic!("not one update: {:?}", fake.updates);
+    };
+    assert_eq!(*surface, SURFACE);
+    assert_eq!(whole.nodes.len(), 5);
+    assert_eq!(whole.tree, first.tree);
+    let focused = NodeId(shell.runtime().tree().focused().unwrap().to_bits());
+    let (_, node) = whole.nodes.iter().find(|(id, _)| *id == focused).unwrap();
+    assert_eq!(node.value(), Some("1"));
+    assert!(is_whole(&next.output.frames[0].2, 32));
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
+}
+
+/// When the platform refuses the update of the second of three surfaces,
+/// the first keeps its tree, the second and the third get the whole tree
+/// in the next round, and the frames of all three wait in their pending
+/// regions.
+#[test]
+fn a_push_that_fails_resets_its_surface_and_those_after_it_and_keeps_every_frame() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    let second = SurfaceId::new(2);
+    let third = SurfaceId::new(3);
+    let size = PixelSize::new(32, 2).unwrap();
+    fake.batches.push_back(vec![
+        configure(32, 2),
+        PlatformEvent::Configure {
+            surface: second,
+            size,
+        },
+        PlatformEvent::Configure {
+            surface: third,
+            size,
+        },
+        focus_in(),
+    ]);
+    // The fake has one buffer, so the second frame fails to present.
+    let _ = shell.run_round(&mut fake, None);
+    let surfaces: Vec<SurfaceId> = fake.updates.iter().map(|(s, _)| *s).collect();
+    assert_eq!(surfaces, [SURFACE, second, third]);
+    fake.updates.clear();
+    fake.in_flight = false;
+    for surface in [SURFACE, second, third] {
+        let known = shell.surfaces.get_mut(&surface).unwrap();
+        known.presented = false;
+        known.pending = None;
+    }
+    taken(&log);
+    // The first tile handles MoveLeft, and the platform refuses the update
+    // of the second surface.
+    fake.refuse_surface = Some(second);
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    let surfaces: Vec<SurfaceId> = fake.updates.iter().map(|(s, _)| *s).collect();
+    assert_eq!(surfaces, [SURFACE]);
+    assert_eq!(presentations(&log), Vec::<String>::new());
+    for surface in [SURFACE, second, third] {
+        assert!(is_whole(&shell.surfaces[&surface].pending.unwrap(), 32));
+    }
+    fake.updates.clear();
+    fake.refuse_surface = None;
+    let _ = shell.run_round(&mut fake, None);
+    let surfaces: Vec<SurfaceId> = fake.updates.iter().map(|(s, _)| *s).collect();
+    assert_eq!(surfaces, [second, third]);
+    assert!(fake.updates.iter().all(|(_, update)| update.tree.is_some()));
+}
+
+/// While the buffer of the surface is presented and not released, a round
+/// still pushes its accessibility update; when the platform refuses it,
+/// the round's frame joins the pending region all the same, and the round
+/// after the release pushes the whole tree and presents the frame.
+#[test]
+fn a_push_while_the_buffer_is_presented_is_made_and_a_failed_one_keeps_the_frame() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    fake.updates.clear();
+    taken(&log);
+    // The buffer is not released. The first tile handles MoveLeft, which
+    // changes its value: the round pushes the update, and its frame waits.
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    shell.run_round(&mut fake, None).unwrap();
+    let [(surface, update)] = fake.updates.as_slice() else {
+        panic!("not one update: {:?}", fake.updates);
+    };
+    assert_eq!(*surface, SURFACE);
+    assert_eq!(update.tree, None);
+    assert_eq!(presentations(&log), Vec::<String>::new());
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.updates.clear();
+    shell.surfaces.get_mut(&SURFACE).unwrap().pending = None;
+    // Still not released: the platform refuses the next update, and the
+    // frame joins the pending region before the error returns.
+    fake.refuse_updates = true;
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.refuse_updates = false;
+    let after = release(&mut shell, &mut fake);
+    let [(_, whole)] = fake.updates.as_slice() else {
+        panic!("not one update: {:?}", fake.updates);
+    };
+    assert!(whole.tree.is_some());
+    assert!(is_whole(&after.output.frames[0].2, 32));
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
 }
 
 /// A frame presented before the one that fails stays out of the pending

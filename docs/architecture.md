@@ -1830,8 +1830,8 @@ and uses integer arithmetic only:
   buffer limit stays within that range. Glyph outlines enter
   as [glyphs](#glyphs) describes. parley's `f32` positions are multiplied by 64,
   which is exact, and rounded once by the rule above; widths passed to parley
-  are converted to `f32` exactly. Accessibility bounding boxes are converted
-  exactly.
+  are converted to `f32` exactly. Accessibility bounding boxes, scroll
+  offsets and scroll ranges are converted exactly.
 - Floating point inside dependencies is examined when a library is chosen,
   because a check of kosmo's code cannot reach it.
 - Layout trees and display lists are written out as integers of this

@@ -29,9 +29,12 @@
 //! view rebuilt the tree or a handler of a control took its presentation
 //! state through [`Context::state_mut`], and the pending region of each
 //! surface, and the [`Output`] holds the frames, each a display list with
-//! its damage region. Between the two steps, whoever drives the rounds hands
-//! the effects to the execution port, a [`JobPort`], for example with
-//! [`execute`], and passes the receipts to the next round.
+//! its damage region. Last, its accessibility pass builds the AccessKit
+//! tree of each surface that has a layout, one node for each control, which
+//! [`Control::accessibility`] describes, and the output holds the update of
+//! each surface whose tree changed. Between the two steps, whoever drives
+//! the rounds hands the effects to the execution port, a [`JobPort`], for
+//! example with [`execute`], and passes the receipts to the next round.
 //!
 //! ```
 //! use kosmo_types::{Epoch, FocusGen, HidUsage, KeyAction, KeyEvent, KeyMeaning, ModSet, MonoTime};
@@ -174,6 +177,7 @@
 
 #![forbid(unsafe_code)]
 
+mod access;
 mod app;
 mod command;
 mod focus;
