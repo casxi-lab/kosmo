@@ -175,7 +175,12 @@ fn a_golden_file_one_line_off_its_layout_fails() -> Checked {
         error.starts_with("layout-row-spacing: line 4 is \"2 parent 0 kind \\\"fixed\\\" key 1"),
         "{error}"
     );
-    assert!(error.contains(" at 1793 0 "), "{error}");
+    // The line as laid out comes first, and the line of the golden second.
+    let (laid, in_golden) = error.split_once(" laid out and ").unwrap_or_default();
+    assert!(
+        laid.contains(" at 1792 0 ") && in_golden.contains(" at 1793 0 "),
+        "{error}"
+    );
     // A golden that ends early, or holds one line more.
     let short: String = text.split_inclusive('\n').take(2).collect();
     assert_eq!(
