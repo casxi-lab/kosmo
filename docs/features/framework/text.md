@@ -233,7 +233,10 @@ The Fira Sans group also holds the names of the kinds of errors that kalyx
 reports, the annotation of a stale result, and the lifecycle states of an
 application with the stop and switch entries of the graphical shell, whose
 wording the planned crate `kosmo-shell` fixes. The Fira Sans group holds 257
-distinct characters and the Fira Mono group 255.
+distinct characters and the Fira Mono group 255. The test also fails when the
+group of a font lacks one of the four strings by Unicode block or holds fewer
+distinct characters than these, so a string that is removed or cut short is
+reported.
 
 A change that adds a string to the interface, or a character to a string,
 also adds the string to the group of the font that shows it in this file,
@@ -447,8 +450,9 @@ runtime](runtime.md#requirements) lists them.
    `sizes_and_fonts_outside_the_set_are_refused`,
    `an_error_of_a_key_comes_before_any_fill_and_before_the_bytes`,
    `a_mask_that_the_rasterizer_cannot_fill_leaves_the_cache_as_it_was`.
-9. The bundled fonts cover every interface string; a hole `□` in a string
-   of Fira Sans fails the check, which lists every missing character once
+9. The bundled fonts cover every interface string, and the group of each
+   font holds the four strings by Unicode block and at least 257 and 255
+   distinct characters; a hole `□` in a string of Fira Sans fails the check, which lists every missing character once
    for each string; the file's format groups strings by font, reads
    escapes and rejects what it does not define. Tests: `tests/coverage.rs`:
    `the_bundled_fonts_cover_every_interface_string`,

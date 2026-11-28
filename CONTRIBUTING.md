@@ -1100,12 +1100,16 @@ prints the version of cargo-audit. It then runs
 database into `advisory-db` in the Cargo home, and the job prints the commit
 of the database after each run. A vulnerability advisory for a package of
 any of the four lock files fails the job, once all four have been audited.
+An audit that fails for another reason, such as an advisory database that
+cannot be fetched, fails the job in the same way; its log shows which.
 Versions that crates.io has yanked and informational advisories, such as a
 package that is no longer maintained, are reported as warnings and do not
 fail it. The job is not required for merging, and it changes neither the
 `cargo xtask check` job nor the branch rules of `main`; the check by hand
-before each tag stays. GitHub disables the schedule of a public repository
-after 60 days without activity; a maintainer enables it again.
+before each tag stays. GitHub disables a scheduled workflow of a public
+repository after 60 days without activity in the repository; the workflow
+then runs neither on its schedule nor by hand until a maintainer enables it
+again.
 
 The job has a limit: `cargo install --locked` compiles cargo-audit from the
 `Cargo.lock` of the cargo-audit package, which lists 363 packages for every
