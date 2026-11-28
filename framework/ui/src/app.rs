@@ -1,6 +1,7 @@
 //! The application and control interfaces: what `update`, `view`, the
 //! event handlers of controls and the drawing entry receive.
 
+use kosmo_platform::accesskit;
 use kosmo_render::{Color, ListBuilder, ListError};
 use kosmo_types::{Fx, MonoTime, Rect, Size};
 
@@ -342,6 +343,22 @@ pub trait Control<A: App>: Clone {
     /// within the range of each. Does nothing by default.
     fn scrolled(&self, offset: Fx, state: &mut Self::State) {
         let _ = (offset, state);
+    }
+
+    /// The control's accessibility node, from its value and its
+    /// presentation state `state`. The accessibility pass of a round calls
+    /// it once for each control, with `node` filled from the control's
+    /// layout node: a text leaf is a `Role::Label` named by its text, a
+    /// scroll container a `Role::ScrollView`, and any other control a
+    /// `Role::GenericContainer` without a name. The control may change the
+    /// role, the name (`label`), the value, the description and the state
+    /// flags of `node`, such as `disabled`. Afterwards the pass sets the
+    /// children, the bounding box, the scroll offset and range and whether
+    /// the node clips its children, and clears the transform and the
+    /// actions, whatever the control wrote there: there are no action
+    /// requests. Changes nothing by default.
+    fn accessibility(&self, state: &Self::State, node: &mut accesskit::Node) {
+        let _ = (state, node);
     }
 
     /// The drawing entry. The drawing pass calls it in preorder; its

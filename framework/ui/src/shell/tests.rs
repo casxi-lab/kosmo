@@ -24,7 +24,9 @@ type Log = Rc<RefCell<Vec<String>>>;
 /// A platform that logs its calls, in the log that the test port shares,
 /// and returns the event batches that the test gives it, one for each
 /// wait, then `Disconnected` once they are gone and `disconnect` is set.
-/// Its clock stays at `clock`, and it has one buffer for every surface.
+/// Its clock stays at `clock`, and it has one buffer for every surface. It
+/// keeps the accessibility updates that it takes, and refuses them with
+/// `Busy` while `refuse_updates` is set.
 struct Fake {
     log: Log,
     batches: VecDeque<Vec<PlatformEvent>>,
@@ -34,6 +36,8 @@ struct Fake {
     desc: BufferDesc,
     bytes: Vec<u8>,
     in_flight: bool,
+    updates: Vec<(SurfaceId, TreeUpdate)>,
+    refuse_updates: bool,
 }
 
 impl Fake {
@@ -54,6 +58,8 @@ impl Fake {
             desc,
             bytes: vec![0x11; desc.byte_len() as usize],
             in_flight: false,
+            updates: Vec::new(),
+            refuse_updates: false,
         }
     }
 
@@ -142,8 +148,12 @@ impl ResourceProvider for Fake {
 }
 
 impl AccessibilitySink for Fake {
-    fn update(&mut self, surface: SurfaceId, _: TreeUpdate) -> Result<(), PlatformError> {
+    fn update(&mut self, surface: SurfaceId, update: TreeUpdate) -> Result<(), PlatformError> {
         self.log(format!("update {}", surface.get()));
+        if self.refuse_updates {
+            return Err(PlatformError::Busy);
+        }
+        self.updates.push((surface, update));
         Ok(())
     }
 }
@@ -482,9 +492,9 @@ fn a_frame_for_a_presented_buffer_is_drawn_again_after_the_release() {
 }
 
 /// A control of the tiles: a row, or a leaf of 8 by 2 pixels that counts
-/// the `MoveLeft` commands it handles in its presentation state and fills
+/// the `MoveLeft` commands it handles in its presentation state, fills
 /// its box in the accent before the first and in the colour of errors
-/// after it.
+/// after it, and has the count as the value of its accessibility node.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Tile {
     Row,
@@ -520,6 +530,12 @@ impl Control<Tiles> for Tile {
         match self {
             Tile::Row => layout::Node::Row(Row::new()),
             Tile::Leaf => layout::Node::Fixed(Size::new(px(8), px(2)).unwrap()),
+        }
+    }
+
+    fn accessibility(&self, count: &u32, node: &mut Node) {
+        if *self == Tile::Leaf {
+            node.set_value(count.to_string());
         }
     }
 
@@ -692,6 +708,48 @@ fn frames_that_fail_to_present_are_drawn_again_by_the_next_round() {
         pending(second).rects(),
         [DamageRect::new(2, 0, 3, 1).unwrap()]
     );
+}
+
+/// When the platform refuses an accessibility update, the round's frame
+/// is not presented but waits in the pending region of its surface, and
+/// the next round pushes the whole tree with the tree information and
+/// presents the frame.
+#[test]
+fn a_push_that_fails_keeps_the_frames_and_the_next_push_is_whole() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    release(&mut shell, &mut fake);
+    let (_, first) = fake.updates.pop().unwrap();
+    assert_eq!(first.nodes.len(), 5);
+    assert!(first.tree.is_some());
+    taken(&log);
+    // The first tile handles MoveLeft, which changes its value.
+    fake.refuse_updates = true;
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    assert_eq!(presentations(&log), Vec::<String>::new());
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.refuse_updates = false;
+    let next = shell.run_round(&mut fake, None).unwrap();
+    let [(surface, whole)] = fake.updates.as_slice() else {
+        panic!("not one update: {:?}", fake.updates);
+    };
+    assert_eq!(*surface, SURFACE);
+    assert_eq!(whole.nodes.len(), 5);
+    assert_eq!(whole.tree, first.tree);
+    let focused = NodeId(shell.runtime().tree().focused().unwrap().to_bits());
+    let (_, node) = whole.nodes.iter().find(|(id, _)| *id == focused).unwrap();
+    assert_eq!(node.value(), Some("1"));
+    assert!(is_whole(&next.output.frames[0].2, 32));
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+    assert_eq!(&fake.bytes[0..4], &tile(ColorToken::Error));
+    assert!(shell.surfaces[&SURFACE].pending.is_none());
 }
 
 /// A frame presented before the one that fails stays out of the pending

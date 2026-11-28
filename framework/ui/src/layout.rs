@@ -220,6 +220,11 @@ impl Scroll {
     pub const fn new(axis: Axis, request: Fx) -> Scroll {
         Scroll { axis, request }
     }
+
+    /// The axis along which the container scrolls.
+    pub(crate) const fn axis(self) -> Axis {
+        self.axis
+    }
 }
 
 /// The font of a text leaf: one of the two fonts of `kosmo-text`.
@@ -255,6 +260,11 @@ impl<'a> Text<'a> {
     /// The text leaf in `color`.
     pub const fn color(self, color: ColorToken) -> Text<'a> {
         Text { color, ..self }
+    }
+
+    /// The paragraph's text.
+    pub(crate) const fn text(self) -> &'a str {
+        self.text
     }
 }
 

@@ -253,7 +253,13 @@ impl<A: App> Shell<A> {
     ///    whose buffer is not presented; the round builds no font set of
     ///    its own, and [`Runtime::layout`] gives the layouts;
     /// 7. pushes the output's accessibility updates through
-    ///    `AccessibilitySink`, in their order;
+    ///    `AccessibilitySink`, in their order. When a push fails, the
+    ///    runtime learns through [`Runtime::push_failed`] that the
+    ///    platform took neither that update nor the ones after it, so that
+    ///    the next update of each of their surfaces holds the whole tree;
+    ///    no frame of the round is presented, and every frame joins the
+    ///    pending region of its surface, as a frame that fails to present
+    ///    does, before the error returns;
     /// 8. presents each frame of the output with [`Shell::present`], in
     ///    their order, except a frame for a surface whose buffer is
     ///    presented and not released: its damage region joins the pending
@@ -265,9 +271,6 @@ impl<A: App> Shell<A> {
     ///    regions of their surfaces, so that the next round draws them
     ///    again.
     ///
-    /// Rounds have no accessibility pass yet, so their outputs hold no
-    /// accessibility updates.
-    ///
     /// With the feature `call-probes`, which only the command line turns
     /// on, each call records the call probe `kosmo-ui::run_round` of
     /// `kosmo-testkit`; without it no probe code is compiled.
@@ -275,11 +278,11 @@ impl<A: App> Shell<A> {
     /// # Errors
     ///
     /// A port's error, [`PlatformError::Disconnected`] among them, and the
-    /// errors of presentation, as [`ShellError`] states; an error of
-    /// presentation comes after both steps, and the frames that it leaves
-    /// unpresented wait in the pending regions of their surfaces. A frame
-    /// for a surface whose buffer is presented and not released gives no
-    /// error.
+    /// errors of presentation, as [`ShellError`] states; an error of a push
+    /// or of presentation comes after both steps, and the frames that it
+    /// leaves unpresented wait in the pending regions of their surfaces. A
+    /// frame for a surface whose buffer is presented and not released
+    /// gives no error.
     pub fn run_round<P: Platform>(
         &mut self,
         platform: &mut P,
@@ -386,14 +389,25 @@ impl<A: App> Shell<A> {
     /// region, which the next round after the release draws again. When a
     /// frame fails to present, its damage and that of the frames after it
     /// join the pending regions of their surfaces before the error
-    /// returns, so that the next round draws them again.
+    /// returns, so that the next round draws them again. When a push
+    /// fails, the next update of its surface and of the surfaces of the
+    /// updates after it holds the whole tree, and every frame joins the
+    /// pending region of its surface before the error returns.
     fn deliver<P: Platform>(
         &mut self,
         platform: &mut P,
         output: &Output,
     ) -> Result<(), ShellError> {
-        for (surface, update) in &output.accessibility {
-            platform.update(*surface, update.clone())?;
+        for (index, (surface, update)) in output.accessibility.iter().enumerate() {
+            if let Err(error) = platform.update(*surface, update.clone()) {
+                for (surface, _) in output.accessibility.get(index..).unwrap_or(&[]) {
+                    self.runtime.push_failed(*surface);
+                }
+                for (surface, _, damage) in &output.frames {
+                    self.defer(*surface, damage);
+                }
+                return Err(error.into());
+            }
         }
         for (index, (surface, list, damage)) in output.frames.iter().enumerate() {
             if self

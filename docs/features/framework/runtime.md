@@ -14,15 +14,16 @@ layout result, builds the display list of a damage region from a layout
 result with its drawing pass, and drives rounds through the platform
 interface with its shell, which presents frames.
 
-The round function covers the event, update, view, layout and drawing
-passes; the drawing pass draws from the layout that the layout pass keeps
-for each surface, and is also a function of its own for layout results
-built in code. The [shell](#the-shell) waits for platform events, reads
-the clock, takes job reports, runs both steps of a round with its own font
-set for the layout and drawing passes and presents the frames of rounds
-through the platform interface `kosmo-platform`; the headless backend
-`kosmo-backend-headless` is one platform it runs on. Accessibility is
-planned. `kosmo-ui` depends on `kosmo-types` for
+The round function covers the event, update, view, layout, drawing and
+accessibility passes; the drawing pass draws from the layout that the
+layout pass keeps for each surface, and is also a function of its own for
+layout results built in code. The [shell](#the-shell) waits for platform
+events, reads the clock, takes job reports, runs both steps of a round
+with its own font set for the layout and drawing passes, and pushes the
+accessibility updates and presents the frames of rounds through the
+platform interface `kosmo-platform`; the headless backend
+`kosmo-backend-headless` is one platform it runs on. `kosmo-ui` depends on
+`kosmo-types` for
 geometry, logical time, focus generations, epochs, key events and damage
 regions, on the versions of
 `kosmo-math-model`, on `kosmo-platform` for the platform interface, on
@@ -254,11 +255,11 @@ plus `JOB_POLL_INTERVAL`, 16 ms; `None` when there is neither. A driver that
 holds receipts of the round's effects runs the next round at once, without
 waiting for the deadline. Its `accessibility` and `frames` are the tree
 updates and the display lists with their damage regions of each surface,
-which the [shell](#the-shell) hands to the platform; `accessibility` is
-empty until rounds run the accessibility pass, and `frames` holds what the
-drawing pass of `Round::finish_with` drew. `Round::finish` runs neither
-the layout pass nor the drawing pass, and the layouts that the runtime
-keeps stay as they were, also when its view pass rebuilt the tree.
+which the [shell](#the-shell) hands to the platform; `accessibility` holds
+what the accessibility pass of `Round::finish_with` built, and `frames`
+what its drawing pass drew. `Round::finish` runs neither the layout pass
+nor the drawing pass, and the layouts that the runtime keeps stay as they
+were, also when its view pass rebuilt the tree.
 
 `Round::finish_with(app, input)` runs the view pass of `Round::finish` and
 then the layout and drawing passes, before the deadline. Its `LayoutInput`
@@ -605,9 +606,8 @@ fonts again. Then each round:
 
 `run_round` returns a `RoundEnd` with how the wait ended, `WaitEnd::Events`,
 `Deadline` or `Idle`, and the round's `Output`, whose `frames` are those
-that the round drew, presented or waiting. Rounds have no accessibility
-pass, so `accessibility` is empty. `Shell::next_deadline` is the deadline
-for the next wait: the round's time while receipts wait,
+that the round drew, presented or waiting. `Shell::next_deadline` is the
+deadline for the next wait: the round's time while receipts wait,
 `Shell::has_receipts`, so that the wait does not block, and otherwise the
 round's `next_deadline`; before the first round it is 0, so the first round
 runs at once and builds the view. `Shell::runtime`, `app`, `port` and
@@ -756,14 +756,15 @@ floating-point methods that [the determinism
 lints](../../../CONTRIBUTING.md#the-determinism-lints) list, as in every
 crate of the product workspaces, and the layout step rejects an attribute
 in it that turns these lints off, within the limits that [the layout
-step](../../../CONTRIBUTING.md#the-layout-step) states for macros. It uses no floating-point arithmetic and no locale, and its record holds
-no wall-clock time; review checks these, as the
+step](../../../CONTRIBUTING.md#the-layout-step) states for macros. It uses
+no floating-point arithmetic other than the exact conversion of
+coordinates into the bounding boxes and scroll offsets of accessibility
+nodes, and no locale, and its record holds no wall-clock time; review
+checks these, as the
 [determinism rules](../../architecture.md#determinism-rules) describe.
 
 ## Limits
 
-- The round function has no accessibility pass, so its outputs hold no
-  tree updates.
 - A frame of a surface holds at most 16,384 commands, its groups
   included, and a surface whose frame would hold more is not drawn, as
   [rounds](#rounds) state; the drawing pass leaves out no group.

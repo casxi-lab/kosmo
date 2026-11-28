@@ -13,6 +13,7 @@ use kosmo_types::{
 };
 
 use crate::JOB_POLL_INTERVAL;
+use crate::access::{self, Pushed};
 use crate::app::{App, Context, Control, Handling, Message, Out, Phase};
 use crate::command::{MINIMAL_KEY_MAP, resolve};
 use crate::focus::{Dropped, Event, FocusTable, Stamp, SurfaceId};
@@ -135,10 +136,13 @@ pub struct Output {
     pub next_deadline: Option<MonoTime>,
     /// What the view pass did.
     pub view: ViewPass,
-    /// The AccessKit tree updates of the round, one for each surface whose
-    /// tree changed, in the order of the surfaces, which the shell pushes
-    /// to the platform. Rounds have no accessibility pass yet, so this is
-    /// empty.
+    /// The AccessKit tree updates of the round's accessibility pass, which
+    /// the shell pushes to the platform: for each surface with a layout
+    /// whose tree changed since the latest update that the runtime gave
+    /// for it, in the order of the surfaces, the update from that tree to
+    /// the new one. The first update of a surface, and the first after
+    /// [`Runtime::push_failed`], holds the whole tree with the tree
+    /// information. A round without a layout pass gives none.
     pub accessibility: Vec<(SurfaceId, TreeUpdate)>,
     /// The frames of the round: for each surface whose drawing pass ran,
     /// in the order of the surfaces, its display list and its damage
@@ -183,6 +187,9 @@ pub struct Runtime<A: App> {
     layouts: BTreeMap<SurfaceId, Kept>,
     /// The layout tree of each surface's latest frame.
     drawn: BTreeMap<SurfaceId, LayoutTree>,
+    /// The accessibility tree of each surface as the runtime last gave it
+    /// in an update, which the next update starts from.
+    pushed: BTreeMap<SurfaceId, Pushed>,
     /// Whether a view rebuilt the tree, or a handler of a control took its
     /// presentation state through `Context::state_mut`, since the latest
     /// drawing pass.
@@ -200,6 +207,7 @@ impl<A: App> Default for Runtime<A> {
             built: false,
             layouts: BTreeMap::new(),
             drawn: BTreeMap::new(),
+            pushed: BTreeMap::new(),
             changed: false,
         }
     }
@@ -286,6 +294,29 @@ impl<A: App> Round<'_, A> {
     /// fails gives the surface no frame;
     /// the record and [`Output::paint_errors`] name the error, and the next
     /// frame of the surface is whole.
+    ///
+    /// Last, the accessibility pass builds the AccessKit tree of each
+    /// surface that has a layout, in the order of the surfaces: one node
+    /// for each control, whose identifier is the control's identity as
+    /// [`WidgetId::to_bits`] gives it, with the control tree's root as its
+    /// root. A control's node starts from its layout node and goes through
+    /// [`Control::accessibility`], called once for each control; then the
+    /// pass sets its children, in the order of the control tree, and its
+    /// bounding box, the control's box in the coordinates of the surface,
+    /// moved by the scroll offsets of its ancestors and neither clipped nor
+    /// transformed, and gives a scroll container its offset and range and
+    /// makes it clip its children. The focus is the control that the view
+    /// marks as focused, or the root without one. The pass compares the
+    /// nodes it built with the surface's tree as of its latest update, and
+    /// [`Output::accessibility`] holds an update for each surface where a
+    /// node or the focus differs: the nodes that differ, new nodes and
+    /// parents whose children changed among them, and the focus. The
+    /// first update of a surface, and the first after
+    /// [`Runtime::push_failed`], holds the whole tree and the tree
+    /// information, and so does an update whose root changed. A surface
+    /// without a layout gets no update and keeps its latest tree. The
+    /// nodes are compared, not the controls, so a change through interior
+    /// mutability is pushed too.
     pub fn finish_with(self, app: &A, input: LayoutInput<'_>) -> Output {
         self.end(app, Some(input))
     }
@@ -319,6 +350,7 @@ impl<A: App> Round<'_, A> {
         };
         let mut frames = Vec::new();
         let mut paint_errors = Vec::new();
+        let mut accessibility = Vec::new();
         if let Some(input) = input {
             let LayoutInput {
                 fonts,
@@ -341,6 +373,7 @@ impl<A: App> Round<'_, A> {
                     }
                 }
             }
+            accessibility = runtime.access();
         }
         let polling = (unfinished_jobs > 0).then(|| time.saturating_add_nanos(JOB_POLL_INTERVAL));
         let next_deadline = match (runtime.timers.next_deadline(), polling) {
@@ -355,7 +388,7 @@ impl<A: App> Round<'_, A> {
             record,
             next_deadline,
             view,
-            accessibility: Vec::new(),
+            accessibility,
             frames,
             paint_errors,
         }
@@ -387,6 +420,14 @@ impl<A: App> Runtime<A> {
     /// [`LayoutTree::result`] is what hit testing reads.
     pub fn layout(&self, surface: SurfaceId) -> Option<&LayoutTree> {
         self.layouts.get(&surface).map(Kept::tree)
+    }
+
+    /// Tells the runtime that the platform did not take the latest
+    /// accessibility update of `surface`, so that the next update for the
+    /// surface holds the whole tree with the tree information. The shell
+    /// calls it when pushing an update fails.
+    pub fn push_failed(&mut self, surface: SurfaceId) {
+        self.pushed.remove(&surface);
     }
 
     /// What the runtime dropped or refused so far.
@@ -601,6 +642,28 @@ impl<A: App> Runtime<A> {
             drawn.push((surface, frame.map(|list| (list, damage))));
         }
         drawn
+    }
+
+    /// The accessibility pass: builds the tree of each surface that has a
+    /// layout, in the order of the surfaces, and gives the update from the
+    /// tree last given for it, keeping the new tree for the next update.
+    fn access(&mut self) -> Vec<(SurfaceId, TreeUpdate)> {
+        if self.layouts.is_empty() {
+            return Vec::new();
+        }
+        let controls = access::controls(&self.tree);
+        let mut updates = Vec::new();
+        for (&surface, kept) in &self.layouts {
+            let Some(built) = access::surface(&self.tree, &controls, kept.tree()) else {
+                continue;
+            };
+            let (update, pushed) = access::update(self.pushed.get(&surface), built);
+            self.pushed.insert(surface, pushed);
+            if let Some(update) = update {
+                updates.push((surface, update));
+            }
+        }
+        updates
     }
 
     /// Takes one platform event.
