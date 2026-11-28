@@ -1,36 +1,40 @@
 //! The drawing pass of a round: each surface with a layout is drawn whole
 //! when its layout or its controls changed since its latest frame, a
-//! pending region is drawn by itself, and a drawing pass that fails gives
-//! no frame and is recorded.
+//! pending region is drawn by itself, and a drawing pass that fails, also
+//! beyond the command limit of the display list, gives no frame and is
+//! recorded.
 
 use kosmo_platform::PixelSize;
-use kosmo_render::{Color, Command, DisplayList};
+use kosmo_render::{Color, Command, DisplayList, ListError, MAX_COMMANDS};
 use kosmo_text::FontSet;
 use kosmo_types::{BufferDesc, DamageRect, Fx, MonoTime, NamedKey, PixelFormat, Point, Rect, Size};
 
 use super::super::*;
 use crate::app::{Context, DrawContext, Handling, Message, Out, Phase};
 use crate::command::{Command as KeyCommand, MOVE_LEFT};
-use crate::layout::{Font, Node, Row, Text};
+use crate::layout::{Column, Font, Node, Row, Text};
 use crate::testing::{SURFACE, TestPort, font_set, press, stamp};
 use crate::tokens::{ColorToken, FontSize, TOKENS};
-use crate::tree::{Key, Kind, View};
+use crate::tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, View};
 
 fn px(pixels: i32) -> Fx {
     Fx::from_pixels(pixels).unwrap()
 }
 
-/// A control of the scene: a row; a fixed-size leaf of 4 by 4 pixels
-/// that fills its box with the colour of a token and handles `MoveLeft`
-/// by counting it in its presentation state; a text leaf that draws the
-/// text that the layout laid out; or a fixed-size leaf that fills its box
-/// with a colour given as a value.
+/// A control of the scene: a row; a column; a fixed-size leaf of 4 by 4
+/// pixels that fills its box with the colour of a token and handles
+/// `MoveLeft` by counting it in its presentation state; a text leaf that
+/// draws the text that the layout laid out; a fixed-size leaf that fills
+/// its box with a colour given as a value; or a fixed-size leaf of 1 by 1
+/// pixel that fills its box a number of times.
 #[derive(Clone, Debug, PartialEq)]
 enum Part {
     Row,
+    Column,
     Swatch(ColorToken),
     Label(&'static str),
     Literal(Color),
+    Many(usize),
 }
 
 impl Control<Scene> for Part {
@@ -39,7 +43,8 @@ impl Control<Scene> for Part {
     fn kind(&self) -> Kind {
         Kind::new(match self {
             Part::Row => "row",
-            Part::Swatch(_) | Part::Literal(_) => "swatch",
+            Part::Column => "column",
+            Part::Swatch(_) | Part::Literal(_) | Part::Many(_) => "swatch",
             Part::Label(_) => "label",
         })
     }
@@ -56,15 +61,17 @@ impl Control<Scene> for Part {
     fn layout(&self, _: &u32) -> Node<'_> {
         match self {
             Part::Row => Node::Row(Row::new()),
+            Part::Column => Node::Column(Column::new()),
             Part::Swatch(_) | Part::Literal(_) => Node::Fixed(Size::new(px(4), px(4)).unwrap()),
             Part::Label(text) => Node::Text(Text::new(text, Font::Sans, FontSize::Body)),
+            Part::Many(_) => Node::Fixed(Size::new(px(1), px(1)).unwrap()),
         }
     }
 
     fn draw(&self, cx: &mut DrawContext<'_, u32>) {
         let rect = Rect::new(Point::default(), cx.size());
         match self {
-            Part::Row => {}
+            Part::Row | Part::Column => {}
             Part::Swatch(token) => {
                 let color = cx.color(*token);
                 cx.draw(Command::FillRect { rect, color });
@@ -79,6 +86,12 @@ impl Control<Scene> for Part {
                 rect,
                 color: *color,
             }),
+            Part::Many(times) => {
+                let color = cx.color(ColorToken::Accent);
+                for _ in 0..*times {
+                    cx.draw(Command::FillRect { rect, color });
+                }
+            }
         }
     }
 }
@@ -346,5 +359,68 @@ fn a_drawing_pass_that_fails_gives_no_frame_and_is_recorded() {
     assert_eq!(
         output.paint_errors,
         [(SURFACE, PaintError::Untokened(literal))]
+    );
+}
+
+/// The command count of a frame: in a layout of the layout pass only
+/// leaves draw, so 56 chains of 63 levels below a row, 3,529 controls and
+/// 64 deep, hold 56 leaves that draw and 3,473 boxes with a child, the row
+/// and 62 columns in each chain. Each leaf that draws its rectangle `times`
+/// times adds `times` commands and a group of 2, and each box with a child a
+/// group of 2: 56 × 168 + 2 × 3,473 = 16,354 commands for 166 rectangles,
+/// within the limit, and 56 × 169 + 2 × 3,473 = 16,410 for 167, beyond it,
+/// which gives no frame and is recorded.
+#[test]
+fn a_frame_beyond_the_command_limit_gives_no_frame_and_is_recorded() {
+    let chains = |times: usize| {
+        let mut row = View::new(Key::new(0), Part::Row);
+        for chain in 0..56 {
+            // The leaf and 61 columns, below the chain's first column.
+            let mut node = View::new(Key::new(0), Part::Many(times));
+            for _ in 0..61 {
+                node = View::new(Key::new(0), Part::Column).child(node);
+            }
+            row.push(View::new(Key::new(chain), Part::Column).child(node));
+        }
+        row
+    };
+    let frame = |times: usize| {
+        let mut fonts = font_set();
+        let mut app = Scene {
+            view: chains(times),
+        };
+        let mut runtime = Runtime::new();
+        let input = LayoutInput::new(&mut fonts, 0, TOKENS).surface(SURFACE, size(64, 8));
+        let output = drawn(&mut runtime, &mut app, Vec::new(), input);
+        assert_eq!(runtime.tree().len(), 3_529);
+        assert!(runtime.tree().len() <= MAX_WIDGETS);
+        let depth = runtime.layout(SURFACE).unwrap().boxes().iter().fold(
+            Vec::new(),
+            |mut depths: Vec<usize>, laid| {
+                depths.push(laid.parent.map_or(1, |parent| depths[parent] + 1));
+                depths
+            },
+        );
+        assert_eq!(depth.iter().max(), Some(&MAX_DEPTH));
+        output
+    };
+    let within = frame(166);
+    assert_eq!(within.frames.len(), 1);
+    assert_eq!(commands(&within, 0).len(), 56 * 168 + 2 * 3_473);
+    assert!(commands(&within, 0).len() <= MAX_COMMANDS);
+
+    // One rectangle more in each of the 56 leaves exceeds the limit.
+    assert!(commands(&within, 0).len() + 56 > MAX_COMMANDS);
+    let beyond = frame(167);
+    assert!(beyond.frames.is_empty());
+    assert_eq!(
+        beyond.paint_errors,
+        [(SURFACE, PaintError::List(ListError::TooManyCommands))]
+    );
+    assert!(
+        beyond
+            .record
+            .lines()
+            .contains(&"paint surface 1 failed too-many-commands".to_string())
     );
 }

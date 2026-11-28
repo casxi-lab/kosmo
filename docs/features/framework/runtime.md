@@ -332,6 +332,18 @@ its `PaintError`, and the surface's next frame is whole. A surface whose
 frame of 4 bytes per pixel would exceed the buffer limits of `kosmo-types`
 fails with `LayoutError::InputOutOfRange`.
 
+The groups of the drawing pass count toward the limit of the display list,
+`MAX_COMMANDS` of `kosmo-render`, 16,384 commands. In a layout tree of the
+layout pass only text and fixed-size leaves draw, so a frame in which `n`
+leaves draw `c` commands in all and `m` boxes have a child visible in the
+damage holds `c + 2n + 2m` commands. A control tree within `MAX_WIDGETS`
+and `MAX_DEPTH` can exceed the limit: below a row, 56 chains of 63 levels,
+each a leaf below 62 columns, are 3,529 controls and 64 levels with
+`n = 56` and `m = 3,473`, so leaves that draw 166 rectangles each give
+16,354 commands and leaves that draw 167 each give 16,410. Beyond the
+limit the round gives the surface no frame and records
+`too-many-commands`; no group is left out to stay within it.
+
 ## Effects and the execution port
 
 `JobPort` is the execution port: `submit`, which answers at once with a
@@ -726,6 +738,9 @@ no wall-clock time; review checks these, as the
 
 - The round function has no accessibility pass, so its outputs hold no
   tree updates.
+- A frame of a surface holds at most 16,384 commands, its groups
+  included, and a surface whose frame would hold more is not drawn, as
+  [rounds](#rounds) state; the drawing pass leaves out no group.
 - The update region of a surface is the whole surface or nothing: rounds
   do not work out which part of a surface changed. Every view that a round
   rebuilds and every handler of a control that runs counts as a change of
@@ -1093,3 +1108,10 @@ wall clock.
     driver that presents directly is refused with `Busy`, and once a
     presented frame emptied the pending region, nothing more is presented.
     Test: `shell::tests::a_frame_for_a_presented_buffer_is_drawn_again_after_the_release`.
+24. The groups of the drawing pass count toward the command limit of a
+    round's frame: below a row, 56 chains of 63 levels, 3,529 controls and
+    64 deep, whose 56 leaves draw 166 rectangles each, give one frame of
+    16,354 commands, and with 167 rectangles each, 16,410 commands, which
+    give no frame, `PaintError::List(ListError::TooManyCommands)` in
+    `Output::paint_errors` and `too-many-commands` in the record. Test:
+    `round::tests::draw::a_frame_beyond_the_command_limit_gives_no_frame_and_is_recorded`.
