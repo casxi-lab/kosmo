@@ -329,6 +329,26 @@ fn a_golden_file_one_line_off_its_layout_fails() -> Checked {
 }
 
 #[test]
+fn a_pixel_golden_file_one_byte_off_its_drawing_fails() -> Checked {
+    let dir = concat!(env!("CARGO_TARGET_TMPDIR"), "/ui-golden-one-byte-off");
+    fs::create_dir_all(dir).map_err(failed)?;
+    let mut bytes = fs::read(golden::file_in(golden::GOLDENS, PIXELS)).map_err(failed)?;
+    fs::write(golden::file_in(dir, PIXELS), &bytes).map_err(failed)?;
+    golden::matches_file_in(dir, PIXELS)?;
+    // The green component of pixel (2, 2), in the padding of the scene.
+    bytes[tokens::HEADER + (2 * tokens::WIDTH as usize + 2) * 4 + 1] ^= 1;
+    fs::write(golden::file_in(dir, PIXELS), &bytes).map_err(failed)?;
+    assert_eq!(
+        golden::matches_file_in(dir, PIXELS),
+        Err(
+            "tokens: pixel (2, 2) is [ff, ff, ff, ff] drawn and [ff, fe, ff, ff] in the golden"
+                .to_string()
+        )
+    );
+    Ok(())
+}
+
+#[test]
 fn a_golden_file_that_differs_only_in_its_line_ends_fails() -> Checked {
     let name = "layout-row-spacing";
     let text = fs::read_to_string(golden::file_in(golden::GOLDENS, name)).map_err(failed)?;

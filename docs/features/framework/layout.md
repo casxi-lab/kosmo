@@ -424,13 +424,16 @@ is tested in `xtask/`. No test sleeps or reads the wall clock.
 8. The text of a layout tree has a line for each box in preorder, its
    layout result holds the boxes, every golden has its file, and a golden
    one line off its layout, or with other line ends, fails with the line
-   that differs; the goldens step reports a layout tree golden edited by
-   hand, one that `MANIFEST` lacks and one that no test refers to. Tests:
+   that differs, and a pixel golden one byte off its drawing with the
+   pixel that differs; the goldens step reports a layout tree golden
+   edited by hand, one that `MANIFEST` lacks and one that no test refers
+   to. Tests:
    `layout::tests::the_text_of_a_tree_has_a_line_for_each_box_in_preorder`,
    `layout::tests::the_layout_result_holds_the_boxes_of_the_tree`;
    `tests/golden.rs`: `every_case_has_a_golden_of_its_name`,
    `a_golden_file_one_line_off_its_layout_fails`,
    `a_golden_file_that_differs_only_in_its_line_ends_fails`,
+   `a_pixel_golden_file_one_byte_off_its_drawing_fails`,
    `the_helper_of_the_comparisons_fails_without_a_case`;
    `xtask/src/golden/tests.rs`:
    `layout_tree_goldens_with_their_files_lines_and_tests_pass`,
