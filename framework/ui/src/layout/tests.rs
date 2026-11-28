@@ -8,6 +8,8 @@ use crate::testing::{TestApp, TestPort, node};
 use crate::tokens::{ColorToken, FontSize, Space, TOKENS, Tokens};
 use crate::tree::{Key, Kind, Tree, View};
 
+mod random;
+
 /// The bytes of the two fonts, from the asset directory of `kosmo-text`.
 const SANS_BYTES: &[u8] =
     include_bytes!("../../../text/assets/fonts/firasans/FiraSans-Regular.ttf");
