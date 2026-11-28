@@ -506,13 +506,13 @@ index, its parent's index, the kind and key of its control, the smallest
 and largest size of its constraint, its position, its size, its baseline,
 its scroll offset, the axes along which it overflows and whether it
 draws, every number an integer, a count, a key or a value in 1/64 pixel.
-Names are lowercase
-letters, digits and `-`, and one name has one file. A test refers to a
-golden by calling `matches_golden` with the name as a string literal; the
-call draws the golden's scene and encodes it in memory, or lays out the
-golden's case and writes its layout tree as text, and compares the result
-with the file byte for byte. Other reads of a golden's file are no
-references. These commands write and verify the goldens:
+Names are lowercase letters, digits and `-`, and one name has one file. A
+test refers to a golden by calling `matches_golden` with the name as a
+string literal; the call draws the golden's scene and encodes it in
+memory, or lays out the golden's case or scene and writes its layout tree
+as text, and compares the result with the file byte for byte. Other reads
+of a golden's file are no references. These commands write and verify the
+goldens:
 
 ```sh
 cargo xtask golden
