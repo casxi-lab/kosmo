@@ -127,12 +127,16 @@ fn every_case_laid_out_twice_writes_the_bytes_of_its_golden() -> Checked {
 #[test]
 fn a_second_font_set_of_the_same_bytes_writes_the_same_goldens() -> Checked {
     // Each case through a font set of its own, and all of them through one
-    // other font set built from the same bytes.
+    // other font set built from the same bytes, give the bytes of the
+    // golden.
     let mut other = font_set()?;
     for (name, _) in CASES {
+        let path = golden::file_in(golden::GOLDENS, name);
+        let bytes = fs::read(&path).map_err(|error| format!("{path}: {error}"))?;
         let own = lay_out_case(name, &mut font_set()?)?.text();
         let shared = lay_out_case(name, &mut other)?.text();
-        assert_eq!(own.as_bytes(), shared.as_bytes(), "{name}");
+        golden::compare(name, &bytes, &own)?;
+        golden::compare(name, &bytes, &shared)?;
     }
     Ok(())
 }
