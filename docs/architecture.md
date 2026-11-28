@@ -1941,14 +1941,15 @@ Besides the rules above:
   `Rgba8Premul`, 2 for `Xrgb8888`, 3 for `Rgb565` and 4 for `Argb8888Premul`.
   `kosmo-testkit` computes the digests of presented buffers in this encoding
   with the `sha2` package, so the digest of a frame equals the digest that a
-  golden's manifest lists for the same frame.
+  golden's manifest lists for the same frame. Layout tree goldens are
+  compared by the SHA-256 of their text as `LayoutTree::text` writes it.
 - **Pinning.** The toolchain and the chosen libraries are pinned exactly. Each
   upgrade is a pull request of its own, which updates the goldens by category,
   and the list of forbidden methods is generated again with a toolchain upgrade.
-- **Authority.** Pixel goldens have zero tolerance, and the check on
-  GitHub-hosted runners is authoritative. The digests of a local run are
-  compared with those of CI one by one, and a difference between hosts is a
-  failure.
+- **Authority.** Pixel and layout tree goldens have zero tolerance, and the
+  check on GitHub-hosted runners is authoritative. The digests of a local run
+  are compared with those of CI one by one, and a difference between hosts is
+  a failure.
 
 ### External dependencies
 

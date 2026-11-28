@@ -507,7 +507,8 @@ letters, digits and `-`, and one name has one file. A test refers to a
 golden by calling `matches_golden` with the name as a string literal; the
 call draws the golden's scene and encodes it in memory, or lays out the
 golden's case and writes its layout tree as text, and compares the result
-with the file byte for byte. These commands write and verify the goldens:
+with the file byte for byte. Other reads of a golden's file are no
+references. These commands write and verify the goldens:
 
 ```sh
 cargo xtask golden
@@ -517,21 +518,20 @@ cargo xtask golden --verify
 The first runs the ignored test `write_goldens` of each crate with goldens,
 which writes its `.px` and `.tree` files, and then writes `MANIFEST` from
 the `.px` and `.tree` files in `tests/golden/`; run without a change to the
-drawing or layout code, it leaves every file as it was. It removes the
-`.px` and `.tree` files of the goldens before it runs the test, so the file
-of a golden whose scene or case is gone goes too, and it fails when the
-test writes no golden, and writes no `MANIFEST` when the directory holds
-another file or a `.px` and a `.tree` file of one name. When it fails, `MANIFEST`
-is as it was, the files it removed stay removed and those that the test
-wrote stay written, until it runs again without failing or
+drawing or layout code, it leaves every file as it was. It removes the `.px`
+and `.tree` files of the goldens before it runs the test, so the file of a
+golden whose scene or case is gone goes too, and it fails when the test
+writes no golden, and writes no `MANIFEST` when the directory holds another
+file or a `.px` and a `.tree` file of one name. When it fails, `MANIFEST` is
+as it was, the files it removed stay removed and those that the test wrote
+stay written, until it runs again without failing or
 `git checkout -- <crate>/tests/golden` restores them. Add a new golden's
-file with `git add`. The second runs the ignored test `redraw_goldens`, which
-draws or lays out the goldens again into `target/golden/<package>/` of the
-workspace, and prints for each golden the new digest and the digest in
-`MANIFEST`. It
-fails when one differs and changes no tracked file. Both leave out files
-whose names start with `.`, such as `.DS_Store`. The ignored tests are run
-only through these commands.
+file with `git add`. The second runs the ignored test `redraw_goldens`,
+which draws or lays out the goldens again into `target/golden/<package>/` of
+the workspace, and prints for each golden the new digest and the digest in
+`MANIFEST`. It fails when one differs and changes no tracked file. Both
+leave out files whose names start with `.`, such as `.DS_Store`. The ignored
+tests are run only through these commands.
 
 The `goldens` step reads the tracked files of the golden directories and of
 the crates with goldens, without running Cargo, and reports every problem it
@@ -1291,10 +1291,11 @@ following the paragraph of the architecture that it links:
     lists of the determinism lints again
     ([pinning](docs/architecture.md#determinism-rules)).
 12. Pixel and layout tree goldens have zero tolerance, and the check on
-    GitHub-hosted runners is authoritative: the digests that `cargo xtask golden --verify` prints
-    on a local host, run with a fresh `CARGO_HOME` and reported with whether
-    the volume of the checkout is case-sensitive, are compared with those of
-    CI one by one, which are those of `MANIFEST`, as
+    GitHub-hosted runners is authoritative: the digests that
+    `cargo xtask golden --verify` prints on a local host, run with a fresh
+    `CARGO_HOME` and reported with whether the volume of the checkout is
+    case-sensitive, are compared with those of CI one by one, which are
+    those of `MANIFEST`, as
     [the goldens step](#the-goldens-step-and-cargo-xtask-golden) states for
     CI, and a local digest that differs stops the work and goes to the
     maintainers, without taking CI's digest instead
