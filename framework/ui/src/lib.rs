@@ -138,6 +138,7 @@ mod round;
 mod shell;
 mod slot;
 mod timer;
+mod tokens;
 mod tree;
 
 #[cfg(test)]
@@ -159,6 +160,7 @@ pub use round::{Counts, Input, Output, Round, Runtime, ViewPass};
 pub use shell::{ExitReason, ExitStatus, RoundEnd, Shell, ShellError, run};
 pub use slot::{Delivered, ResultSlot, Shown, Tagged};
 pub use timer::{TIMER_CAPACITY, TimerLabel};
+pub use tokens::{ColorToken, FontSize, Space, TOKENS, Tokens};
 pub use tree::{Key, Kind, MAX_DEPTH, MAX_WIDGETS, RebuildError, Tree, View, WidgetId};
 
 /// The longest that the event loop waits while jobs that it submitted have
