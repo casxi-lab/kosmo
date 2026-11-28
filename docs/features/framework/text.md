@@ -13,9 +13,10 @@ and the tests pin them as text and as pixel goldens.
 The shell of `kosmo-ui` fetches the two fonts through the platform interface
 before its first round, builds its font set from their bytes, and prepares
 the glyph runs of each frame in the glyph cache before the rasterizer draws
-it, as [the shell](runtime.md#the-shell) describes; rounds do not lay text
-out yet. `kosmo-text` depends on `kosmo-types`, `kosmo-render`, parley 0.13.0
-and skrifa 0.49.0, and it is a core library on the deterministic path. The
+it, as [the shell](runtime.md#the-shell) describes; the layout pass of
+each round lays text out with that font set. `kosmo-text` depends on
+`kosmo-types`, `kosmo-render`, parley 0.13.0 and skrifa 0.49.0, and it is a
+core library on the deterministic path. The
 SDK facade `kosmo-sdk` does not re-export it. The design rules that it
 follows are in the [glyphs](../../architecture.md#glyphs),
 [text stack](../../architecture.md#text-stack),
@@ -338,9 +339,10 @@ which covers the hash containers inside the text stack.
   horizontally four steps.
 - parley's hit testing and caret geometry are not offered yet; they come
   with the controls that use them.
-- Rounds do not lay text out: the shell's font set serves only the frames
-  that its driver draws, and a driver that presents text lays it out with a
-  font set of its own built from the same bytes, as the
+- Rounds lay text out with the shell's font set, but do not draw yet: a
+  driver that presents text draws it from a surface's layout, or lays it out
+  with a font set of its own, which matches the shell's glyph cache only
+  when it holds the same two fonts in the same places, as the
   [limits](runtime.md#limits) of the framework runtime state.
 - Each font set holds a copy of both fonts, 631,592 bytes, besides its glyph
   cache; the time of layout and of filling masks has not been measured.

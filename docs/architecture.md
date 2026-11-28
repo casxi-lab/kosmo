@@ -1007,9 +1007,28 @@ against the new version instead of being shown as current and at once as stale.
 - Spacing and padding are spacing tokens and the size of text a font size
   token, so a control cannot give a length in pixels in their place; one table
   of design tokens holds their values.
-- Only dirty subtrees are laid out again; a node whose size depends only on its
-  parent's constraints bounds the work. Scrolling changes only the offset.
-  Overflow is marked in the layout result, along each axis where a box's
+- The layout pass runs in each round after the view pass, for each surface
+  that has a size, with the size of the surface's latest configuration as the
+  tight constraint of the root, the table of design tokens and the shell's own
+  font set, which the shell hands to the round; the round builds no font set.
+  The runtime keeps each surface's layout for the next round.
+- Only dirty subtrees are laid out again. A control is dirty when it is new,
+  when its layout node, which its value and presentation state give, differs
+  other than in a scroll request, or when its children differ. A subtree
+  without a dirty control keeps its layout while its root gets the same
+  constraint. A box whose control is not dirty keeps its size and its
+  children's positions while its children come out with their sizes and
+  baselines of the round before, so the work goes up from a dirty control
+  only while sizes or baselines change; a node whose size depends only on its
+  parent's constraint, such as one under a tight constraint, is a layout
+  boundary and ends it unless its baseline changed. Another surface size,
+  another table of tokens or another font set lays the whole tree out again,
+  and the result is that of a whole layout byte for byte.
+- Scrolling changes only the offset: a change of a scroll container's request
+  alone lays nothing out. After the layout pass the round writes each
+  container's offset, its request brought into range, back into its
+  presentation state, so that requests beyond the range do not add up.
+- Overflow is marked in the layout result, along each axis where a box's
   natural size exceeds its maximum size, never clipped silently; the box then
   takes its maximum size, and its children keep theirs.
 - Coordinates use the [numeric representation](#numeric-representation). Its

@@ -19,9 +19,14 @@
 //! [`Input`] (its time, receipts, platform events and job reports) and runs
 //! the event and update passes, and [`Round::finish`] runs the view pass
 //! and gives the next deadline and the event handling [`Record`] of the
-//! round. Between the two, whoever drives the rounds hands the effects to
-//! the execution port, a [`JobPort`], for example with [`execute`], and
-//! passes the receipts to the next round.
+//! round. [`Round::finish_with`] runs the layout pass after the view pass,
+//! with the font set, the table of design tokens and the surface sizes of
+//! its [`LayoutInput`]: it lays out each surface under its size against the
+//! layout that the runtime kept from the round before, laying out again
+//! only dirty subtrees, and [`Runtime::layout`] gives each surface's
+//! [`LayoutTree`]. Between the two steps, whoever drives the rounds hands
+//! the effects to the execution port, a [`JobPort`], for example with
+//! [`execute`], and passes the receipts to the next round.
 //!
 //! ```
 //! use kosmo_types::{Epoch, FocusGen, HidUsage, KeyAction, KeyEvent, KeyMeaning, ModSet, MonoTime};
@@ -106,8 +111,10 @@
 //! `kosmo-text` through `ResourceProvider` and builds its font set from
 //! them. [`Shell::run_round`], the single-round entry, waits once for
 //! platform events, reads the clock, takes job reports, runs both steps
-//! with the execution port between them, and pushes the round's
-//! accessibility updates and presents its frames; [`Shell::present`]
+//! with the execution port between them, handing its font set, the table
+//! of design tokens and the size of each configured surface to the layout
+//! pass, and pushes the round's accessibility updates and presents its
+//! frames; [`Shell::present`]
 //! prepares the coverage masks of a display list's glyph runs in the glyph
 //! cache of the font set, draws the list into a surface's previous frame
 //! and presents its damage.
@@ -143,6 +150,9 @@
 //! representation [`LayoutError::Overflow`], for the whole layout.
 //! [`LayoutTree::result`] gives the [`LayoutResult`] of the tree, and
 //! [`LayoutTree::text`] writes the tree as text, one line for each box.
+//! After the layout pass of a round, the control of each scroll container
+//! learns its offset through [`Control::scrolled`], to write it back into
+//! its request.
 //!
 //! Rows and columns take their spacing and padding only as [`Space`]
 //! tokens, and text leaves their size as a [`FontSize`] token and their
