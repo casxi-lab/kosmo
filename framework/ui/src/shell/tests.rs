@@ -813,6 +813,51 @@ fn a_push_that_fails_resets_its_surface_and_those_after_it_and_keeps_every_frame
     assert!(fake.updates.iter().all(|(_, update)| update.tree.is_some()));
 }
 
+/// While the buffer of the surface is presented and not released, a round
+/// still pushes its accessibility update; when the platform refuses it,
+/// the round's frame joins the pending region all the same, and the round
+/// after the release pushes the whole tree and presents the frame.
+#[test]
+fn a_push_while_the_buffer_is_presented_is_made_and_a_failed_one_keeps_the_frame() {
+    let log = Log::default();
+    let mut fake = Fake::new(&log, 32, 2, PixelFormat::Rgba8Premul);
+    let mut shell = Shell::new(Tiles, TestPort::default());
+    fake.batches.push_back(vec![configure(32, 2), focus_in()]);
+    shell.run_round(&mut fake, None).unwrap();
+    fake.updates.clear();
+    taken(&log);
+    // The buffer is not released. The first tile handles MoveLeft, which
+    // changes its value: the round pushes the update, and its frame waits.
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    shell.run_round(&mut fake, None).unwrap();
+    let [(surface, update)] = fake.updates.as_slice() else {
+        panic!("not one update: {:?}", fake.updates);
+    };
+    assert_eq!(*surface, SURFACE);
+    assert_eq!(update.tree, None);
+    assert_eq!(presentations(&log), Vec::<String>::new());
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.updates.clear();
+    shell.surfaces.get_mut(&SURFACE).unwrap().pending = None;
+    // Still not released: the platform refuses the next update, and the
+    // frame joins the pending region before the error returns.
+    fake.refuse_updates = true;
+    fake.batches.push_back(vec![key(NamedKey::LEFT)]);
+    assert_eq!(
+        shell.run_round(&mut fake, None).unwrap_err(),
+        ShellError::Platform(PlatformError::Busy)
+    );
+    assert!(is_whole(&shell.surfaces[&SURFACE].pending.unwrap(), 32));
+    fake.refuse_updates = false;
+    let after = release(&mut shell, &mut fake);
+    let [(_, whole)] = fake.updates.as_slice() else {
+        panic!("not one update: {:?}", fake.updates);
+    };
+    assert!(whole.tree.is_some());
+    assert!(is_whole(&after.output.frames[0].2, 32));
+    assert_eq!(presentations(&log), ["buffer 1", "present 1 0,0 32x2"]);
+}
+
 /// A frame presented before the one that fails stays out of the pending
 /// regions: the fake has one buffer, so once the first frame is presented,
 /// the second surface asks for the buffer while it is in flight.
