@@ -279,7 +279,8 @@ impl<A: App> Round<'_, A> {
     /// control's value, or a handler of a control took its presentation
     /// state through [`Context::state_mut`]. Controls and their states are
     /// not compared, so a handler that only reads its state, or declines a
-    /// command without taking it, changes nothing. Otherwise the update
+    /// command without taking it, counts as no change of its presentation
+    /// state. Otherwise the update
     /// region is empty. The pass draws the update region together with the
     /// pending region of the surface in `input`, and a surface with neither
     /// has no frame. A drawing pass that fails gives the surface no frame;

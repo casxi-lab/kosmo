@@ -339,12 +339,13 @@ update region is the whole surface:
 Otherwise it is empty, and a surface whose update and pending regions are
 both empty has no frame. Controls and their presentation states are not
 compared, so a handler that only reads its state with `Context::state`,
-or declines a command without taking it, changes nothing: on a surface
-that has a frame, keeps its size and has no pending region, a round with
-only a key that no control handles, which rebuilds no view and leaves the
-layout tree as it was, gives no frame. The controls draw through `paint`,
-with the text of each text leaf that the layout pass laid out with the
-round's font set.
+or declines a command without taking it, counts as no change of its
+presentation state: on a surface that has a frame, keeps its size and has
+no pending region, a round with only a key whose command neither a
+control of the focus chain nor the application handles rebuilds no view,
+leaves the layout tree as it was and gives no frame. The controls draw
+through `paint`, with the text of each text leaf that the layout pass laid
+out with the round's font set.
 A drawing pass that fails gives the surface no frame, never a panic: the
 record names the error and `Output::paint_errors` holds the surface with
 its `PaintError`, and the surface's next frame is whole. A surface whose
@@ -1165,16 +1166,23 @@ wall clock.
     `Output::paint_errors` and `too-many-commands` in the record. Test:
     `round::tests::draw::a_frame_beyond_the_command_limit_gives_no_frame_and_is_recorded`.
 25. Besides a surface's first frame, a new size and its pending region, a
-    round draws a surface only when its layout tree, the value of a
-    control or a presentation state changed. On a surface that has a
+    round draws a surface only when its layout tree changed, a view was
+    rebuilt, which counts as a change of the controls' values, or a
+    handler took its presentation state through `Context::state_mut`,
+    which counts as a change of that state. On a surface that has a
     frame, keeps its size and has no pending region, a round with only a
     key whose command the controls of the focus chain decline and the
     application does not handle rebuilds no view, leaves the layout tree
-    as it was and gives no frame; handlers that only read their
+    as it was and gives no frame; handlers that do not take their
     presentation states, the region's root on a focus change and the
-    focused control on a command that it handles, give no frame either;
-    a handler that takes its presentation state through
-    `Context::state_mut` draws the surface whole, also when it leaves the
-    value as it was. Tests: `round::tests::draw::`
+    focused control on a command that it handles by reading its state,
+    give no frame either; a handler that takes its presentation state
+    through `Context::state_mut` draws the surface whole, also when it
+    leaves the value as it was, also when a later handler of the round
+    only reads its own, and so do a control on a command that bubbles to
+    it, a control on a due timer and the region's root on a focus change,
+    while a due timer whose handler only reads its state gives no frame.
+    Tests: `round::tests::draw::`
     `a_key_that_no_control_handles_gives_no_frame`,
-    `only_a_handler_that_takes_its_state_mutably_draws_the_surface_again`.
+    `only_a_handler_that_takes_its_state_mutably_draws_the_surface_again`,
+    `every_kind_of_handler_that_takes_its_state_draws_the_surface_again`.

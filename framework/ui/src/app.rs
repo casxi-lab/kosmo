@@ -417,7 +417,8 @@ impl<A: App> Out<A> {
 /// A handler reads the presentation state with [`Context::state`] and
 /// changes it through [`Context::state_mut`]; only taking it through
 /// `state_mut` counts as a change of the presentation state, after which
-/// the next drawing pass of the rounds draws every surface whole.
+/// the next drawing pass of the rounds draws every surface that has a
+/// layout whole.
 pub struct Context<'a, A: App, S> {
     pub(crate) id: WidgetId,
     pub(crate) state: &'a mut S,
